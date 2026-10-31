@@ -14,11 +14,28 @@
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "Dev Assistant",
+      "properties": {
+        "devAssistant.github.monitoredRepos": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "GitHub repositories to monitor, as \"owner/repo\"."
+        },
+        "devAssistant.github.monitoredAuthors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "GitHub usernames whose pull requests are tracked as Team PRs."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {
           "id": "devUtilitiesContainer",
-          "title": "Dev Utilities",
+          "title": "Dev Assistant",
           "icon": "media/activity-icon.svg"
         }
       ]
@@ -27,12 +44,20 @@
       "devUtilitiesContainer": [
         {
           "id": "devUtilities.sidebar",
-          "name": "Tools",
+          "name": "",
           "type": "webview"
         }
       ]
     },
     "commands": [
+      {
+        "command": "devUtilities.githubSignIn",
+        "title": "Dev Utilities: Sign in to GitHub"
+      },
+      {
+        "command": "devUtilities.openDashboard",
+        "title": "Dev Utilities: Open Daily Tasks Dashboard"
+      },
       {
         "command": "devUtilities.base64Encode",
         "title": "Dev Utilities: Base64 Encode Selection"
@@ -157,6 +182,9 @@
     "lint": "eslint src --ext ts",
     "package": "npm run build && vsce package",
     "test": "vscode-test"
+  },
+  "dependencies": {
+    "octokit": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

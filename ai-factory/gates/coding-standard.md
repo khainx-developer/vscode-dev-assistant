@@ -42,6 +42,9 @@ Single deployable: one VS Code extension package (`dev-utilities`), no monorepo,
   selection/replacement helpers). Utils never import from `src/commands/`.
 - `dist/` (esbuild output, gitignored) is what actually ships; `out/` (tsc output, gitignored) is
   only used for type-checking (`tsc --noEmit`) and the `@vscode/test-cli` runner.
+- `src/github/` — the entire GitHub Attention Inbox domain (added by the GitHub Attention Inbox
+  story): auth, config, GraphQL client, attention computation, Last Seen store, refresh
+  scheduling, error classification, and the view controller that ties them together.
 
 Dependency direction: `extension.ts` → `commands/index.ts` → individual command files →
 `utils/` → `vscode` API. Nothing flows backward.
@@ -90,11 +93,15 @@ scope. Revisit only if commands start needing shared, non-trivial state (then: a
 in that story's `Design.md`, not an ad hoc addition).
 
 ## 5. Persistence Conventions
-N/A — this extension holds no persistent state. All commands are pure text transforms on the
-active editor's selection(s); nothing is read from or written to disk, settings, or
-`ExtensionContext.globalState`/`workspaceState`. If a future command needs persisted state
-(e.g. a remembered preference), that is a Design Decision — document the storage choice
-(`globalState` vs. `workspaceState` vs. a VS Code setting) in that story's `Design.md`.
+`src/github/lastSeenStore.ts` is the one place that reads/writes `ExtensionContext.globalState`,
+keyed `"owner/repo#number"` → timestamp (number, ms since epoch). Not registered via
+`setKeysForSync` (Design.md D-5). `src/github/configStore.ts` is the one place that reads/writes
+`vscode.workspace.getConfiguration('devAssistant.github')`. No other module touches either
+storage surface directly. Outside `src/github/`, this extension still holds no persistent state —
+all other commands are pure text transforms on the active editor's selection(s). If a future
+command needs persisted state (e.g. a remembered preference), that is a Design Decision —
+document the storage choice (`globalState` vs. `workspaceState` vs. a VS Code setting) in that
+story's `Design.md`.
 
 ## 6. API Conventions
 N/A (no HTTP API) — "API" here means the VS Code **command contribution surface**:
@@ -107,6 +114,11 @@ N/A (no HTTP API) — "API" here means the VS Code **command contribution surfac
   every handler stays interchangeable with the registration loop in `extension.ts`.
 - Handlers never call `vscode.commands.registerCommand` themselves — only `extension.ts` does,
   once, in the activation loop.
+
+### Outbound (GitHub)
+`src/github/client.ts` is the only module permitted to import or call `octokit`. All other
+modules receive already-typed `PullRequestSummary[]`/`GitHubSession` data, never a raw GraphQL
+response.
 
 ## 7. Validation Conventions
 Input validation is inline in the handler, immediately before using the value, not pulled into a
@@ -131,11 +143,14 @@ No custom error/exception hierarchy — commands are small enough that native `E
    inside a new command — rely on this existing boundary for the truly-unexpected case.
 
 ## 9. Logging Conventions
-No logging library or output channel is wired up yet. User-facing feedback is the error/warning
-message mechanism in §8, not a log. If a future story needs diagnostic logging (not user-facing),
-use a dedicated `vscode.window.createOutputChannel('Dev Utilities')` rather than `console.log`
-(which is invisible to users and only visible in the Extension Host dev console) — that's a
-Design Decision for whichever story first needs it.
+`src/github/viewController.ts` creates and owns a single
+`vscode.window.createOutputChannel('Dev Assistant')` instance (see §15 of that story's
+`TechnicalDesign.md` for policy); no other module creates an output channel. Outside
+`src/github/`, user-facing feedback is still the error/warning message mechanism in §8, not a
+log. If a future story needs diagnostic logging (not user-facing), use a dedicated
+`vscode.window.createOutputChannel(...)` rather than `console.log` (which is invisible to users
+and only visible in the Extension Host dev console) — that's a Design Decision for whichever
+story first needs it.
 
 ## 10. Async Conventions
 All command handlers are declared `async` and `await` their editor mutation (`editor.edit(...)`
@@ -144,6 +159,10 @@ every handler in `allCommands` has a uniform `Promise<void>` return and the regi
 `extension.ts` can `await command.handler(...)` uniformly. No unhandled promise rejections are
 allowed to escape a handler — the registration loop's `try/catch` around the `await` is the
 single catch-all (see §8); don't rely on an unguarded `.catch()` elsewhere.
+
+`src/github/*` modules follow the same `async`/`await`, no-unhandled-rejection rule as
+`src/commands/*`; `viewController.ts`'s message handler is the equivalent catch boundary for
+this domain (mirrors `extension.ts`'s role for commands).
 
 ## 11. Module System / Language Conventions
 - TypeScript, `"strict": true`, plus `noUnusedLocals`/`noUnusedParameters` (`tsconfig.json`) —
@@ -173,12 +192,16 @@ single catch-all (see §8); don't rely on an unguarded `.catch()` elsewhere.
   documented failure path (invalid input → original text preserved + specific error message).
 
 ## 13. Configuration & Secrets
-No secrets, no `.env`, no external services — this extension makes no network calls and reads no
-credentials. The only "configuration" is `package.json`'s `contributes`/`engines`/`activationEvents`
-block, which is static and checked into source control. If a future command introduces a user
-setting, declare it under `contributes.configuration` in `package.json` and read it once per
-invocation via `vscode.workspace.getConfiguration('devUtilities')` inside the handler — don't
-cache it at activation time, since the user can change settings mid-session.
+The GitHub Attention Inbox feature (`src/github/`) is the first exception: it makes outbound
+HTTPS calls to `api.github.com/graphql` and reads a `devAssistant.github.*` configuration
+section. It still stores no secret of its own — the GitHub access token is obtained per-call
+from `vscode.authentication` and never cached to disk (Design.md §14). Outside that feature, this
+extension still makes no other network calls and reads no other credentials. The only other
+"configuration" is `package.json`'s `contributes`/`engines`/`activationEvents` block, which is
+static and checked into source control. If a future command introduces a user setting, declare
+it under `contributes.configuration` in `package.json` and read it once per invocation via
+`vscode.workspace.getConfiguration('devUtilities')` inside the handler — don't cache it at
+activation time, since the user can change settings mid-session.
 
 ## 14. Multi-Tenancy Implementation Pattern
 N/A — single-user, local VS Code extension; there is no tenancy concept.
