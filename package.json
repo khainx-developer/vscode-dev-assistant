@@ -1,0 +1,178 @@
+{
+  "name": "dev-utilities",
+  "displayName": "Dev Utilities",
+  "description": "A collection of handy developer utilities for VS Code (private/internal use).",
+  "version": "0.0.1",
+  "publisher": "internal",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "devUtilitiesContainer",
+          "title": "Dev Utilities",
+          "icon": "media/activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "devUtilitiesContainer": [
+        {
+          "id": "devUtilities.sidebar",
+          "name": "Tools",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "devUtilities.base64Encode",
+        "title": "Dev Utilities: Base64 Encode Selection"
+      },
+      {
+        "command": "devUtilities.base64Decode",
+        "title": "Dev Utilities: Base64 Decode Selection"
+      },
+      {
+        "command": "devUtilities.generateUuid",
+        "title": "Dev Utilities: Insert UUID"
+      },
+      {
+        "command": "devUtilities.formatJson",
+        "title": "Dev Utilities: Format JSON Selection"
+      },
+      {
+        "command": "devUtilities.toJsonEscapedString",
+        "title": "Dev Utilities: Escape Selection as JSON String"
+      },
+      {
+        "command": "devUtilities.unixTimestampToDate",
+        "title": "Dev Utilities: Convert Unix Timestamp to Date"
+      },
+      {
+        "command": "devUtilities.dateToUnixTimestamp",
+        "title": "Dev Utilities: Insert Current Unix Timestamp"
+      },
+      {
+        "command": "devUtilities.toUpperCase",
+        "title": "Dev Utilities: Transform to UPPERCASE"
+      },
+      {
+        "command": "devUtilities.toLowerCase",
+        "title": "Dev Utilities: Transform to lowercase"
+      },
+      {
+        "command": "devUtilities.toCamelCase",
+        "title": "Dev Utilities: Transform to camelCase"
+      },
+      {
+        "command": "devUtilities.toSnakeCase",
+        "title": "Dev Utilities: Transform to snake_case"
+      },
+      {
+        "command": "devUtilities.toKebabCase",
+        "title": "Dev Utilities: Transform to kebab-case"
+      },
+      {
+        "command": "devUtilities.urlEncode",
+        "title": "Dev Utilities: URL Encode Selection"
+      },
+      {
+        "command": "devUtilities.urlDecode",
+        "title": "Dev Utilities: URL Decode Selection"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "submenu": "devUtilities.submenu",
+          "group": "9_dev_utilities"
+        }
+      ],
+      "devUtilities.submenu": [
+        {
+          "command": "devUtilities.base64Encode"
+        },
+        {
+          "command": "devUtilities.base64Decode"
+        },
+        {
+          "command": "devUtilities.generateUuid"
+        },
+        {
+          "command": "devUtilities.formatJson"
+        },
+        {
+          "command": "devUtilities.toJsonEscapedString"
+        },
+        {
+          "command": "devUtilities.unixTimestampToDate"
+        },
+        {
+          "command": "devUtilities.dateToUnixTimestamp"
+        },
+        {
+          "command": "devUtilities.toUpperCase"
+        },
+        {
+          "command": "devUtilities.toLowerCase"
+        },
+        {
+          "command": "devUtilities.toCamelCase"
+        },
+        {
+          "command": "devUtilities.toSnakeCase"
+        },
+        {
+          "command": "devUtilities.toKebabCase"
+        },
+        {
+          "command": "devUtilities.urlEncode"
+        },
+        {
+          "command": "devUtilities.urlDecode"
+        }
+      ]
+    },
+    "submenus": [
+      {
+        "id": "devUtilities.submenu",
+        "label": "Dev Utilities"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "compile": "tsc -p ./ --noEmit",
+    "lint": "eslint src --ext ts",
+    "package": "npm run build && vsce package",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "@typescript-eslint/eslint-plugin": "^7.14.1",
+    "@typescript-eslint/parser": "^7.14.1",
+    "@vscode/test-cli": "^0.0.9",
+    "@vscode/test-electron": "^2.4.0",
+    "@vscode/vsce": "^2.29.0",
+    "esbuild": "^0.21.5",
+    "eslint": "^8.57.0",
+    "typescript": "^5.5.2"
+  },
+  "allowScripts": {
+    "@vscode/vsce-sign@2.1.0": true,
+    "esbuild@0.21.5": true,
+    "keytar@7.9.0": true
+  }
+}
