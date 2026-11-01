@@ -26,6 +26,7 @@ export interface ReviewSummary {
 export interface CommentSummary {
   id: string;
   author: string;
+  body: string;
   createdAt: string;
   url: string;
 }

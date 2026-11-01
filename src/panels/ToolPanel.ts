@@ -16,7 +16,7 @@ export class ToolPanel {
   static createOrShow(extensionUri: vscode.Uri, toolId: string): void {
     const tool = getToolById(toolId);
     if (!tool) {
-      vscode.window.showErrorMessage(`Dev Utilities: Unknown tool "${toolId}".`);
+      vscode.window.showErrorMessage(`Dev Assistant: Unknown tool "${toolId}".`);
       return;
     }
 
@@ -52,7 +52,7 @@ export class ToolPanel {
   private handleMessage(tool: ToolDefinition, message: IncomingMessage): void {
     if (message.command === 'copy') {
       void vscode.env.clipboard.writeText(message.text);
-      void vscode.window.setStatusBarMessage('Dev Utilities: Copied to clipboard', 2000);
+      void vscode.window.setStatusBarMessage('Dev Assistant: Copied to clipboard', 2000);
       return;
     }
 

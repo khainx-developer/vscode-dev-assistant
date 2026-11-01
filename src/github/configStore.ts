@@ -1,14 +1,15 @@
 import * as vscode from 'vscode';
 import { GitHubAuthService } from './auth';
-import { GitHubClient } from './client';
+import { GithubMcpAdapter } from './githubMcpAdapter';
 import { GitHubExtensionConfig } from './types';
+import type { McpConnectionService } from '../mcp/connectionService';
 
 const REPO_FORMAT = /^([^/\s]+)\/([^/\s]+)$/;
 
 export class GitHubConfigStore {
   constructor(
     private readonly authService: GitHubAuthService,
-    private readonly client: typeof GitHubClient,
+    private readonly connectionService: McpConnectionService,
   ) {}
 
   getConfig(): GitHubExtensionConfig {
@@ -41,7 +42,7 @@ export class GitHubConfigStore {
     if (!session) {
       return { ok: false, reason: 'Sign in with GitHub first.' };
     }
-    const valid = await this.client.validateRepo({ owner, repo }, session);
+    const valid = await GithubMcpAdapter.validateRepo(this.connectionService, { owner, repo }, session);
     if (!valid) {
       return { ok: false, reason: 'Repo not found or not accessible.' };
     }
@@ -71,7 +72,7 @@ export class GitHubConfigStore {
       return { ok: false, reason: 'This author is already monitored.' };
     }
 
-    const valid = await this.client.validateAuthor({ username }, session);
+    const valid = await GithubMcpAdapter.validateAuthor(this.connectionService, { username }, session);
     if (!valid) {
       return { ok: false, reason: 'GitHub user not found.' };
     }

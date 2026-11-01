@@ -1,6 +1,6 @@
 {
-  "name": "dev-utilities",
-  "displayName": "Dev Utilities",
+  "name": "dev-assistant",
+  "displayName": "Dev Assistant",
   "description": "A collection of handy developer utilities for VS Code (private/internal use).",
   "version": "0.0.1",
   "publisher": "internal",
@@ -19,15 +19,54 @@
       "properties": {
         "devAssistant.github.monitoredRepos": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "GitHub repositories to monitor, as \"owner/repo\"."
         },
         "devAssistant.github.monitoredAuthors": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "GitHub usernames whose pull requests are tracked as Team PRs."
+        },
+        "devAssistant.jira.siteUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Jira Cloud site URL, e.g. https://yoursite.atlassian.net."
+        },
+        "devAssistant.jira.siteId": {
+          "type": "string",
+          "default": "",
+          "description": "Internal: the Jira site's Atlassian cloud ID, set automatically after connecting."
+        },
+        "devAssistant.jira.currentUser": {
+          "type": "string",
+          "default": "",
+          "description": "Your Jira display name, exactly as it appears on your issues (e.g. the \"assignee\" name). Used to filter \"My Jira Tasks\" on the Daily Tasks dashboard."
+        },
+        "devAssistant.jira.savedQueries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "jql": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "jql"
+            ]
+          },
+          "default": [],
+          "description": "Saved JQL queries used to fetch Jira tasks."
         }
       }
     },
@@ -52,67 +91,71 @@
     "commands": [
       {
         "command": "devUtilities.githubSignIn",
-        "title": "Dev Utilities: Sign in to GitHub"
+        "title": "Dev Assistant: Sign in to GitHub"
       },
       {
         "command": "devUtilities.openDashboard",
-        "title": "Dev Utilities: Open Daily Tasks Dashboard"
+        "title": "Dev Assistant: Open Daily Tasks Dashboard"
+      },
+      {
+        "command": "devUtilities.openJiraDashboard",
+        "title": "Dev Assistant: Open Jira Tasks"
       },
       {
         "command": "devUtilities.base64Encode",
-        "title": "Dev Utilities: Base64 Encode Selection"
+        "title": "Dev Assistant: Base64 Encode Selection"
       },
       {
         "command": "devUtilities.base64Decode",
-        "title": "Dev Utilities: Base64 Decode Selection"
+        "title": "Dev Assistant: Base64 Decode Selection"
       },
       {
         "command": "devUtilities.generateUuid",
-        "title": "Dev Utilities: Insert UUID"
+        "title": "Dev Assistant: Insert UUID"
       },
       {
         "command": "devUtilities.formatJson",
-        "title": "Dev Utilities: Format JSON Selection"
+        "title": "Dev Assistant: Format JSON Selection"
       },
       {
         "command": "devUtilities.toJsonEscapedString",
-        "title": "Dev Utilities: Escape Selection as JSON String"
+        "title": "Dev Assistant: Escape Selection as JSON String"
       },
       {
         "command": "devUtilities.unixTimestampToDate",
-        "title": "Dev Utilities: Convert Unix Timestamp to Date"
+        "title": "Dev Assistant: Convert Unix Timestamp to Date"
       },
       {
         "command": "devUtilities.dateToUnixTimestamp",
-        "title": "Dev Utilities: Insert Current Unix Timestamp"
+        "title": "Dev Assistant: Insert Current Unix Timestamp"
       },
       {
         "command": "devUtilities.toUpperCase",
-        "title": "Dev Utilities: Transform to UPPERCASE"
+        "title": "Dev Assistant: Transform to UPPERCASE"
       },
       {
         "command": "devUtilities.toLowerCase",
-        "title": "Dev Utilities: Transform to lowercase"
+        "title": "Dev Assistant: Transform to lowercase"
       },
       {
         "command": "devUtilities.toCamelCase",
-        "title": "Dev Utilities: Transform to camelCase"
+        "title": "Dev Assistant: Transform to camelCase"
       },
       {
         "command": "devUtilities.toSnakeCase",
-        "title": "Dev Utilities: Transform to snake_case"
+        "title": "Dev Assistant: Transform to snake_case"
       },
       {
         "command": "devUtilities.toKebabCase",
-        "title": "Dev Utilities: Transform to kebab-case"
+        "title": "Dev Assistant: Transform to kebab-case"
       },
       {
         "command": "devUtilities.urlEncode",
-        "title": "Dev Utilities: URL Encode Selection"
+        "title": "Dev Assistant: URL Encode Selection"
       },
       {
         "command": "devUtilities.urlDecode",
-        "title": "Dev Utilities: URL Decode Selection"
+        "title": "Dev Assistant: URL Decode Selection"
       }
     ],
     "menus": {
@@ -170,7 +213,7 @@
     "submenus": [
       {
         "id": "devUtilities.submenu",
-        "label": "Dev Utilities"
+        "label": "Dev Assistant"
       }
     ]
   },
@@ -184,7 +227,7 @@
     "test": "vscode-test"
   },
   "dependencies": {
-    "octokit": "^4.0.0"
+    "@modelcontextprotocol/sdk": "1.32.2"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

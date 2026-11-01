@@ -28,7 +28,7 @@ differently than this document by the time a story is implemented, the codebase 
 this document to match in that story's `DecisionLog.md`, don't silently diverge).
 
 ## 1. Solution & Project Structure
-Single deployable: one VS Code extension package (`dev-utilities`), no monorepo, no sub-packages.
+Single deployable: one VS Code extension package (`dev-assistant`), no monorepo, no sub-packages.
 
 - `src/extension.ts` — the only activation entry point. Registers every command from
   `allCommands` in a single loop, routes errors to `vscode.window.showErrorMessage`, and does
@@ -42,9 +42,22 @@ Single deployable: one VS Code extension package (`dev-utilities`), no monorepo,
   selection/replacement helpers). Utils never import from `src/commands/`.
 - `dist/` (esbuild output, gitignored) is what actually ships; `out/` (tsc output, gitignored) is
   only used for type-checking (`tsc --noEmit`) and the `@vscode/test-cli` runner.
+- `src/mcp/` — the shared MCP connection layer (added by the Jira Configuration & Task Sync
+  story's MCP revision): owns MCP transport, OAuth/DCR/PKCE state, and SecretStorage-backed
+  token persistence for both the Atlassian and GitHub remote MCP servers. Neither `src/github/*`
+  nor `src/jira/*` imports the MCP SDK directly or calls `context.secrets` for provider
+  credentials — both go through `src/mcp/connectionService.ts`.
 - `src/github/` — the entire GitHub Attention Inbox domain (added by the GitHub Attention Inbox
-  story): auth, config, GraphQL client, attention computation, Last Seen store, refresh
+  story; its data source was later migrated to GitHub MCP by the Jira Configuration & Task Sync
+  story): auth-session resolution, config, a GitHub MCP adapter (`githubMcpAdapter.ts`, replacing
+  the original octokit/GraphQL client), attention computation, Last Seen store, refresh
   scheduling, error classification, and the view controller that ties them together.
+- `src/jira/` — the Jira Configuration & Task Sync domain, mirroring `src/github/`'s split:
+  non-secret connection store (site URL/id only — no credential), saved-query config store, an
+  Atlassian MCP adapter (`atlassianMcpAdapter.ts`, replacing the original Basic-auth REST
+  client), error classification, PR-link matching, and the view controller that ties them
+  together. One-way, read-only dependency on `src/github/pullRequestCache.ts` for PR-linkage
+  data; `src/github/*` has no dependency on `src/jira/*` in either direction.
 
 Dependency direction: `extension.ts` → `commands/index.ts` → individual command files →
 `utils/` → `vscode` API. Nothing flows backward.
@@ -58,7 +71,7 @@ Dependency direction: `extension.ts` → `commands/index.ts` → individual comm
   `package.json`'s `contributes.commands` — see the comment on `DevUtilityCommand.id`. Never
   invent an id that isn't registered in `package.json`, and never register a `package.json`
   command without a matching handler.
-- **Command titles** (in `package.json`): `"Dev Utilities: <Verb Noun>"` — fixed prefix, title
+- **Command titles** (in `package.json`): `"Dev Assistant: <Verb Noun>"` — fixed prefix, title
   case after the colon.
 - **Exported command arrays**: `<group>Commands` (e.g. `encodingCommands`, `jsonCommands`),
   typed `DevUtilityCommand[]`.
@@ -69,7 +82,7 @@ Dependency direction: `extension.ts` → `commands/index.ts` → individual comm
 - **Variables**: camelCase; destructure from `vscode.TextEditor` (`document`, `selections`)
   rather than repeating `editor.` paths.
 - **User-facing messages**: every `showErrorMessage`/`showWarningMessage` string is prefixed with
-  `'Dev Utilities: '` so the source is identifiable in VS Code's notification area.
+  `'Dev Assistant: '` so the source is identifiable in VS Code's notification area.
 
 ## 3. Layering & Dependency Rules
 Three layers only, strictly one-directional:
@@ -96,12 +109,16 @@ in that story's `Design.md`, not an ad hoc addition).
 `src/github/lastSeenStore.ts` is the one place that reads/writes `ExtensionContext.globalState`,
 keyed `"owner/repo#number"` → timestamp (number, ms since epoch). Not registered via
 `setKeysForSync` (Design.md D-5). `src/github/configStore.ts` is the one place that reads/writes
-`vscode.workspace.getConfiguration('devAssistant.github')`. No other module touches either
-storage surface directly. Outside `src/github/`, this extension still holds no persistent state —
-all other commands are pure text transforms on the active editor's selection(s). If a future
-command needs persisted state (e.g. a remembered preference), that is a Design Decision —
-document the storage choice (`globalState` vs. `workspaceState` vs. a VS Code setting) in that
-story's `Design.md`.
+`vscode.workspace.getConfiguration('devAssistant.github')`. `src/jira/connectionStore.ts` is the
+one place that reads/writes `devAssistant.jira.baseUrl`/`email` settings and the
+`devAssistant.jira.apiToken` secret (via `context.secrets` — see §13).
+`src/jira/configStore.ts` is the one place that reads/writes
+`vscode.workspace.getConfiguration('devAssistant.jira')`'s `savedQueries`. No other module
+touches any of these storage surfaces directly. Outside `src/github/` and `src/jira/`, this
+extension still holds no persistent state — all other commands are pure text transforms on the
+active editor's selection(s). If a future command needs persisted state (e.g. a remembered
+preference), that is a Design Decision — document the storage choice (`globalState` vs.
+`workspaceState` vs. a VS Code setting vs. `secrets`) in that story's `Design.md`.
 
 ## 6. API Conventions
 N/A (no HTTP API) — "API" here means the VS Code **command contribution surface**:
@@ -115,10 +132,16 @@ N/A (no HTTP API) — "API" here means the VS Code **command contribution surfac
 - Handlers never call `vscode.commands.registerCommand` themselves — only `extension.ts` does,
   once, in the activation loop.
 
-### Outbound (GitHub)
-`src/github/client.ts` is the only module permitted to import or call `octokit`. All other
-modules receive already-typed `PullRequestSummary[]`/`GitHubSession` data, never a raw GraphQL
-response.
+### Outbound (MCP — Jira and GitHub)
+`src/mcp/connectionService.ts` is the only module permitted to import `@modelcontextprotocol/sdk`
+or construct an MCP transport; it is the single outbound call boundary for both providers.
+`src/github/githubMcpAdapter.ts` and `src/jira/atlassianMcpAdapter.ts` are the only modules
+permitted to call `McpConnectionService.callTool(...)`, and each maps raw MCP tool results into
+this codebase's existing typed domain shapes (`PullRequestSummary[]`/`JiraTask[]`) before
+anything else sees them — no other module receives a raw MCP response. Direct Jira REST calls
+(`fetch` against `/rest/api/3/*`) and direct `octokit`/GraphQL calls are no longer used by this
+extension; see `stories/jira-configuration-sync/03-Design/TechnicalDesign.md` §2/§18 for the
+migration from the original REST/octokit clients.
 
 ## 7. Validation Conventions
 Input validation is inline in the handler, immediately before using the value, not pulled into a
@@ -139,7 +162,7 @@ No custom error/exception hierarchy — commands are small enough that native `E
    selection.
 2. **Unexpected failures**: anything a handler doesn't explicitly catch bubbles up to
    `extension.ts`'s registration loop, which catches `Error` and reports
-   `` `Dev Utilities: ${(err as Error).message}` ``. Don't add a duplicate top-level `try/catch`
+   `` `Dev Assistant: ${(err as Error).message}` ``. Don't add a duplicate top-level `try/catch`
    inside a new command — rely on this existing boundary for the truly-unexpected case.
 
 ## 9. Logging Conventions
@@ -192,16 +215,29 @@ this domain (mirrors `extension.ts`'s role for commands).
   documented failure path (invalid input → original text preserved + specific error message).
 
 ## 13. Configuration & Secrets
-The GitHub Attention Inbox feature (`src/github/`) is the first exception: it makes outbound
-HTTPS calls to `api.github.com/graphql` and reads a `devAssistant.github.*` configuration
-section. It still stores no secret of its own — the GitHub access token is obtained per-call
-from `vscode.authentication` and never cached to disk (Design.md §14). Outside that feature, this
-extension still makes no other network calls and reads no other credentials. The only other
-"configuration" is `package.json`'s `contributes`/`engines`/`activationEvents` block, which is
-static and checked into source control. If a future command introduces a user setting, declare
-it under `contributes.configuration` in `package.json` and read it once per invocation via
+`src/mcp/` is the sole owner of provider credentials. Both the GitHub Attention Inbox
+(`src/github/`) and Jira Configuration & Task Sync (`src/jira/`) features make outbound calls
+only through MCP tools invoked via `src/mcp/connectionService.ts`, which authorizes against the
+remote Atlassian/GitHub MCP servers using browser-based OAuth (DCR + PKCE, no client secret).
+`src/mcp/secretTokenStore.ts` is the only module that calls `context.secrets` for provider
+credentials — `context.secrets.store('devAssistant.mcp.<serverId>.*', ...)`, read back with
+`context.secrets.get(...)`, cleared with `context.secrets.delete(...)`. GitHub additionally
+tries the existing `vscode.authentication` (`github`) session as a Bearer credential before
+falling back to its own MCP OAuth (`src/github/auth.ts`). `secrets` is backed by the OS keychain
+and is the only acceptable place in this codebase to persist a credential; never write a token
+to `vscode.workspace` settings (that writes plaintext to `settings.json`). Non-secret
+configuration (`devAssistant.github.monitoredRepos`/`monitoredAuthors`,
+`devAssistant.jira.siteUrl`/`siteId`/`savedQueries`) remains in ordinary settings, read via
+`vscode.workspace.getConfiguration(...)`.
+
+Outside those two features, this extension makes no other network calls and reads no other
+credentials. The only other "configuration" is `package.json`'s
+`contributes`/`engines`/`activationEvents` block, which is static and checked into source
+control. If a future command introduces a user setting, declare it under
+`contributes.configuration` in `package.json` and read it once per invocation via
 `vscode.workspace.getConfiguration('devUtilities')` inside the handler — don't cache it at
-activation time, since the user can change settings mid-session.
+activation time, since the user can change settings mid-session. If a future command needs to
+store a credential, use `context.secrets`, following the MCP pattern above, not a setting.
 
 ## 14. Multi-Tenancy Implementation Pattern
 N/A — single-user, local VS Code extension; there is no tenancy concept.
@@ -231,6 +267,20 @@ N/A — single-user, local VS Code extension; there is no tenancy concept.
 - `prompts/code-review.md` / `review-checklist.md`'s "Matches existing code conventions and
   folder structure" check means this document until the real codebase supersedes a specific rule.
 - `prompts/unit-test.md` follows §12 above for this project's tests.
+- `ai-factory/gates/code-spec-standard.md`'s two stack profiles — Profile B (ASP.NET Core/EF
+  Core) and Profile F (React/Next.js) — do **not** apply to this project: it has no database (no
+  EF Core, no SQL) and no React/Next.js frontend (its UI is inline-HTML/CSS/JS webview template
+  strings owned by `src/panels/*.ts`/`src/views/SidebarProvider.ts`, not components or hooks). A
+  Task Package's §9.2 Data Access Spec for this project is therefore routinely `N/A — no
+  database` for most tasks; for a task whose only remote call is a single MCP tool invocation
+  (`src/mcp/`, `src/github/*McpAdapter.ts`, `src/jira/*McpAdapter.ts`), write a short ad-hoc
+  "remote MCP call" spec instead of forcing it into either profile's field list (purpose/caller,
+  tool name, round trips, writes, skeleton — see any `stories/jira-configuration-sync/
+  04-ExecutionPlan/tasks/TASK-0*.md` for the pattern already used). §9.1 Code Design, §9.3 Reuse
+  Map, §9.4 Forbidden shapes, and §9.5 Test cases still apply in full regardless of profile.
+- `ai-factory/checklists/registry.md`'s `dotnet` and `react-nextjs` plugins are marked `off` for
+  the same reason — see that file's own note. A task/review here selects "none match" rather than
+  running either plugin's Rules.
 
 ## Amendments
 If a story's Technical Design needs to deviate from this document (e.g. a module that

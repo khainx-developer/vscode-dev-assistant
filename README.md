@@ -1,10 +1,10 @@
-# Dev Utilities
+# Dev Assistant
 
 A private VS Code extension bundling handy developer utilities. Not published to the Marketplace — built and shared internally as a `.vsix` file.
 
 ## Features
 
-All commands work on the current selection(s) (or the current line if nothing is selected), available via the Command Palette (`Ctrl+Shift+P`) and the editor right-click menu under **Dev Utilities**:
+All commands work on the current selection(s) (or the current line if nothing is selected), available via the Command Palette (`Ctrl+Shift+P`) and the editor right-click menu under **Dev Assistant**:
 
 - Base64 Encode / Decode
 - URL Encode / Decode
@@ -37,12 +37,12 @@ npm install
 npm run package
 ```
 
-This produces `dev-utilities-<version>.vsix` in the project root. Share that file with teammates.
+This produces `dev-assistant-<version>.vsix` in the project root. Share that file with teammates.
 
 Each teammate installs it via:
 
 - VS Code UI: Extensions view → `...` menu → **Install from VSIX...**
-- or CLI: `code --install-extension dev-utilities-<version>.vsix`
+- or CLI: `code --install-extension dev-assistant-<version>.vsix`
 
 ## Bumping the version
 

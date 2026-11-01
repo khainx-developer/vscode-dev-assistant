@@ -2,20 +2,28 @@ import * as vscode from 'vscode';
 import { tools } from '../tools/registry';
 import { getNonce } from '../webview/nonce';
 import { GitHubAuthService } from '../github/auth';
-import { GitHubClient } from '../github/client';
 import { GitHubConfigStore } from '../github/configStore';
 import { GitHubIncomingMessage } from '../github/types';
 import { GitHubViewController } from '../github/viewController';
 import { LastSeenStore } from '../github/lastSeenStore';
+import { PullRequestCache } from '../github/pullRequestCache';
 import { RefreshScheduler } from '../github/refreshScheduler';
+import { JiraViewController } from '../jira/viewController';
+import type { JiraIncomingMessage } from '../jira/types';
+import type { McpConnectionService } from '../mcp/connectionService';
+import type { JiraServices } from '../panels/JiraDashboardPanel';
 
-type IncomingMessage = { command: 'openTool' | 'openDashboard'; toolId?: string } | GitHubIncomingMessage;
+type IncomingMessage =
+  | { command: 'openTool' | 'openDashboard'; toolId?: string }
+  | GitHubIncomingMessage
+  | JiraIncomingMessage;
 
 interface GitHubServices {
   authService: GitHubAuthService;
   configStore: GitHubConfigStore;
-  client: typeof GitHubClient;
+  connectionService: McpConnectionService;
   lastSeenStore: LastSeenStore;
+  pullRequestCache: PullRequestCache;
 }
 
 const TAB_ORDER: Array<{ id: 'daily' | 'other' | 'config'; label: string }> = [
@@ -29,6 +37,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     private readonly extensionUri: vscode.Uri,
     private readonly context: vscode.ExtensionContext,
     private readonly githubServices: GitHubServices,
+    private readonly jiraServices: JiraServices,
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -43,9 +52,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       webviewView,
       this.githubServices.authService,
       this.githubServices.configStore,
-      this.githubServices.client,
+      this.githubServices.connectionService,
       this.githubServices.lastSeenStore,
+      this.githubServices.pullRequestCache,
     );
+    const jiraController = new JiraViewController(
+      webviewView,
+      this.jiraServices.connectionStore,
+      this.jiraServices.configStore,
+      this.jiraServices.connectionService,
+      this.jiraServices.pullRequestCache,
+      this.jiraServices.outputChannel,
+    );
+    void webviewView.webview.postMessage({ command: 'jira.state', state: jiraController.getState() });
     const scheduler = new RefreshScheduler(webviewView, () => controller.refresh());
 
     webviewView.webview.onDidReceiveMessage((message: IncomingMessage) => {
@@ -55,6 +74,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         void vscode.commands.executeCommand('devUtilities.openDashboard');
       } else if (typeof message.command === 'string' && message.command.startsWith('github.')) {
         void controller.handleMessage(message as GitHubIncomingMessage);
+      } else if (typeof message.command === 'string' && message.command.startsWith('jira.')) {
+        void jiraController.handleMessage(message as JiraIncomingMessage);
       }
     });
 
@@ -173,6 +194,50 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     .gh-entry.invalid { background-color: var(--vscode-inputValidation-errorBackground, var(--vscode-errorForeground)); }
     .gh-entry button { background: none; border: none; cursor: pointer; color: inherit; padding: 0 2px; }
+    .gh-label { display: block; font-size: 0.78em; color: var(--vscode-descriptionForeground); margin: 8px 0 2px; }
+    .jira-status {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      background-color: var(--vscode-editorWidget-background, transparent);
+      border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+      border-radius: 4px;
+      padding: 6px 8px;
+      margin-bottom: 10px;
+    }
+    .jira-status .dot { color: var(--vscode-testing-iconPassed, #3fb950); font-size: 1em; line-height: 1; }
+    .jira-status .site { font-size: 0.82em; word-break: break-all; }
+    .jira-status button {
+      background-color: var(--vscode-button-secondaryBackground, var(--vscode-input-background));
+      color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+      border: none; border-radius: 4px; padding: 2px 8px; font-size: 0.78em; cursor: pointer; white-space: nowrap;
+    }
+    .gh-row textarea {
+      flex: 1;
+      background-color: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border, transparent);
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 0.85em;
+      resize: vertical;
+      min-height: 46px;
+    }
+    .jira-query-list { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .jira-query {
+      border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+      border-radius: 4px;
+      padding: 6px 8px;
+    }
+    .jira-query-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .jira-query-head strong { font-size: 0.85em; }
+    .jira-query-head button { background: none; border: none; cursor: pointer; color: var(--vscode-descriptionForeground); font-size: 0.9em; padding: 0 2px; }
+    .jira-query-jql {
+      margin-top: 2px;
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 0.78em;
+      color: var(--vscode-descriptionForeground);
+      word-break: break-word;
+    }
   </style>
 </head>
 <body>
@@ -184,15 +249,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <div class="card" id="dailyDashboardCard" tabindex="0" role="button" style="display:none;">
       <div class="card-header">
         <span class="icon">📋</span>
-        <span class="title">GitHub Attention Inbox</span>
+        <span class="title">Daily Tasks</span>
       </div>
-      <p class="description">Open the full dashboard to see pull requests that need your attention.</p>
+      <p class="description">Open the full dashboard to see pull requests and Jira tasks that need your attention.</p>
     </div>
     ${cards}
     <div class="empty-state" id="dailyPlaceholder" style="display:none;"></div>
   </div>
 
   <div id="githubRoot"></div>
+  <div id="jiraRoot"></div>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
@@ -201,6 +267,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const dailyDashboardCard = document.getElementById('dailyDashboardCard');
     const dailyPlaceholder = document.getElementById('dailyPlaceholder');
     const githubRoot = document.getElementById('githubRoot');
+    const jiraRoot = document.getElementById('jiraRoot');
     let activeTab = 'daily';
 
     function applyTab(selected) {
@@ -208,6 +275,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       dailyPlaceholder.style.display = 'none';
       dailyDashboardCard.style.display = selected === 'daily' ? '' : 'none';
       githubRoot.style.display = selected === 'config' ? 'block' : 'none';
+      jiraRoot.style.display = selected === 'config' ? 'block' : 'none';
       cards.forEach((card) => {
         card.style.display = selected === 'other' ? '' : 'none';
       });
@@ -293,6 +361,99 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       wireActions();
     }
 
+    let jiraState = null;
+    let jiraConnectionError = '';
+    let jiraQueryError = '';
+
+    function renderJira(state) {
+      jiraState = state;
+      if (!state.connected) {
+        const failures = (state.failures || [])
+          .filter((failure) => !failure.queryLabel)
+          .map((failure) => failure.detail)
+          .join(' ');
+        jiraRoot.innerHTML =
+          '<div class="gh-section"><h3>Jira configuration</h3>' +
+          '<div class="gh-row"><input id="jiraSiteUrl" type="url" placeholder="https://your-site.atlassian.net" /></div>' +
+          '<div class="gh-error">' + escapeHtmlClient(jiraConnectionError || failures) + '</div>' +
+          '<button class="gh-btn" data-jira-save>Connect to Jira</button></div>';
+        wireJiraActions();
+        return;
+      }
+
+      const queries = (state.savedQueries || []).map((query) =>
+        '<li class="jira-query"><div class="jira-query-head"><strong>' + escapeHtmlClient(query.label) +
+        '</strong><button data-jira-remove="' + escapeHtmlClient(query.label) + '" title="Remove">&times;</button></div>' +
+        '<div class="jira-query-jql">' + escapeHtmlClient(query.jql) + '</div></li>'
+      ).join('');
+      const failures = (state.failures || []).map((failure) =>
+        '<div class="gh-error">' + escapeHtmlClient(
+          (failure.queryLabel ? failure.queryLabel + ': ' : '') + failure.detail,
+        ) + '</div>'
+      ).join('');
+      jiraRoot.innerHTML =
+        '<div class="gh-section"><h3>Jira configuration</h3>' +
+        '<div class="jira-status"><span><span class="dot">●</span> Connected to <span class="site">' +
+        escapeHtmlClient(state.siteUrl || '') + '</span></span>' +
+        '<button data-jira-disconnect>Disconnect</button></div>' +
+        '<label class="gh-label" for="jiraCurrentUser">Your Jira display name (for &quot;My Jira Tasks&quot;)</label>' +
+        '<div class="gh-row"><input id="jiraCurrentUser" placeholder="e.g. Jane Doe" value="' + escapeHtmlClient(state.currentUser || '') + '" />' +
+        '<button class="gh-btn" data-jira-save-user>Save</button></div>' +
+        '<ul class="jira-query-list">' + (queries || '<li class="gh-error" style="border:none;padding:0;">No saved queries yet.</li>') + '</ul>' +
+        '<label class="gh-label" for="jiraQueryLabel">Query label</label>' +
+        '<div class="gh-row"><input id="jiraQueryLabel" placeholder="e.g. My open tasks" /></div>' +
+        '<label class="gh-label" for="jiraJql">JQL</label>' +
+        '<div class="gh-row"><textarea id="jiraJql" placeholder="assignee = currentUser() AND resolution = Unresolved"></textarea></div>' +
+        '<div class="gh-error">' + escapeHtmlClient(jiraQueryError) + '</div>' +
+        '<button class="gh-btn" data-jira-add>Add saved query</button>' +
+        failures + '</div>';
+      wireJiraActions();
+    }
+
+    function wireJiraActions() {
+      const save = jiraRoot.querySelector('[data-jira-save]');
+      if (save) {
+        save.addEventListener('click', () => {
+          post({
+            command: 'jira.saveConnection',
+            siteUrl: document.getElementById('jiraSiteUrl').value,
+          });
+        });
+      }
+
+      const disconnect = jiraRoot.querySelector('[data-jira-disconnect]');
+      if (disconnect) {
+        disconnect.addEventListener('click', () => post({ command: 'jira.disconnect' }));
+      }
+
+      const saveUser = jiraRoot.querySelector('[data-jira-save-user]');
+      if (saveUser) {
+        saveUser.addEventListener('click', () => {
+          post({
+            command: 'jira.setCurrentUser',
+            displayName: document.getElementById('jiraCurrentUser').value,
+          });
+        });
+      }
+
+      const add = jiraRoot.querySelector('[data-jira-add]');
+      if (add) {
+        add.addEventListener('click', () => {
+          post({
+            command: 'jira.addQuery',
+            label: document.getElementById('jiraQueryLabel').value,
+            jql: document.getElementById('jiraJql').value
+          });
+        });
+      }
+
+      jiraRoot.querySelectorAll('[data-jira-remove]').forEach((button) => {
+        button.addEventListener('click', () =>
+          post({ command: 'jira.removeQuery', label: button.getAttribute('data-jira-remove') })
+        );
+      });
+    }
+
     function post(message) {
       vscode.postMessage(message);
     }
@@ -347,10 +508,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           authorError = message.reason || 'Could not add author.';
         }
         if (lastState) renderGithub(lastState);
+      } else if (message && message.command === 'jira.state') {
+        renderJira(message.state);
+      } else if (message && message.command === 'jira.connectionResult') {
+        jiraConnectionError = message.ok ? '' : (message.reason || 'Could not save Jira connection.');
+        if (jiraState) renderJira(jiraState);
+      } else if (message && message.command === 'jira.queryResult') {
+        jiraQueryError = message.ok ? '' : (message.reason || 'Could not add saved query.');
+        if (jiraState) renderJira(jiraState);
       }
     });
 
     post({ command: 'github.refresh' });
+    post({ command: 'jira.refresh' });
   </script>
 </body>
 </html>`;

@@ -1,11 +1,13 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { GitHubAuthService } from './auth';
-import { GitHubClient } from './client';
 import { GitHubConfigStore } from './configStore';
+import { GithubMcpAdapter } from './githubMcpAdapter';
 import { LastSeenStore } from './lastSeenStore';
+import { PullRequestCache } from './pullRequestCache';
 import { GitHubViewController } from './viewController';
 import { GitHubExtensionConfig, GitHubSession, MonitoredRepo, PullRequestSummary } from './types';
+import type { McpConnectionService } from '../mcp/connectionService';
 
 const SESSION: GitHubSession = { username: 'me', accessToken: 'super-secret-token' };
 
@@ -71,18 +73,35 @@ function makeConfigStore(config: GitHubExtensionConfig): GitHubConfigStore {
   } as unknown as GitHubConfigStore;
 }
 
+const fakeConnectionService = {} as unknown as McpConnectionService;
+
 function makeClient(
   fetchImpl: (repo: MonitoredRepo) => Promise<PullRequestSummary[]>,
-): typeof GitHubClient {
-  return {
-    fetchOpenPullRequests: fetchImpl,
-    validateRepo: async () => true,
-    validateAuthor: async () => true,
-    getRateLimitStatus: async () => ({ remaining: 5000, resetAt: '' }),
-  } as unknown as typeof GitHubClient;
+): McpConnectionService {
+  GithubMcpAdapter.fetchOpenPullRequests = async (_connectionService, repo) => fetchImpl(repo);
+  return fakeConnectionService;
+}
+
+class RecordingPullRequestCache extends PullRequestCache {
+  readonly writes: Array<{ repoKey: string; prs: PullRequestSummary[] }> = [];
+
+  override setForRepo(repoKey: string, prs: PullRequestSummary[]): void {
+    this.writes.push({ repoKey, prs });
+    super.setForRepo(repoKey, prs);
+  }
 }
 
 suite('GitHubViewController', () => {
+  let originalFetchOpenPullRequests: typeof GithubMcpAdapter.fetchOpenPullRequests;
+
+  setup(() => {
+    originalFetchOpenPullRequests = GithubMcpAdapter.fetchOpenPullRequests;
+  });
+
+  teardown(() => {
+    GithubMcpAdapter.fetchOpenPullRequests = originalFetchOpenPullRequests;
+  });
+
   test('GitHubViewController_refresh_isNoOp_whenAlreadyRefreshing', async () => {
     const { view } = makeView();
     let fetchCalls = 0;
@@ -102,6 +121,7 @@ suite('GitHubViewController', () => {
       makeConfigStore(config),
       client,
       new LastSeenStore(makeContext()),
+      new PullRequestCache(),
     );
 
     const first = controller.refresh();
@@ -123,6 +143,7 @@ suite('GitHubViewController', () => {
       makeConfigStore(config),
       makeClient(async () => []),
       new LastSeenStore(makeContext()),
+      new PullRequestCache(),
     );
 
     await controller.refresh();
@@ -157,6 +178,7 @@ suite('GitHubViewController', () => {
       makeConfigStore(config),
       client,
       new LastSeenStore(makeContext()),
+      new PullRequestCache(),
     );
 
     await controller.refresh();
@@ -186,6 +208,7 @@ suite('GitHubViewController', () => {
       makeConfigStore(config),
       client,
       new LastSeenStore(makeContext()),
+      new PullRequestCache(),
     );
 
     await controller.refresh();
@@ -220,6 +243,7 @@ suite('GitHubViewController', () => {
       makeConfigStore(config),
       client,
       new LastSeenStore(makeContext()),
+      new PullRequestCache(),
     );
 
     await controller.refresh();
@@ -252,6 +276,7 @@ suite('GitHubViewController', () => {
       makeConfigStore(config),
       client,
       new LastSeenStore(makeContext()),
+      new PullRequestCache(),
     );
 
     await controller.refresh();
@@ -274,6 +299,7 @@ suite('GitHubViewController', () => {
       makeConfigStore(config),
       client,
       lastSeenStore,
+      new PullRequestCache(),
     );
 
     await controller.refresh();
@@ -292,6 +318,7 @@ suite('GitHubViewController', () => {
       makeConfigStore(config),
       client,
       new LastSeenStore(makeContext()),
+      new PullRequestCache(),
     );
 
     await controller.refresh();
@@ -320,6 +347,7 @@ suite('GitHubViewController', () => {
       makeConfigStore(config),
       client,
       lastSeenStore,
+      new PullRequestCache(),
     );
 
     await controller.handleMessage({ command: 'github.markRead', repoKey: 'o/r', number: 1 });
@@ -340,6 +368,7 @@ suite('GitHubViewController', () => {
       makeConfigStore(config),
       makeClient(async () => []),
       lastSeenStore,
+      new PullRequestCache(),
     );
     const originalOpenExternal = vscode.env.openExternal;
     let openedUrl: vscode.Uri | undefined;
@@ -383,6 +412,7 @@ suite('GitHubViewController', () => {
         return [];
       }),
       new LastSeenStore(makeContext()),
+      new PullRequestCache(),
     );
 
     await controller.handleMessage({ command: 'github.addRepo', value: 'o/r' });
@@ -402,6 +432,7 @@ suite('GitHubViewController', () => {
       makeConfigStore(config),
       client,
       new LastSeenStore(makeContext()),
+      new PullRequestCache(),
     );
 
     await controller.refresh();
@@ -424,6 +455,7 @@ suite('GitHubViewController', () => {
       makeConfigStore(config),
       client,
       new LastSeenStore(makeContext()),
+      new PullRequestCache(),
     );
     const outputChannel = (controller as any).outputChannel as vscode.OutputChannel;
     const originalAppendLine = outputChannel.appendLine.bind(outputChannel);
@@ -435,5 +467,27 @@ suite('GitHubViewController', () => {
     await controller.refresh();
 
     assert.strictEqual(appended.some((line) => line.includes(SESSION.accessToken)), false);
+  });
+
+  test('GitHubViewController_refresh_writesFetchedPrsIntoSharedCache', async () => {
+    const { view } = makeView();
+    const prs = [makePr({ repoKey: 'o/r', number: 7 })];
+    const pullRequestCache = new RecordingPullRequestCache();
+    const config: GitHubExtensionConfig = { monitoredRepos: [{ owner: 'o', repo: 'r' }], monitoredAuthors: [] };
+    const controller = new GitHubViewController(
+      makeContext(),
+      view,
+      makeAuthService(SESSION),
+      makeConfigStore(config),
+      makeClient(async () => prs),
+      new LastSeenStore(makeContext()),
+      pullRequestCache,
+    );
+
+    await controller.refresh();
+
+    assert.strictEqual(pullRequestCache.writes.length, 1);
+    assert.strictEqual(pullRequestCache.writes[0].repoKey, 'o/r');
+    assert.strictEqual(pullRequestCache.writes[0].prs, prs);
   });
 });

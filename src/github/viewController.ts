@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
 import { GitHubAuthService } from './auth';
-import { GitHubClient } from './client';
 import { GitHubConfigStore } from './configStore';
 import { ErrorClassifier } from './errorClassifier';
+import { GithubMcpAdapter } from './githubMcpAdapter';
+import type { McpConnectionService } from '../mcp/connectionService';
 import { AttentionEngine } from './attentionEngine';
 import { LastSeenStore, prKey } from './lastSeenStore';
+import { PullRequestCache } from './pullRequestCache';
 import {
   GitHubAttentionResult,
   GitHubFailure,
@@ -33,8 +35,9 @@ export class GitHubViewController {
     private readonly view: GitHubViewHost,
     private readonly authService: GitHubAuthService,
     private readonly configStore: GitHubConfigStore,
-    private readonly client: typeof GitHubClient,
+    private readonly connectionService: McpConnectionService,
     private readonly lastSeenStore: LastSeenStore,
+    private readonly pullRequestCache: PullRequestCache = new PullRequestCache(),
   ) {}
 
   async handleMessage(msg: GitHubIncomingMessage): Promise<void> {
@@ -112,7 +115,7 @@ export class GitHubViewController {
       const failures: GitHubFailure[] = [];
       const results = await Promise.allSettled(
         config.monitoredRepos.map((repo) =>
-          this.client.fetchOpenPullRequests(repo, session).then((prs) => ({ repo, prs })),
+          GithubMcpAdapter.fetchOpenPullRequests(this.connectionService, repo, session).then((prs) => ({ repo, prs })),
         ),
       );
 
@@ -120,6 +123,7 @@ export class GitHubViewController {
         if (result.status === 'fulfilled') {
           const { repo, prs } = result.value;
           this.lastFetchResult.set(`${repo.owner}/${repo.repo}`, prs);
+          this.pullRequestCache.setForRepo(`${repo.owner}/${repo.repo}`, prs);
           continue;
         }
 

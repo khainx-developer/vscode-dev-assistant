@@ -11,7 +11,7 @@ export const jsonCommands: DevUtilityCommand[] = [
         try {
           return formatJson(text);
         } catch (err) {
-          vscode.window.showErrorMessage(`Dev Utilities: Invalid JSON - ${(err as Error).message}`);
+          vscode.window.showErrorMessage(`Dev Assistant: Invalid JSON - ${(err as Error).message}`);
           return text;
         }
       });

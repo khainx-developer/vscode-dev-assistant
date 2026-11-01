@@ -18,7 +18,7 @@ export const encodingCommands: DevUtilityCommand[] = [
         try {
           return base64Decode(text);
         } catch {
-          vscode.window.showErrorMessage('Dev Utilities: Selection is not valid Base64.');
+          vscode.window.showErrorMessage('Dev Assistant: Selection is not valid Base64.');
           return text;
         }
       });
@@ -37,7 +37,7 @@ export const encodingCommands: DevUtilityCommand[] = [
         try {
           return urlDecode(text);
         } catch {
-          vscode.window.showErrorMessage('Dev Utilities: Selection is not valid URL-encoded text.');
+          vscode.window.showErrorMessage('Dev Assistant: Selection is not valid URL-encoded text.');
           return text;
         }
       });

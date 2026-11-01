@@ -42,7 +42,7 @@ suite('AttentionEngine', () => {
     const pr = makePr({
       author: 'me',
       reviews: [{ author: 'alice', state: 'APPROVED', submittedAt: BEFORE }],
-      comments: [{ id: 'c1', author: 'alice', createdAt: AFTER, url: 'https://x' }],
+      comments: [{ id: 'c1', author: 'alice', body: 'comment', createdAt: AFTER, url: 'https://x' }],
     });
     const lastSeen = new Map([[prKey(pr.repoKey, pr.number), new Date(BEFORE).getTime()]]);
 
@@ -80,7 +80,7 @@ suite('AttentionEngine', () => {
       state: 'MERGED',
       mergedAt: AFTER,
       reviews: [{ author: 'alice', state: 'APPROVED', submittedAt: AFTER }],
-      comments: [{ id: 'c1', author: 'alice', createdAt: AFTER, url: 'https://x' }],
+      comments: [{ id: 'c1', author: 'alice', body: 'comment', createdAt: AFTER, url: 'https://x' }],
     });
     const lastSeen = new Map<string, number>();
 
@@ -93,7 +93,7 @@ suite('AttentionEngine', () => {
     const pr = makePr({
       author: 'me',
       reviews: [],
-      comments: [{ id: 'c1', author: 'alice', createdAt: AFTER, url: 'https://x' }],
+      comments: [{ id: 'c1', author: 'alice', body: 'comment', createdAt: AFTER, url: 'https://x' }],
     });
     const lastSeen = new Map([[prKey(pr.repoKey, pr.number), new Date(BEFORE).getTime()]]);
 

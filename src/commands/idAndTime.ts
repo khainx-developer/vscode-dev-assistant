@@ -24,7 +24,7 @@ export const idAndTimeCommands: DevUtilityCommand[] = [
         try {
           return unixTimestampToIso(text);
         } catch {
-          vscode.window.showErrorMessage('Dev Utilities: Selection is not a valid Unix timestamp.');
+          vscode.window.showErrorMessage('Dev Assistant: Selection is not a valid Unix timestamp.');
           return text;
         }
       });
