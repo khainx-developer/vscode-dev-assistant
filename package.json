@@ -3,7 +3,7 @@
   "displayName": "Dev Assistant Toolkit",
   "description": "A collection of handy developer utilities for VS Code: GitHub PR & Jira task tracking, Base64/URL/JSON tools, UUIDs, timestamps, and case conversions.",
   "version": "0.0.1",
-  "publisher": "dev-assistant-tools",
+  "publisher": "khainx-developer",
   "license": "MIT",
   "icon": "media/dev-assistant-activity-icon.png",
   "repository": {

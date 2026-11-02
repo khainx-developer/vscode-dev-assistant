@@ -32,7 +32,7 @@ This produces `dev-assistant-toolkit-<version>.vsix` in the project root, instal
 ## Publishing
 
 ```bash
-npx vsce login dev-assistant-tools   # one-time, needs an Azure DevOps PAT with Marketplace (Manage) scope
+npx vsce login khainx-developer   # one-time, needs an Azure DevOps PAT with Marketplace (Manage) scope
 npm run package
 npx vsce publish
 ```
