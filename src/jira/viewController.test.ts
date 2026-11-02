@@ -5,8 +5,15 @@ import { JiraConfigStore } from './configStore';
 import { JiraConnectionStore } from './connectionStore';
 import { JiraViewController } from './viewController';
 import { PullRequestCache } from '../github/pullRequestCache';
+import type { CommentReadStateStore } from '../attention/commentReadStateStore';
 import type { McpConnectionService } from '../mcp/connectionService';
-import type { JiraConnection, JiraSavedQuery, JiraTask, JiraOutgoingMessage } from './types';
+import type {
+  JiraConnection,
+  JiraOutgoingMessage,
+  JiraSavedQuery,
+  JiraTask,
+  OperationResult,
+} from './types';
 import type { PullRequestSummary } from '../github/types';
 
 const CONNECTION: JiraConnection = {
@@ -56,19 +63,39 @@ function createController(options: {
     jql: string,
     siteUrl: string,
   ) => Promise<JiraTask[]>;
+  fetchIssueComments?: typeof AtlassianMcpAdapter.fetchIssueComments;
   pullRequestCache?: PullRequestCache;
+  seenAtBySource?: Map<string, number>;
   connectionStoreOverrides?: Partial<
     Pick<JiraConnectionStore, 'getConnection' | 'saveConnection' | 'clearConnection'>
   >;
   configStoreOverrides?: Partial<
-    Pick<JiraConfigStore, 'getSavedQueries' | 'addQuery' | 'removeQuery' | 'getCurrentUser' | 'setCurrentUser'>
+    Pick<
+      JiraConfigStore,
+      | 'getSavedQueries'
+      | 'addQuery'
+      | 'removeQuery'
+      | 'getCurrentUser'
+      | 'setCurrentUser'
+      | 'getTeamMembers'
+      | 'addTeamMember'
+      | 'removeTeamMember'
+    >
   >;
   currentUser?: string | null;
+  teamMembers?: string[];
   outputLines?: string[];
 } = {}): {
   controller: JiraViewController;
   posted: JiraOutgoingMessage[];
   outputLines: string[];
+  markerState: {
+    seenAtBySource: Map<string, number>;
+    baselines: string[];
+    markedSeen: string[];
+    reconciliations: Set<string>[];
+    events: string[];
+  };
 } {
   const connection = Object.prototype.hasOwnProperty.call(options, 'connection')
     ? options.connection
@@ -84,11 +111,39 @@ function createController(options: {
     addQuery: async () => ({ ok: true }),
     removeQuery: async () => {},
     getCurrentUser: () => options.currentUser ?? null,
-    setCurrentUser: async () => {},
+    setCurrentUser: async () => ({ ok: true }),
+    getTeamMembers: () => options.teamMembers ?? [],
+    addTeamMember: async () => ({ ok: true }),
+    removeTeamMember: async () => {},
     ...options.configStoreOverrides,
   } as unknown as JiraConfigStore;
   AtlassianMcpAdapter.fetchIssues = options.fetchIssues ?? (async () => []);
+  AtlassianMcpAdapter.fetchIssueComments = options.fetchIssueComments ?? (async () => []);
   const connectionService = {} as unknown as McpConnectionService;
+  const markerState = {
+    seenAtBySource: options.seenAtBySource ?? new Map<string, number>(),
+    baselines: [] as string[],
+    markedSeen: [] as string[],
+    reconciliations: [] as Set<string>[],
+    events: [] as string[],
+  };
+  const commentReadStateStore = {
+    getSeenAt: async (sourceKey: string) => markerState.seenAtBySource.get(sourceKey),
+    ensureBaseline: async (sourceKey: string, at: number) => {
+      markerState.baselines.push(sourceKey);
+      if (!markerState.seenAtBySource.has(sourceKey)) {
+        markerState.seenAtBySource.set(sourceKey, at);
+      }
+    },
+    markSeen: async (sourceKey: string, at: number) => {
+      markerState.events.push('markSeen');
+      markerState.markedSeen.push(sourceKey);
+      markerState.seenAtBySource.set(sourceKey, at);
+    },
+    reconcileSources: async (sourceKeys: Set<string>, complete: boolean) => {
+      if (complete) markerState.reconciliations.push(new Set(sourceKeys));
+    },
+  } as unknown as CommentReadStateStore;
   const posted: JiraOutgoingMessage[] = [];
   const view = {
     webview: {
@@ -109,23 +164,28 @@ function createController(options: {
       connectionStore,
       configStore,
       connectionService,
+      commentReadStateStore,
       options.pullRequestCache ?? new PullRequestCache(),
       outputChannel,
     ),
     posted,
     outputLines,
+    markerState,
   };
 }
 
 suite('JiraViewController', () => {
   let originalFetchIssues: typeof AtlassianMcpAdapter.fetchIssues;
+  let originalFetchIssueComments: typeof AtlassianMcpAdapter.fetchIssueComments;
 
   setup(() => {
     originalFetchIssues = AtlassianMcpAdapter.fetchIssues;
+    originalFetchIssueComments = AtlassianMcpAdapter.fetchIssueComments;
   });
 
   teardown(() => {
     AtlassianMcpAdapter.fetchIssues = originalFetchIssues;
+    AtlassianMcpAdapter.fetchIssueComments = originalFetchIssueComments;
   });
 
   test('JiraViewController_refresh_setsAuthExpiredFailure_whenNoConnection', async () => {
@@ -139,7 +199,8 @@ suite('JiraViewController', () => {
       { category: 'auth-expired', detail: 'Not connected.', queryLabel: '' },
     ]);
     assert.deepStrictEqual(state.tasksByQuery, {});
-    assert.strictEqual(posted.length, 1);
+    assert.strictEqual(posted.length, 2);
+    assert.strictEqual((posted[0] as Extract<JiraOutgoingMessage, { command: 'jira.state' }>).state.isRefreshing, true);
   });
 
   test('refresh_setsSiteUrl_whenConnected', async () => {
@@ -156,12 +217,19 @@ suite('JiraViewController', () => {
     assert.strictEqual(controller.getState().currentUser, 'Alice Smith');
   });
 
+  test('getState_includesTeamMembers_fromConfigStore', () => {
+    const { controller } = createController({ teamMembers: ['Alex Smith'] });
+
+    assert.deepStrictEqual(controller.getState().teamMembers, ['Alex Smith']);
+  });
+
   test('handleMessage_setCurrentUser_callsConfigStoreAndPostsState', async () => {
     let savedName: string | undefined;
     const { controller, posted } = createController({
       configStoreOverrides: {
         setCurrentUser: async (displayName: string) => {
           savedName = displayName;
+          return { ok: true };
         },
       },
     });
@@ -169,7 +237,84 @@ suite('JiraViewController', () => {
     await controller.handleMessage({ command: 'jira.setCurrentUser', displayName: 'Bob Jones' });
 
     assert.strictEqual(savedName, 'Bob Jones');
+    assert.deepStrictEqual(
+      posted.find((message) => message.command === 'jira.currentUserResult'),
+      { command: 'jira.currentUserResult', ok: true },
+    );
     assert.strictEqual(posted.some((m) => m.command === 'jira.state'), true);
+  });
+
+  test('handleMessage_currentUserCollision_preservesSettings', async () => {
+    let currentUser = 'Manager';
+    const teamMembers = ['Alex Smith'];
+    const { controller, posted } = createController({
+      currentUser,
+      teamMembers,
+      configStoreOverrides: {
+        getCurrentUser: () => currentUser,
+        getTeamMembers: () => teamMembers,
+        setCurrentUser: async (displayName: string) => {
+          if (teamMembers.some((member) => member.toLowerCase() === displayName.trim().toLowerCase())) {
+            return { ok: false, reason: 'The current user cannot also be a team member.' };
+          }
+          currentUser = displayName;
+          return { ok: true };
+        },
+      },
+    });
+
+    await controller.handleMessage({ command: 'jira.setCurrentUser', displayName: 'Alex Smith' });
+
+    assert.strictEqual(currentUser, 'Manager');
+    assert.deepStrictEqual(teamMembers, ['Alex Smith']);
+    assert.deepStrictEqual(
+      posted.find((message) => message.command === 'jira.currentUserResult'),
+      {
+        command: 'jira.currentUserResult',
+        ok: false,
+        reason: 'The current user cannot also be a team member.',
+      },
+    );
+    assert.strictEqual(posted.some((message) => message.command === 'jira.state'), true);
+    assert.deepStrictEqual(controller.getState().pendingOperations['jira.setCurrentUser'], {
+      operationId: 'jira.setCurrentUser',
+      pending: false,
+      result: { ok: false, reason: 'The current user cannot also be a team member.' },
+    });
+  });
+
+  test('handleMessage_teamMemberCommands_postResultsAndUpdatedState', async () => {
+    let members = ['Alex Smith'];
+    const { controller, posted } = createController({
+      configStoreOverrides: {
+        getTeamMembers: () => members,
+        addTeamMember: async (displayName: string) => {
+          members = [...members, displayName];
+          return { ok: true };
+        },
+        removeTeamMember: async (displayName: string) => {
+          members = members.filter((member) => member !== displayName);
+        },
+      },
+    });
+
+    await controller.handleMessage({ command: 'jira.addTeamMember', displayName: 'Taylor Jones' });
+    await controller.handleMessage({ command: 'jira.removeTeamMember', displayName: 'Alex Smith' });
+
+    assert.deepStrictEqual(
+      posted.filter((message) => message.command === 'jira.teamMemberResult'),
+      [
+        { command: 'jira.teamMemberResult', ok: true },
+        { command: 'jira.teamMemberResult', ok: true },
+      ],
+    );
+    const states = posted.filter((message) => message.command === 'jira.state');
+    assert.deepStrictEqual(states.map((message) => message.state.teamMembers), [
+      ['Alex Smith'],
+      ['Alex Smith', 'Taylor Jones'],
+      ['Alex Smith', 'Taylor Jones'],
+      ['Taylor Jones'],
+    ]);
   });
 
   test('handleMessage_disconnect_clearsConnectionAndSiteUrl', async () => {
@@ -203,6 +348,22 @@ suite('JiraViewController', () => {
     await controller.refresh();
 
     assert.strictEqual(controller.getState().tasksByQuery.Tasks[0].key, 'APP-1');
+  });
+
+  test('refresh_usesSavedQueryJqlWithoutAddingTeamAssignees', async () => {
+    let fetchedJql = '';
+    const { controller } = createController({
+      queries: [{ label: 'Open tasks', jql: 'resolution = Unresolved ORDER BY updated DESC' }],
+      teamMembers: ['Alex Smith', 'Sam Lee'],
+      fetchIssues: async (_service, _siteId, jql) => {
+        fetchedJql = jql;
+        return [];
+      },
+    });
+
+    await controller.refresh();
+
+    assert.strictEqual(fetchedJql, 'resolution = Unresolved ORDER BY updated DESC');
   });
 
   test('JiraViewController_refresh_fetchesAllSavedQueriesInParallel', async () => {
@@ -248,6 +409,214 @@ suite('JiraViewController', () => {
       { category: 'invalid-entry', detail: 'Invalid JQL', resetAt: undefined, queryLabel: 'Broken query' },
     ]);
     assert.strictEqual(state.tasksByQuery['Working query'][0].key, 'OK-1');
+  });
+
+  test('refresh_deduplicatesIssueKeysAcrossQueries', async () => {
+    let commentCalls = 0;
+    const task = makeTask('APP-9');
+    const { controller, markerState } = createController({
+      queries: [
+        { label: 'First', jql: 'project = FIRST' },
+        { label: 'Second', jql: 'project = SECOND' },
+      ],
+      fetchIssues: async (_service, _siteId, jql) => [makeTask(jql === 'project = FIRST' ? task.key : task.key)],
+      fetchIssueComments: async () => {
+        commentCalls++;
+        return [];
+      },
+    });
+
+    await controller.refresh();
+
+    assert.strictEqual(commentCalls, 1);
+    assert.deepStrictEqual(markerState.baselines, ['jira:cloud-1:APP-9']);
+    assert.strictEqual(controller.getState().tasksByQuery.First[0].commentSourceKey, 'jira:cloud-1:APP-9');
+    assert.strictEqual(controller.getState().tasksByQuery.Second[0].commentState, 'available');
+  });
+
+  test('refresh_fetchesCommentsForWatchedTasks', async () => {
+    const seenAt = Date.parse('2026-10-01T00:00:00Z');
+    const sourceKey = 'jira:cloud-1:APP-10';
+    const { controller, markerState } = createController({
+      queries: [{ label: 'Watched', jql: 'project = APP' }],
+      currentUser: 'Alice',
+      seenAtBySource: new Map([[sourceKey, seenAt]]),
+      fetchIssues: async () => [makeTask('APP-10')],
+      fetchIssueComments: async (_service, _siteId, issueKey, _siteUrl, marker) => {
+        assert.strictEqual(issueKey, 'APP-10');
+        assert.strictEqual(marker, seenAt);
+        return [
+          { id: 'new', author: 'Bob', body: 'new body', createdAt: '2026-10-02T00:00:00Z', visibility: null, url: 'https://example.test/APP-10' },
+          { id: 'self', author: 'Alice', body: 'own body', createdAt: '2026-10-03T00:00:00Z', visibility: null, url: 'https://example.test/APP-10' },
+          { id: 'bot', author: 'Automation for Jira', body: 'bot body', createdAt: '2026-10-04T00:00:00Z', visibility: null, url: 'https://example.test/APP-10' },
+          { id: 'old', author: 'Carol', body: 'old body', createdAt: '2026-09-30T00:00:00Z', visibility: null, url: 'https://example.test/APP-10' },
+        ];
+      },
+    });
+
+    await controller.refresh();
+
+    const task = controller.getState().tasksByQuery.Watched[0];
+    assert.strictEqual(task.commentState, 'available');
+    assert.strictEqual(task.commentAttention?.unreadCount, 1);
+    assert.strictEqual(task.commentAttention?.latestUnreadComment?.id, 'new');
+    assert.deepStrictEqual(markerState.baselines, []);
+  });
+
+  test('refresh_partialCommentFailurePreservesLastSuccessfulState', async () => {
+    const sourceKey = 'jira:cloud-1:APP-11';
+    let failComments = false;
+    const { controller, markerState } = createController({
+      queries: [{ label: 'Tasks', jql: 'project = APP' }],
+      seenAtBySource: new Map([[sourceKey, Date.parse('2026-10-01T00:00:00Z')]]),
+      fetchIssues: async () => [makeTask('APP-11')],
+      fetchIssueComments: async () => {
+        if (failComments) {
+          throw { serverId: 'atlassian', category: 'network', detail: 'Comments unavailable' };
+        }
+        return [{
+          id: 'comment-11',
+          author: 'Bob',
+          body: 'previous body',
+          createdAt: '2026-10-02T00:00:00Z',
+          visibility: null,
+          url: 'https://example.test/APP-11',
+        }];
+      },
+    });
+
+    await controller.refresh();
+    const previous = controller.getState().tasksByQuery.Tasks[0];
+    failComments = true;
+    await controller.refresh();
+
+    const current = controller.getState().tasksByQuery.Tasks[0];
+    assert.strictEqual(current.commentState, 'stale');
+    assert.deepStrictEqual(current.comments, previous.comments);
+    assert.deepStrictEqual(current.commentAttention, previous.commentAttention);
+    assert.strictEqual(current.commentFailure?.category, 'network');
+    assert.strictEqual(markerState.reconciliations.length, 1);
+  });
+
+  test('refresh_reconcilesOnlyAfterCompleteSourceFetch', async () => {
+    const { controller, markerState } = createController({
+      queries: [
+        { label: 'Broken', jql: 'invalid' },
+        { label: 'Working', jql: 'project = OK' },
+      ],
+      fetchIssues: async (_service, _siteId, jql) => {
+        if (jql === 'invalid') throw { serverId: 'atlassian', category: 'invalid-entry', detail: 'Bad JQL' };
+        return [makeTask('OK-1')];
+      },
+      fetchIssueComments: async () => [],
+    });
+
+    await controller.refresh();
+
+    assert.strictEqual(markerState.reconciliations.length, 0);
+    assert.strictEqual(controller.getState().tasksByQuery.Working[0].commentState, 'available');
+  });
+
+  test('handleMessage_addTeamMember_postsPendingAndResult', async () => {
+    let finishAdd: ((result: OperationResult) => void) | undefined;
+    const { controller, posted } = createController({
+      configStoreOverrides: {
+        addTeamMember: async () => new Promise<OperationResult>((resolve) => {
+          finishAdd = resolve;
+        }),
+      },
+    });
+
+    const operation = controller.handleMessage({ command: 'jira.addTeamMember', displayName: 'Taylor Jones' });
+    const pendingState = posted.find(
+      (message) => message.command === 'jira.state'
+        && message.state.pendingOperations['jira.addTeamMember']?.pending,
+    );
+    assert.ok(pendingState);
+
+    finishAdd?.({ ok: true });
+    await operation;
+
+    assert.deepStrictEqual(controller.getState().pendingOperations['jira.addTeamMember'], {
+      operationId: 'jira.addTeamMember',
+      pending: false,
+      result: { ok: true },
+    });
+    assert.ok(posted.some((message) => message.command === 'jira.operationResult'
+      && message.operationId === 'jira.addTeamMember'
+      && message.result.ok));
+  });
+
+  test('openTask_success_marksOnlyIssueSeen', async () => {
+    const { controller, markerState } = createController({
+      queries: [{ label: 'Tasks', jql: 'project = APP' }],
+      fetchIssues: async () => [makeTask('APP-12'), makeTask('APP-13')],
+      fetchIssueComments: async () => [],
+    });
+    await controller.refresh();
+
+    const env = vscode.env as unknown as { openExternal: typeof vscode.env.openExternal };
+    const originalOpenExternal = env.openExternal;
+    env.openExternal = async () => {
+      markerState.events.push('openExternal');
+      return true;
+    };
+    markerState.markedSeen.length = 0;
+    markerState.events.length = 0;
+
+    try {
+      await controller.handleMessage({
+        command: 'jira.openTask',
+        url: 'https://example.atlassian.net/browse/APP-12',
+      });
+    } finally {
+      env.openExternal = originalOpenExternal;
+    }
+
+    assert.deepStrictEqual(markerState.events, ['openExternal', 'markSeen']);
+    assert.deepStrictEqual(markerState.markedSeen, ['jira:cloud-1:APP-12']);
+  });
+
+  test('openTask_failureDoesNotMarkCommentMarker', async () => {
+    const { controller, markerState } = createController({
+      queries: [{ label: 'Tasks', jql: 'project = APP' }],
+      fetchIssues: async () => [makeTask('APP-14')],
+      fetchIssueComments: async () => [],
+    });
+    await controller.refresh();
+
+    const env = vscode.env as unknown as { openExternal: typeof vscode.env.openExternal };
+    const originalOpenExternal = env.openExternal;
+    env.openExternal = async () => false;
+    markerState.markedSeen.length = 0;
+    try {
+      await controller.handleMessage({
+        command: 'jira.openTask',
+        url: 'https://example.atlassian.net/browse/APP-14',
+      });
+    } finally {
+      env.openExternal = originalOpenExternal;
+    }
+    assert.deepStrictEqual(markerState.markedSeen, []);
+    assert.strictEqual(controller.getState().pendingOperations['jira.openTask']?.result?.ok, false);
+  });
+
+  test('operationFailure_clearsPendingAndReportsRetryableError', async () => {
+    const { controller } = createController({
+      configStoreOverrides: {
+        addTeamMember: async () => {
+          throw { serverId: 'atlassian', category: 'network', detail: 'Temporary failure' };
+        },
+      },
+    });
+
+    await controller.handleMessage({ command: 'jira.addTeamMember', displayName: 'Taylor Jones' });
+
+    assert.deepStrictEqual(controller.getState().pendingOperations['jira.addTeamMember'], {
+      operationId: 'jira.addTeamMember',
+      pending: false,
+      result: { ok: false, reason: 'Temporary failure' },
+    });
   });
 
   test('refresh_linkageComputedViaMatchPullRequestForIssue', async () => {

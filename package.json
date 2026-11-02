@@ -3,7 +3,7 @@
   "displayName": "Dev Assistant",
   "description": "A collection of handy developer utilities for VS Code (private/internal use).",
   "version": "0.0.1",
-  "publisher": "internal",
+  "publisher": "khainx-developer",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -48,6 +48,14 @@
           "default": "",
           "description": "Your Jira display name, exactly as it appears on your issues (e.g. the \"assignee\" name). Used to filter \"My Jira Tasks\" on the Daily Tasks dashboard."
         },
+        "devAssistant.jira.teamMembers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Jira display names of teammates to include in team task monitoring."
+        },
         "devAssistant.jira.savedQueries": {
           "type": "array",
           "items": {
@@ -73,16 +81,16 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "devUtilitiesContainer",
+          "id": "devAssistantContainer",
           "title": "Dev Assistant",
           "icon": "media/activity-icon.svg"
         }
       ]
     },
     "views": {
-      "devUtilitiesContainer": [
+      "devAssistantContainer": [
         {
-          "id": "devUtilities.sidebar",
+          "id": "devAssistant.sidebar",
           "name": "",
           "type": "webview"
         }
@@ -90,125 +98,125 @@
     },
     "commands": [
       {
-        "command": "devUtilities.githubSignIn",
+        "command": "devAssistant.githubSignIn",
         "title": "Dev Assistant: Sign in to GitHub"
       },
       {
-        "command": "devUtilities.openDashboard",
+        "command": "devAssistant.openDashboard",
         "title": "Dev Assistant: Open Daily Tasks Dashboard"
       },
       {
-        "command": "devUtilities.base64Encode",
+        "command": "devAssistant.base64Encode",
         "title": "Dev Assistant: Base64 Encode Selection"
       },
       {
-        "command": "devUtilities.base64Decode",
+        "command": "devAssistant.base64Decode",
         "title": "Dev Assistant: Base64 Decode Selection"
       },
       {
-        "command": "devUtilities.generateUuid",
+        "command": "devAssistant.generateUuid",
         "title": "Dev Assistant: Insert UUID"
       },
       {
-        "command": "devUtilities.formatJson",
+        "command": "devAssistant.formatJson",
         "title": "Dev Assistant: Format JSON Selection"
       },
       {
-        "command": "devUtilities.toJsonEscapedString",
+        "command": "devAssistant.toJsonEscapedString",
         "title": "Dev Assistant: Escape Selection as JSON String"
       },
       {
-        "command": "devUtilities.unixTimestampToDate",
+        "command": "devAssistant.unixTimestampToDate",
         "title": "Dev Assistant: Convert Unix Timestamp to Date"
       },
       {
-        "command": "devUtilities.dateToUnixTimestamp",
+        "command": "devAssistant.dateToUnixTimestamp",
         "title": "Dev Assistant: Insert Current Unix Timestamp"
       },
       {
-        "command": "devUtilities.toUpperCase",
+        "command": "devAssistant.toUpperCase",
         "title": "Dev Assistant: Transform to UPPERCASE"
       },
       {
-        "command": "devUtilities.toLowerCase",
+        "command": "devAssistant.toLowerCase",
         "title": "Dev Assistant: Transform to lowercase"
       },
       {
-        "command": "devUtilities.toCamelCase",
+        "command": "devAssistant.toCamelCase",
         "title": "Dev Assistant: Transform to camelCase"
       },
       {
-        "command": "devUtilities.toSnakeCase",
+        "command": "devAssistant.toSnakeCase",
         "title": "Dev Assistant: Transform to snake_case"
       },
       {
-        "command": "devUtilities.toKebabCase",
+        "command": "devAssistant.toKebabCase",
         "title": "Dev Assistant: Transform to kebab-case"
       },
       {
-        "command": "devUtilities.urlEncode",
+        "command": "devAssistant.urlEncode",
         "title": "Dev Assistant: URL Encode Selection"
       },
       {
-        "command": "devUtilities.urlDecode",
+        "command": "devAssistant.urlDecode",
         "title": "Dev Assistant: URL Decode Selection"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "submenu": "devUtilities.submenu",
+          "submenu": "devAssistant.submenu",
           "group": "9_dev_utilities"
         }
       ],
-      "devUtilities.submenu": [
+      "devAssistant.submenu": [
         {
-          "command": "devUtilities.base64Encode"
+          "command": "devAssistant.base64Encode"
         },
         {
-          "command": "devUtilities.base64Decode"
+          "command": "devAssistant.base64Decode"
         },
         {
-          "command": "devUtilities.generateUuid"
+          "command": "devAssistant.generateUuid"
         },
         {
-          "command": "devUtilities.formatJson"
+          "command": "devAssistant.formatJson"
         },
         {
-          "command": "devUtilities.toJsonEscapedString"
+          "command": "devAssistant.toJsonEscapedString"
         },
         {
-          "command": "devUtilities.unixTimestampToDate"
+          "command": "devAssistant.unixTimestampToDate"
         },
         {
-          "command": "devUtilities.dateToUnixTimestamp"
+          "command": "devAssistant.dateToUnixTimestamp"
         },
         {
-          "command": "devUtilities.toUpperCase"
+          "command": "devAssistant.toUpperCase"
         },
         {
-          "command": "devUtilities.toLowerCase"
+          "command": "devAssistant.toLowerCase"
         },
         {
-          "command": "devUtilities.toCamelCase"
+          "command": "devAssistant.toCamelCase"
         },
         {
-          "command": "devUtilities.toSnakeCase"
+          "command": "devAssistant.toSnakeCase"
         },
         {
-          "command": "devUtilities.toKebabCase"
+          "command": "devAssistant.toKebabCase"
         },
         {
-          "command": "devUtilities.urlEncode"
+          "command": "devAssistant.urlEncode"
         },
         {
-          "command": "devUtilities.urlDecode"
+          "command": "devAssistant.urlDecode"
         }
       ]
     },
     "submenus": [
       {
-        "id": "devUtilities.submenu",
+        "id": "devAssistant.submenu",
         "label": "Dev Assistant"
       }
     ]

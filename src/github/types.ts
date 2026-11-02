@@ -1,3 +1,5 @@
+import type { CommentAttentionSummary } from '../attention/commentAttention';
+
 export interface GitHubSession {
   username: string;
   accessToken: string;
@@ -48,6 +50,7 @@ export interface PullRequestSummary {
   url: string;
   author: string;
   state: 'OPEN' | 'MERGED' | 'CLOSED';
+  draft?: boolean;
   mergedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -61,7 +64,16 @@ export interface PullRequestSummary {
 
 export type ReviewState = 'approved' | 'changes_requested' | 'pending_review' | 'no_review_activity';
 
-export type AttentionReason = 'new_activity' | 'waiting_for_review' | 'needs_my_review' | 'merged';
+export type AttentionReason =
+  | 'new_activity'
+  | 'waiting_for_review'
+  | 'needs_my_review'
+  | 'merged'
+  | 'pr-changes-requested'
+  | 'pr-checks-failing'
+  | 'pr-waiting-review'
+  | 'pr-needs-my-review'
+  | 'pr-unread-comment';
 
 export interface AttentionItem {
   pr: PullRequestSummary;
@@ -107,6 +119,9 @@ export interface GitHubViewState {
   monitoredRepos: MonitoredRepoView[];
   monitoredAuthors: MonitoredAuthorView[];
   attention: GitHubAttentionResult;
+  commentAttentionBySource: Record<string, CommentAttentionSummary>;
+  commentStatusBySource: Record<string, GitHubCommentState>;
+  pendingOperations: Partial<Record<GitHubOperationId, GitHubPendingOperation>>;
   failures: GitHubFailure[];
   lastRefreshAt: string | null;
   isRefreshing: boolean;
@@ -123,6 +138,20 @@ export type GitHubIncomingMessage =
   | { command: 'github.openPr'; repoKey: string; number: number; url: string }
   | { command: 'github.openComment'; repoKey: string; number: number; url: string };
 
+export type GitHubCommentState = 'available' | 'stale' | 'unavailable';
+export type GitHubOperationId = GitHubIncomingMessage['command'];
+
+export interface GitHubPendingOperation {
+  operationId: GitHubOperationId;
+  pending: boolean;
+  result?: { ok: boolean; reason?: string };
+}
+
 export type GitHubOutgoingMessage =
   | { command: 'github.state'; state: GitHubViewState }
-  | { command: 'github.addResult'; kind: 'repo' | 'author'; ok: boolean; reason?: string };
+  | { command: 'github.addResult'; kind: 'repo' | 'author'; ok: boolean; reason?: string }
+  | {
+    command: 'github.operationResult';
+    operationId: GitHubOperationId;
+    result: { ok: boolean; reason?: string };
+  };

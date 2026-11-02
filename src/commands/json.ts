@@ -5,7 +5,7 @@ import { formatJson, jsonEscapeString } from '../core/json';
 
 export const jsonCommands: DevUtilityCommand[] = [
   {
-    id: 'devUtilities.formatJson',
+    id: 'devAssistant.formatJson',
     handler: async (editor) => {
       await transformSelections(editor, (text) => {
         try {
@@ -18,7 +18,7 @@ export const jsonCommands: DevUtilityCommand[] = [
     },
   },
   {
-    id: 'devUtilities.toJsonEscapedString',
+    id: 'devAssistant.toJsonEscapedString',
     handler: async (editor) => {
       await transformSelections(editor, jsonEscapeString);
     },

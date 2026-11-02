@@ -1,15 +1,17 @@
 import * as vscode from 'vscode';
 import { GitHubAuthService } from '../github/auth';
 import { GitHubConfigStore } from '../github/configStore';
-import { GitHubIncomingMessage } from '../github/types';
+import type { GitHubIncomingMessage, GitHubOutgoingMessage, GitHubViewState } from '../github/types';
 import { GitHubViewController } from '../github/viewController';
 import { LastSeenStore } from '../github/lastSeenStore';
 import type { McpConnectionService } from '../mcp/connectionService';
 import type { PullRequestCache } from '../github/pullRequestCache';
 import { RefreshScheduler, RefreshVisibilityHost, REFRESH_INTERVAL_MINUTES } from '../github/refreshScheduler';
 import { JiraViewController } from '../jira/viewController';
-import type { JiraIncomingMessage } from '../jira/types';
+import type { JiraIncomingMessage, JiraOutgoingMessage, JiraViewState } from '../jira/types';
 import type { JiraServices } from './jiraServices';
+import { buildAttentionInbox } from './attentionInboxBuilder';
+import type { AttentionInboxItem } from './attentionInboxBuilder';
 import { getNonce } from '../webview/nonce';
 
 interface GitHubServices {
@@ -38,6 +40,9 @@ export class DashboardPanel {
   private readonly githubController: GitHubViewController;
   private readonly jiraController: JiraViewController;
   private readonly scheduler: RefreshScheduler;
+  private readonly controllerWebview: vscode.Webview;
+  private githubState: GitHubViewState | null = null;
+  private jiraState: JiraViewState | null = null;
   private readonly disposables: vscode.Disposable[] = [];
 
   static createOrShow(
@@ -52,7 +57,7 @@ export class DashboardPanel {
     }
 
     const panel = vscode.window.createWebviewPanel(
-      'devUtilities.dashboard',
+      'devAssistant.dashboard',
       'Daily Tasks',
       vscode.ViewColumn.Active,
       {
@@ -73,22 +78,29 @@ export class DashboardPanel {
   ) {
     this.panel = panel;
     this.panel.webview.html = this.render();
+    this.controllerWebview = new Proxy(panel.webview, {
+      get: (target, property, receiver) => property === 'postMessage'
+        ? (message: GitHubOutgoingMessage | JiraOutgoingMessage) => this.postControllerMessage(message)
+        : Reflect.get(target, property, receiver),
+    });
 
     this.githubController = new GitHubViewController(
       context,
-      panel,
+      { webview: this.controllerWebview },
       githubServices.authService,
       githubServices.configStore,
       githubServices.connectionService,
       githubServices.lastSeenStore,
+      jiraServices.commentReadStateStore,
       githubServices.pullRequestCache,
       jiraServices.outputChannel,
     );
     this.jiraController = new JiraViewController(
-      panel,
+      { webview: this.controllerWebview },
       jiraServices.connectionStore,
       jiraServices.configStore,
       jiraServices.connectionService,
+      jiraServices.commentReadStateStore,
       jiraServices.pullRequestCache,
       jiraServices.outputChannel,
     );
@@ -118,6 +130,22 @@ export class DashboardPanel {
       this.disposables.pop()?.dispose();
     }
     this.panel.dispose();
+  }
+
+  private postControllerMessage(message: GitHubOutgoingMessage | JiraOutgoingMessage): Thenable<boolean> {
+    if (message.command === 'github.state') this.githubState = message.state;
+    if (message.command === 'jira.state') this.jiraState = message.state;
+
+    const posted = this.panel.webview.postMessage(message);
+    if (this.githubState && this.jiraState) {
+      const inbox: AttentionInboxItem[] = buildAttentionInbox(
+        this.jiraState,
+        this.githubState,
+        Date.now(),
+      );
+      void this.panel.webview.postMessage({ command: 'dashboard.inboxState', items: inbox });
+    }
+    return posted;
   }
 
   private render(): string {
@@ -246,6 +274,7 @@ export class DashboardPanel {
     const subtitle = document.getElementById('subtitle');
     let githubState = null;
     let jiraState = null;
+    let attentionInbox = null;
 
     function escapeHtml(value) {
       return String(value ?? '')
@@ -272,25 +301,21 @@ export class DashboardPanel {
       return days + 'd ago';
     }
 
-    // Jira 'duedate' is a plain YYYY-MM-DD with no time component — compare by calendar day,
-    // not elapsed milliseconds, so "due today" doesn't flip to "overdue" partway through the day.
-    function dueDateInfo(dueDate) {
-      if (!dueDate) return null;
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const due = new Date(dueDate + 'T00:00:00');
-      const diffDays = Math.round((due.getTime() - today.getTime()) / 86400000);
-      if (diffDays < 0) return { label: 'Overdue', cls: 'badge-red', urgency: 0 };
-      if (diffDays === 0) return { label: 'Due today', cls: 'badge-orange', urgency: 1 };
-      if (diffDays === 1) return { label: 'Due tomorrow', cls: 'badge-orange', urgency: 2 };
-      if (diffDays <= 3) return { label: 'Due in ' + diffDays + ' days', cls: 'badge-neutral', urgency: 3 };
-      return null;
-    }
-
     const PR_REASON_LABELS = {
       needs_my_review: { label: 'Needs your review', cls: 'badge-red' },
       new_activity: { label: 'New activity', cls: 'badge-blue' },
       waiting_for_review: { label: 'Waiting for review', cls: 'badge-orange' },
       merged: { label: 'Merged', cls: 'badge-green' },
+      'pr-changes-requested': { label: 'Changes requested', cls: 'badge-red' },
+      'pr-checks-failing': { label: 'Checks failing', cls: 'badge-red' },
+      'pr-waiting-review': { label: 'Waiting for review', cls: 'badge-orange' },
+      'pr-needs-my-review': { label: 'Needs your review', cls: 'badge-red' },
+      'pr-unread-comment': { label: 'Unread comment', cls: 'badge-blue' },
+      'jira-review': { label: 'Jira review', cls: 'badge-orange' },
+      'jira-overdue': { label: 'Overdue', cls: 'badge-red' },
+      'jira-due-today': { label: 'Due today', cls: 'badge-orange' },
+      'jira-due-tomorrow': { label: 'Due tomorrow', cls: 'badge-orange' },
+      'jira-unread-comment': { label: 'Unread comment', cls: 'badge-blue' },
     };
 
     function prBadges(item) {
@@ -321,7 +346,7 @@ export class DashboardPanel {
 
     function prMeta(item) {
       const pr = item.pr;
-      if (item.reasons.includes('new_activity')) {
+      if (item.reasons.includes('new_activity') || item.reasons.includes('pr-unread-comment')) {
         const comment = latestComment(pr);
         if (comment && comment.body) {
           const snippet = comment.body.length > 60 ? comment.body.slice(0, 60) + '…' : comment.body;
@@ -333,33 +358,136 @@ export class DashboardPanel {
 
     function renderPrItem(item) {
       const pr = item.pr;
-      return '<div class="item-card" data-command="github.openPr" data-repo-key="' + escapeHtml(pr.repoKey) +
+      const draftBadge = pr.draft ? '<span class="item-badge badge-neutral">Draft</span>' : '';
+      return '<div class="item-card" role="button" tabindex="0" data-command="github.openPr" data-repo-key="' + escapeHtml(pr.repoKey) +
         '" data-number="' + pr.number + '" data-url="' + escapeHtml(pr.url) + '">' +
         '<span class="item-icon">🐙</span>' +
         '<div class="item-body">' +
         '<div class="item-title">#' + pr.number + ' ' + escapeHtml(pr.title) + '</div>' +
         '<div class="item-meta">' + prMeta(item) + '</div>' +
-        '<div class="item-badges">' + prBadges(item) + statusBadges(pr) + '</div>' +
+        '<div class="item-badges">' + draftBadge + prBadges(item) + statusBadges(pr) + '</div>' +
         '</div></div>';
     }
 
     function renderJiraItem(task) {
-      const due = dueDateInfo(task.dueDate);
       const prLinkBadge = task.prLink.kind === 'linked'
         ? '<span class="item-badge badge-green">Has PR #' + escapeHtml(task.prLink.pr.number) + ' · ' + escapeHtml(task.prLink.pr.state) + '</span>'
         : task.prLink.kind === 'no-match'
         ? '<span class="item-badge badge-neutral">No PR</span>'
         : '<span class="item-badge badge-neutral">PR status unavailable</span>';
       const badges = '<span class="item-badge badge-neutral">' + escapeHtml(task.status) + '</span>' +
-        (due ? '<span class="item-badge ' + due.cls + '">' + escapeHtml(due.label) + '</span>' : '') +
+        (task.dueDate ? '<span class="item-badge badge-neutral">Due ' + escapeHtml(task.dueDate) + '</span>' : '') +
+        ((task.commentAttention && task.commentAttention.unreadCount > 0)
+          ? '<span class="item-badge badge-blue">' + task.commentAttention.unreadCount + ' unread comments</span>'
+          : '') +
+        (task.commentState === 'stale'
+          ? '<span class="item-badge badge-orange">Comments stale</span>'
+          : task.commentState === 'unavailable'
+          ? '<span class="item-badge badge-neutral">Comments unavailable</span>'
+          : '') +
         prLinkBadge;
-      return '<div class="item-card" data-command="jira.openTask" data-url="' + escapeHtml(task.url) + '">' +
+      return '<div class="item-card" role="button" tabindex="0" data-command="jira.openTask" data-url="' + escapeHtml(task.url) + '">' +
         '<span class="item-icon">🔷</span>' +
         '<div class="item-body">' +
         '<div class="item-title">' + escapeHtml(task.key) + ' — ' + escapeHtml(task.summary) + '</div>' +
         '<div class="item-meta">' + escapeHtml(task.assignee || 'Unassigned') + '</div>' +
         '<div class="item-badges">' + badges + '</div>' +
         '</div></div>';
+    }
+
+    function operationError(state, operationId) {
+      const operation = state && state.pendingOperations && state.pendingOperations[operationId];
+      return operation && !operation.pending && operation.result && !operation.result.ok
+        ? operation.result.reason || 'Could not complete the action.'
+        : '';
+    }
+
+    function renderAttentionItem(item) {
+      const task = item.jiraTask;
+      const pr = item.pr;
+      const jiraOpen = jiraState && jiraState.pendingOperations && jiraState.pendingOperations['jira.openTask'];
+      const githubOpen = githubState && githubState.pendingOperations && githubState.pendingOperations['github.openPr'];
+      const githubCommentOpen = githubState && githubState.pendingOperations && githubState.pendingOperations['github.openComment'];
+      const reasonBadges = item.reasons.map((reason) => {
+        const info = PR_REASON_LABELS[reason] || { label: reason.replace(/-/g, ' '), cls: 'badge-neutral' };
+        const count = reason === 'jira-unread-comment'
+          ? ' (' + item.jiraUnreadCount + ')'
+          : reason === 'pr-unread-comment'
+          ? ' (' + item.prUnreadCount + ')'
+          : '';
+        return '<span class="item-badge ' + info.cls + '">' + escapeHtml(info.label + count) + '</span>';
+      }).join('');
+      const previewText = (comment) => {
+        const body = String(comment.bodyText ?? '');
+        return escapeHtml(body.length > 120 ? body.slice(0, 120) + '…' : body);
+      };
+      const commentPreviews = [
+        item.jiraLatestUnreadComment
+          ? '<div class="item-meta">Jira comment from ' + escapeHtml(item.jiraLatestUnreadComment.authorIdentity) +
+            ': "' + previewText(item.jiraLatestUnreadComment) + '"</div>'
+          : '',
+        item.prLatestUnreadComment
+          ? '<div class="item-meta">PR comment from ' + escapeHtml(item.prLatestUnreadComment.authorIdentity) +
+            ': "' + previewText(item.prLatestUnreadComment) + '"</div>'
+          : '',
+      ].join('');
+      const jiraCommentState = task && task.commentState === 'stale'
+        ? '<span class="item-badge badge-orange">Jira comments stale</span>'
+        : task && task.commentState === 'unavailable'
+        ? '<span class="item-badge badge-neutral">Jira comments unavailable</span>'
+        : '';
+      const githubSourceKey = pr ? 'github:' + pr.repoKey + '#' + pr.number : '';
+      const githubCommentState = pr && githubState && githubState.commentStatusBySource
+        ? githubState.commentStatusBySource[githubSourceKey]
+        : '';
+      const githubCommentStatus = githubCommentState === 'stale'
+        ? '<span class="item-badge badge-orange">PR comments stale</span>'
+        : githubCommentState === 'unavailable'
+        ? '<span class="item-badge badge-neutral">PR comments unavailable</span>'
+        : '';
+      const jiraTitle = task
+        ? escapeHtml(task.key) + ' — ' + escapeHtml(task.summary)
+        : '';
+      const prTitle = pr ? '#' + pr.number + ' ' + escapeHtml(pr.title) : '';
+      const title = jiraTitle
+        ? '<div class="item-title">' + jiraTitle + '</div>' +
+          (prTitle ? '<div class="item-meta">' + prTitle + '</div>' : '')
+        : '<div class="item-title">' + prTitle + '</div>';
+      const jiraAction = task
+        ? '<button type="button" class="secondary" data-command="jira.openTask" data-url="' + escapeHtml(task.url) +
+          '" aria-label="Open Jira task ' + escapeHtml(task.key) + '"' + (jiraOpen && jiraOpen.pending ? ' disabled' : '') + '>' +
+          (jiraOpen && jiraOpen.pending ? 'Opening Jira…' : 'Open Jira') + '</button>' +
+          (operationError(jiraState, 'jira.openTask')
+            ? '<span class="gh-error" role="alert">' + escapeHtml(operationError(jiraState, 'jira.openTask')) + '</span>'
+            : '')
+        : '';
+      const prAction = pr
+        ? '<button type="button" class="secondary" data-command="github.openPr" data-repo-key="' + escapeHtml(pr.repoKey) +
+          '" data-number="' + pr.number + '" data-url="' + escapeHtml(pr.url) +
+          '" aria-label="Open pull request ' + pr.number + '"' + (githubOpen && githubOpen.pending ? ' disabled' : '') + '>' +
+          (githubOpen && githubOpen.pending ? 'Opening PR…' : 'Open PR') + '</button>' +
+          (item.prLatestUnreadComment
+            ? '<button type="button" class="secondary" data-command="github.openComment" data-repo-key="' + escapeHtml(pr.repoKey) +
+              '" data-number="' + pr.number + '" data-url="' + escapeHtml(item.prLatestUnreadComment.url) +
+              '" aria-label="Open latest comment on pull request ' + pr.number + '"' +
+              (githubCommentOpen && githubCommentOpen.pending ? ' disabled' : '') + '>' +
+              (githubCommentOpen && githubCommentOpen.pending ? 'Opening comment…' : 'Open comment') + '</button>'
+            : '') +
+          (operationError(githubState, 'github.openPr') || operationError(githubState, 'github.openComment')
+            ? '<span class="gh-error" role="alert">' +
+              escapeHtml(operationError(githubState, 'github.openPr') || operationError(githubState, 'github.openComment')) +
+              '</span>'
+            : '')
+        : '';
+      const activity = item.latestRelevantAt
+        ? '<div class="item-meta">Updated ' + escapeHtml(relativeTime(item.latestRelevantAt)) + '</div>'
+        : '';
+
+      return '<div class="item-card"><span class="item-icon">' + (task ? '🔷' : '🐙') + '</span>' +
+        '<div class="item-body">' + title +
+        '<div class="item-badges">' + reasonBadges + jiraCommentState + githubCommentStatus + '</div>' +
+        commentPreviews + activity +
+        '<div class="toolbar">' + jiraAction + prAction + '</div></div></div>';
     }
 
     function renderList(html, emptyText) {
@@ -380,40 +508,43 @@ export class DashboardPanel {
       return all.filter((task) => task.assignee === jiraState.currentUser);
     }
 
-    function getJiraAttentionTasks() {
-      return getMyJiraTasks()
-        .map((task) => ({ task, due: dueDateInfo(task.dueDate) }))
-        .filter((entry) => entry.due && entry.due.urgency <= 2)
-        .sort((a, b) => a.due.urgency - b.due.urgency)
-        .map((entry) => entry.task);
+    function getTeamJiraTasks() {
+      const members = new Set((jiraState && jiraState.teamMembers || [])
+        .map((name) => name.trim().toLowerCase())
+        .filter(Boolean));
+      return getAllJiraTasks().filter((task) =>
+        task.assignee && members.has(task.assignee.trim().toLowerCase()));
     }
 
     function render() {
       const githubReady = githubState !== null;
       const jiraReady = jiraState !== null;
-
-      if (githubReady && !githubState.authenticated) {
-        subtitle.textContent = 'Sign in to see pull requests that need your attention.';
-        root.innerHTML =
-          '<div class="sign-in-card"><p>Sign in to GitHub to load your attention inbox.</p>' +
-          '<button data-command="github.signIn">Sign in to GitHub</button></div>';
-        wireActions();
-        return;
-      }
-
-      const prAttentionItems = githubReady ? githubState.attention.attentionInbox : [];
-      const myPrItems = githubReady ? githubState.attention.myPRs : [];
-      const teamPrItems = githubReady ? githubState.attention.teamPRs : [];
-      const jiraAttentionTasks = getJiraAttentionTasks();
+      const githubAuthenticated = githubReady && githubState.authenticated;
+      const myPrItems = githubAuthenticated ? githubState.attention.myPRs : [];
+      const teamPrItems = githubAuthenticated ? githubState.attention.teamPRs : [];
       const myJiraTasks = getMyJiraTasks();
+      const teamJiraTasks = getTeamJiraTasks();
+      const inboxItems = attentionInbox;
+      const refreshing = !!(githubState && githubState.isRefreshing)
+        || !!(jiraState && jiraState.isRefreshing);
+      const signInCard = githubReady && !githubState.authenticated
+        ? '<div class="sign-in-card"><p>Sign in to GitHub to load your PRs.</p>' +
+          '<button type="button" data-command="github.signIn"' +
+          (githubState.pendingOperations?.['github.signIn']?.pending ? ' disabled' : '') + '>' +
+          (githubState.pendingOperations?.['github.signIn']?.pending ? 'Signing in…' : 'Sign in to GitHub') +
+          '</button></div>'
+        : '';
 
-      subtitle.textContent = githubReady && githubState.me ? 'Signed in as ' + githubState.me + '.' : 'Your daily work at a glance.';
+      subtitle.textContent = githubAuthenticated
+        ? 'Signed in as ' + (githubState.me || '') + '.'
+        : 'Your daily work at a glance.';
 
       const tiles = [
-        { key: 'attention', icon: '🔔', accent: 'var(--vscode-charts-red, #f85149)', value: prAttentionItems.length + jiraAttentionTasks.length, label: 'Needs Attention', href: '#attentionSection' },
+        { key: 'attention', icon: '🔔', accent: 'var(--vscode-charts-red, #f85149)', value: inboxItems ? inboxItems.length : '…', label: 'Needs Attention', href: '#attentionSection' },
         { key: 'mine', icon: '🐙', accent: 'var(--vscode-charts-blue, #1f6feb)', value: myPrItems.length, label: 'My PRs', href: '#myPrsSection' },
         { key: 'team', icon: '👥', accent: 'var(--vscode-charts-purple, #8957e5)', value: teamPrItems.length, label: 'Team PRs', href: '#teamPrsSection' },
         { key: 'jira', icon: '🔷', accent: 'var(--vscode-charts-blue, #1f6feb)', value: myJiraTasks.length, label: 'My Jira Tasks', href: '#jiraSection' },
+        { key: 'teamJira', icon: '🔷', accent: 'var(--vscode-charts-green, #2ea043)', value: teamJiraTasks.length, label: 'Team Jira Tasks', href: '#teamJiraSection' },
       ];
       const statTiles = tiles.map((t) =>
         '<a class="stat-tile" style="--tile-accent:' + t.accent + '" href="' + t.href + '">' +
@@ -435,10 +566,9 @@ export class DashboardPanel {
         ? 'Last refreshed ' + new Date(Math.max(...lastRefreshTimes)).toLocaleTimeString()
         : '';
 
-      const attentionHtml = renderList(
-        prAttentionItems.map(renderPrItem).join('') + jiraAttentionTasks.map(renderJiraItem).join(''),
-        'Nothing here. You\\'re all caught up.',
-      );
+      const attentionHtml = inboxItems === null
+        ? '<div class="empty-state">Loading provider attention…</div>'
+        : renderList(inboxItems.map(renderAttentionItem).join(''), 'Nothing here. You\\'re all caught up.');
       const myPrsHtml = renderList(myPrItems.map(renderPrItem).join(''), 'No open PRs of yours.');
       const teamPrsHtml = renderList(teamPrItems.map(renderPrItem).join(''), 'No team PRs to show.');
       const jiraUserHint = jiraReady && jiraState.connected && !jiraState.currentUser
@@ -449,40 +579,55 @@ export class DashboardPanel {
         : !jiraState.connected
         ? '<div class="empty-state">Connect Jira from the Configuration tab to see your tasks here.</div>'
         : jiraUserHint + renderList(myJiraTasks.map(renderJiraItem).join(''), 'No saved Jira queries yet.');
+      const teamJiraHtml = !jiraReady
+        ? '<div class="empty-state">Loading…</div>'
+        : !jiraState.connected
+        ? '<div class="empty-state">Connect Jira from the Configuration tab to see team tasks here.</div>'
+        : !(jiraState.teamMembers || []).length
+        ? '<div class="empty-state">No Jira teammates configured.</div>'
+        : renderList(teamJiraTasks.map(renderJiraItem).join(''), 'No team Jira tasks found.');
 
       root.innerHTML =
         '<div class="toolbar">' +
-        '<button data-command="refreshAll">Refresh</button>' +
+        '<button type="button" data-command="refreshAll"' + (refreshing ? ' disabled' : '') + '>' +
+        (refreshing ? 'Refreshing…' : 'Refresh') + '</button>' +
         '<span class="refresh-hint">Auto-refreshes every ' + ${REFRESH_INTERVAL_MINUTES} + ' minutes while visible.</span>' +
         '<span class="last-refresh">' + escapeHtml(lastRefresh) + '</span>' +
         '</div>' +
+        signInCard +
         failureBanner +
         '<div class="stat-grid">' + statTiles + '</div>' +
         '<section class="section" id="attentionSection">' +
-        '<div class="section-header"><h2>🔔 Attention Inbox (' + (prAttentionItems.length + jiraAttentionTasks.length) + ')</h2></div>' +
+        '<div class="section-header"><h2>🔔 Attention Inbox (' + (inboxItems ? inboxItems.length : 0) + ')</h2></div>' +
         '<div class="item-list">' + attentionHtml + '</div>' +
         '</section>' +
         '<div class="section-row">' +
+        '<section class="section" id="jiraSection">' +
+        '<div class="section-header"><h2>🔷 My Jira Tasks (' + myJiraTasks.length + ')</h2></div>' +
+        '<div class="item-list">' + jiraHtml + '</div>' +
+        '</section>' +
         '<section class="section" id="myPrsSection">' +
         '<div class="section-header"><h2>🐙 My PRs (' + myPrItems.length + ')</h2></div>' +
         '<div class="item-list">' + myPrsHtml + '</div>' +
+        '</section>' +
+        '</div>' +
+        '<div class="section-row">' +
+        '<section class="section" id="teamJiraSection">' +
+        '<div class="section-header"><h2>🔷 Team Jira Tasks (' + teamJiraTasks.length + ')</h2></div>' +
+        '<div class="item-list">' + teamJiraHtml + '</div>' +
         '</section>' +
         '<section class="section" id="teamPrsSection">' +
         '<div class="section-header"><h2>👥 Team PRs (' + teamPrItems.length + ')</h2></div>' +
         '<div class="item-list">' + teamPrsHtml + '</div>' +
         '</section>' +
-        '</div>' +
-        '<section class="section" id="jiraSection">' +
-        '<div class="section-header"><h2>🔷 My Jira Tasks (' + myJiraTasks.length + ')</h2></div>' +
-        '<div class="item-list">' + jiraHtml + '</div>' +
-        '</section>';
+        '</div>';
 
       wireActions();
     }
 
     function wireActions() {
       root.querySelectorAll('[data-command]').forEach((el) => {
-        el.addEventListener('click', () => {
+        const activate = () => {
           const command = el.getAttribute('data-command');
           if (command === 'refreshAll') {
             post({ command: 'github.refresh' });
@@ -505,7 +650,24 @@ export class DashboardPanel {
           if (command === 'jira.openTask') {
             post({ command: 'jira.openTask', url: el.getAttribute('data-url') });
           }
-        });
+          if (command === 'github.openComment') {
+            post({
+              command: 'github.openComment',
+              repoKey: el.getAttribute('data-repo-key'),
+              number: Number(el.getAttribute('data-number')),
+              url: el.getAttribute('data-url'),
+            });
+          }
+        };
+        el.addEventListener('click', activate);
+        if (el.getAttribute('role') === 'button') {
+          el.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              activate();
+            }
+          });
+        }
       });
     }
 
@@ -516,6 +678,9 @@ export class DashboardPanel {
         render();
       } else if (message && message.command === 'jira.state') {
         jiraState = message.state;
+        render();
+      } else if (message && message.command === 'dashboard.inboxState') {
+        attentionInbox = message.items || [];
         render();
       }
     });

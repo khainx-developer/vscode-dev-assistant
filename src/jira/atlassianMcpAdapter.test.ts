@@ -12,6 +12,25 @@ function toolResult(payload: unknown): { content: Array<{ type: string; text: st
   return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
 }
 
+function jiraComment(
+  id: string,
+  created: string,
+  body: unknown = 'A comment',
+  visibility?: { type: string; value: string },
+): unknown {
+  return {
+    id,
+    author: { displayName: 'Alice' },
+    body,
+    created,
+    visibility,
+  };
+}
+
+function commentPage(comments: unknown[], total = comments.length, isLast = true): unknown {
+  return toolResult({ data: { comments, total, isLast } });
+}
+
 suite('AtlassianMcpAdapter', () => {
   test('validateConnection_matchingSite_returnsOkWithSiteId', async () => {
     const service = makeConnectionService(() =>
@@ -75,11 +94,22 @@ suite('AtlassianMcpAdapter', () => {
             issues: [
               {
                 key: 'ABC-1',
-                fields: { summary: 'First', status: { name: 'To Do' }, assignee: { displayName: 'Alice' }, duedate: '2026-11-05' },
+                fields: {
+                  summary: 'First',
+                  status: { name: 'To Do' },
+                  assignee: { displayName: 'Alice' },
+                  duedate: '2026-11-05',
+                  updated: '2026-11-01T10:00:00Z',
+                },
               },
               {
                 key: 'ABC-2',
-                fields: { summary: 'Second', status: { name: 'Done' }, assignee: { displayName: 'Bob' } },
+                fields: {
+                  summary: 'Second',
+                  status: { name: 'Done' },
+                  assignee: { displayName: 'Bob' },
+                  updated: '2026-11-02T10:00:00Z',
+                },
               },
             ],
           },
@@ -96,6 +126,7 @@ suite('AtlassianMcpAdapter', () => {
         status: 'To Do',
         assignee: 'Alice',
         dueDate: '2026-11-05',
+        updatedAt: '2026-11-01T10:00:00Z',
         url: 'https://example.atlassian.net/browse/ABC-1',
         prLink: { kind: 'not-available' },
       },
@@ -105,6 +136,7 @@ suite('AtlassianMcpAdapter', () => {
         status: 'Done',
         assignee: 'Bob',
         dueDate: null,
+        updatedAt: '2026-11-02T10:00:00Z',
         url: 'https://example.atlassian.net/browse/ABC-2',
         prLink: { kind: 'not-available' },
       },
@@ -119,7 +151,12 @@ suite('AtlassianMcpAdapter', () => {
             issues: [
               {
                 key: 'ABC-3',
-                fields: { summary: 'Unassigned', status: { name: 'To Do' }, assignee: null },
+                fields: {
+                  summary: 'Unassigned',
+                  status: { name: 'To Do' },
+                  assignee: null,
+                  updated: '2026-11-03T10:00:00Z',
+                },
               },
             ],
           },
@@ -130,5 +167,241 @@ suite('AtlassianMcpAdapter', () => {
     const result = await AtlassianMcpAdapter.fetchIssues(service, 'cloud-1', 'project = ABC', 'https://example.atlassian.net');
 
     assert.strictEqual(result[0].assignee, null);
+  });
+
+  test('fetchIssues_mapsUpdatedTimestamp', async () => {
+    let request: { name: string; args: unknown } | undefined;
+    const service = makeConnectionService((_serverId, name, args) => {
+      request = { name, args };
+      return Promise.resolve(
+        toolResult({
+          data: {
+            issues: [{
+              key: 'ABC-4',
+              fields: {
+                summary: 'Recently updated',
+                status: { name: 'In Progress' },
+                assignee: null,
+                updated: '2026-11-03T12:30:00Z',
+              },
+            }],
+          },
+        }),
+      );
+    });
+
+    const result = await AtlassianMcpAdapter.fetchIssues(service, 'cloud-1', 'project = ABC', 'https://example.atlassian.net');
+
+    assert.deepStrictEqual(request, {
+      name: 'searchJiraIssuesUsingJql',
+      args: {
+        cloudId: 'cloud-1',
+        jql: 'project = ABC',
+        maxResults: 50,
+        fields: ['summary', 'status', 'assignee', 'duedate', 'updated'],
+      },
+    });
+    assert.strictEqual(result[0].updatedAt, '2026-11-03T12:30:00Z');
+  });
+
+  test('fetchIssueComments_callsNamedToolWithExactArguments', async () => {
+    let call: { serverId: string; name: string; args: unknown } | undefined;
+    const service = makeConnectionService((serverId, name, args) => {
+      call = { serverId, name, args };
+      return Promise.resolve(commentPage([], 0, true));
+    });
+
+    await AtlassianMcpAdapter.fetchIssueComments(
+      service,
+      'cloud-1',
+      'ABC-5',
+      'https://example.atlassian.net',
+      1,
+    );
+
+    assert.deepStrictEqual(call, {
+      serverId: 'atlassian',
+      name: 'listJiraIssueComments',
+      args: {
+        cloudId: 'cloud-1',
+        issueIdOrKey: 'ABC-5',
+        startAt: 0,
+        maxResults: 100,
+        orderBy: '-created',
+      },
+    });
+  });
+
+  test('fetchIssueComments_mapsCommentFieldsAndVisibility', async () => {
+    const service = makeConnectionService(() =>
+      Promise.resolve(
+        commentPage([
+          jiraComment('comment-1', '2026-11-03T10:00:00Z', 'Status updated', {
+            type: 'group',
+            value: 'developers',
+          }),
+        ]),
+      ),
+    );
+
+    const result = await AtlassianMcpAdapter.fetchIssueComments(
+      service,
+      'cloud-1',
+      'ABC-5',
+      'https://example.atlassian.net',
+      1,
+    );
+
+    assert.deepStrictEqual(result, [{
+      id: 'comment-1',
+      author: 'Alice',
+      body: 'Status updated',
+      createdAt: '2026-11-03T10:00:00Z',
+      visibility: { type: 'group', value: 'developers' },
+      url: 'https://example.atlassian.net/browse/ABC-5',
+    }]);
+  });
+
+  test('fetchIssueComments_flattensADFParagraphs', async () => {
+    const service = makeConnectionService(() =>
+      Promise.resolve(
+        commentPage([
+          jiraComment('comment-1', '2026-11-03T10:00:00Z', {
+            type: 'doc',
+            version: 1,
+            content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'First paragraph' }] },
+              { type: 'paragraph', content: [{ type: 'text', text: 'Second paragraph' }] },
+            ],
+          }),
+        ]),
+      ),
+    );
+
+    const result = await AtlassianMcpAdapter.fetchIssueComments(
+      service,
+      'cloud-1',
+      'ABC-5',
+      'https://example.atlassian.net',
+      1,
+    );
+
+    assert.strictEqual(result[0].body, 'First paragraph\nSecond paragraph');
+  });
+
+  test('fetchIssueComments_pagesUntilMarkerBoundary', async () => {
+    const calls: unknown[] = [];
+    const pages = [
+      commentPage([
+        jiraComment('new-1', '2026-11-03T10:00:00Z'),
+        jiraComment('new-2', '2026-11-02T10:00:00Z'),
+      ], 3, false),
+      commentPage([jiraComment('old-1', '2026-10-31T10:00:00Z')], 3, true),
+    ];
+    const service = makeConnectionService((_serverId, _name, args) => {
+      calls.push(args);
+      return Promise.resolve(pages[calls.length - 1]);
+    });
+
+    const result = await AtlassianMcpAdapter.fetchIssueComments(
+      service,
+      'cloud-1',
+      'ABC-5',
+      'https://example.atlassian.net',
+      Date.parse('2026-11-01T00:00:00Z'),
+    );
+
+    assert.deepStrictEqual(calls.map((args) => (args as { startAt: number }).startAt), [0, 2]);
+    assert.deepStrictEqual(result.map((comment) => comment.id), ['new-1', 'new-2', 'old-1']);
+  });
+
+  test('fetchIssueComments_firstFetchUsesOnlyBaselinePage', async () => {
+    let calls = 0;
+    const service = makeConnectionService(() => {
+      calls += 1;
+      return Promise.resolve(commentPage([jiraComment('baseline', '2026-11-03T10:00:00Z')], 200, false));
+    });
+
+    const result = await AtlassianMcpAdapter.fetchIssueComments(
+      service,
+      'cloud-1',
+      'ABC-5',
+      'https://example.atlassian.net',
+      undefined,
+    );
+
+    assert.strictEqual(calls, 1);
+    assert.deepStrictEqual(result.map((comment) => comment.id), ['baseline']);
+  });
+
+  test('fetchIssueComments_stopsAtIsLast', async () => {
+    let calls = 0;
+    const service = makeConnectionService(() => {
+      calls += 1;
+      return Promise.resolve(
+        calls === 1
+          ? commentPage([jiraComment('first', '2026-11-03T10:00:00Z')], 2, false)
+          : commentPage([jiraComment('second', '2026-11-02T10:00:00Z')], 2, true),
+      );
+    });
+
+    const result = await AtlassianMcpAdapter.fetchIssueComments(
+      service,
+      'cloud-1',
+      'ABC-5',
+      'https://example.atlassian.net',
+      Date.parse('2026-10-01T00:00:00Z'),
+    );
+
+    assert.strictEqual(calls, 2);
+    assert.deepStrictEqual(result.map((comment) => comment.id), ['first', 'second']);
+  });
+
+  test('fetchIssueComments_malformedEnvelopeRejects', async () => {
+    const service = makeConnectionService(() =>
+      Promise.resolve(toolResult({ data: { comments: [], total: '0', isLast: true } })),
+    );
+
+    await assert.rejects(
+      AtlassianMcpAdapter.fetchIssueComments(
+        service,
+        'cloud-1',
+        'ABC-5',
+        'https://example.atlassian.net',
+        1,
+      ),
+      /malformed page metadata/,
+    );
+  });
+
+  test('fetchIssueComments_toolErrorRejects', async () => {
+    const service = makeConnectionService(() =>
+      Promise.resolve({ isError: true, content: [{ type: 'text', text: 'unsupported tool' }] }),
+    );
+
+    await assert.rejects(
+      AtlassianMcpAdapter.fetchIssueComments(
+        service,
+        'cloud-1',
+        'ABC-5',
+        'https://example.atlassian.net',
+        1,
+      ),
+      /error result/,
+    );
+  });
+
+  test('fetchIssueComments_emptyLastPageReturnsEmpty', async () => {
+    const service = makeConnectionService(() => Promise.resolve(commentPage([], 0, true)));
+
+    const result = await AtlassianMcpAdapter.fetchIssueComments(
+      service,
+      'cloud-1',
+      'ABC-5',
+      'https://example.atlassian.net',
+      1,
+    );
+
+    assert.deepStrictEqual(result, []);
   });
 });

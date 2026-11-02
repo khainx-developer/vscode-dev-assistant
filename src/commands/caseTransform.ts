@@ -4,31 +4,31 @@ import { toUpperCase, toLowerCase, toCamelCase, toSnakeCase, toKebabCase } from 
 
 export const caseTransformCommands: DevUtilityCommand[] = [
   {
-    id: 'devUtilities.toUpperCase',
+    id: 'devAssistant.toUpperCase',
     handler: async (editor) => {
       await transformSelections(editor, toUpperCase);
     },
   },
   {
-    id: 'devUtilities.toLowerCase',
+    id: 'devAssistant.toLowerCase',
     handler: async (editor) => {
       await transformSelections(editor, toLowerCase);
     },
   },
   {
-    id: 'devUtilities.toCamelCase',
+    id: 'devAssistant.toCamelCase',
     handler: async (editor) => {
       await transformSelections(editor, toCamelCase);
     },
   },
   {
-    id: 'devUtilities.toSnakeCase',
+    id: 'devAssistant.toSnakeCase',
     handler: async (editor) => {
       await transformSelections(editor, toSnakeCase);
     },
   },
   {
-    id: 'devUtilities.toKebabCase',
+    id: 'devAssistant.toKebabCase',
     handler: async (editor) => {
       await transformSelections(editor, toKebabCase);
     },

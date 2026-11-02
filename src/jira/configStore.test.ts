@@ -11,8 +11,18 @@ const connection: JiraConnection = {
   siteId: 'cloud-1',
 };
 
-function stubConfiguration(initialQueries: JiraSavedQuery[] = []) {
+function stubConfiguration(
+  initialQueries: JiraSavedQuery[] = [],
+  initialTeamMembers?: string[],
+  initialCurrentUser?: string,
+) {
   const settings: Record<string, unknown> = { savedQueries: initialQueries };
+  if (initialTeamMembers !== undefined) {
+    settings.teamMembers = initialTeamMembers;
+  }
+  if (initialCurrentUser !== undefined) {
+    settings.currentUser = initialCurrentUser;
+  }
   const original = vscode.workspace.getConfiguration;
   const workspace = vscode.workspace as unknown as {
     getConfiguration: typeof vscode.workspace.getConfiguration;
@@ -169,5 +179,90 @@ suite('JiraConfigStore', () => {
     const store = new JiraConfigStore(fakeConnectionStore(connection), fakeConnectionService);
 
     assert.deepStrictEqual(store.getSavedQueries(), []);
+  });
+
+  test('getTeamMembers_returnsEmptyWhenUnset', () => {
+    const configuration = stubConfiguration();
+    restoreConfiguration = configuration.restore;
+    const store = new JiraConfigStore(fakeConnectionStore(connection), fakeConnectionService);
+
+    assert.deepStrictEqual(store.getTeamMembers(), []);
+  });
+
+  test('addTeamMember_trimsAndPersists', async () => {
+    const configuration = stubConfiguration();
+    restoreConfiguration = configuration.restore;
+    const store = new JiraConfigStore(fakeConnectionStore(connection), fakeConnectionService);
+
+    assert.deepStrictEqual(await store.addTeamMember('  Alex Smith  '), { ok: true });
+    assert.deepStrictEqual(configuration.settings.teamMembers, ['Alex Smith']);
+  });
+
+  test('addTeamMember_rejectsBlank', async () => {
+    const configuration = stubConfiguration();
+    restoreConfiguration = configuration.restore;
+    const store = new JiraConfigStore(fakeConnectionStore(connection), fakeConnectionService);
+
+    assert.deepStrictEqual(await store.addTeamMember('  '), {
+      ok: false,
+      reason: 'Display name is required.',
+    });
+    assert.strictEqual(configuration.settings.teamMembers, undefined);
+  });
+
+  test('addTeamMember_rejectsCaseInsensitiveDuplicate', async () => {
+    const configuration = stubConfiguration([], ['Alex Smith']);
+    restoreConfiguration = configuration.restore;
+    const store = new JiraConfigStore(fakeConnectionStore(connection), fakeConnectionService);
+
+    assert.deepStrictEqual(await store.addTeamMember('alex smith'), {
+      ok: false,
+      reason: 'This team member already exists.',
+    });
+    assert.deepStrictEqual(configuration.settings.teamMembers, ['Alex Smith']);
+  });
+
+  test('addTeamMember_rejectsCurrentUser', async () => {
+    const configuration = stubConfiguration([], [], 'Alex Smith');
+    restoreConfiguration = configuration.restore;
+    const store = new JiraConfigStore(fakeConnectionStore(connection), fakeConnectionService);
+
+    assert.deepStrictEqual(await store.addTeamMember(' alex smith '), {
+      ok: false,
+      reason: 'The current user cannot be added as a team member.',
+    });
+    assert.deepStrictEqual(configuration.settings.teamMembers, []);
+  });
+
+  test('setCurrentUser_rejectsExistingTeammate_withoutMutation', async () => {
+    const configuration = stubConfiguration([], ['Alex Smith'], 'Taylor');
+    restoreConfiguration = configuration.restore;
+    const store = new JiraConfigStore(fakeConnectionStore(connection), fakeConnectionService);
+
+    assert.deepStrictEqual(await store.setCurrentUser(' alex smith '), {
+      ok: false,
+      reason: 'The current user cannot also be a team member.',
+    });
+    assert.strictEqual(configuration.settings.currentUser, 'Taylor');
+    assert.deepStrictEqual(configuration.settings.teamMembers, ['Alex Smith']);
+  });
+
+  test('setCurrentUser_emptyClears', async () => {
+    const configuration = stubConfiguration([], [], 'Taylor');
+    restoreConfiguration = configuration.restore;
+    const store = new JiraConfigStore(fakeConnectionStore(connection), fakeConnectionService);
+
+    assert.deepStrictEqual(await store.setCurrentUser('  '), { ok: true });
+    assert.strictEqual(configuration.settings.currentUser, '');
+  });
+
+  test('removeTeamMember_matchesCaseInsensitively', async () => {
+    const configuration = stubConfiguration([], ['Alex Smith', 'Taylor']);
+    restoreConfiguration = configuration.restore;
+    const store = new JiraConfigStore(fakeConnectionStore(connection), fakeConnectionService);
+
+    await store.removeTeamMember(' alex smith ');
+
+    assert.deepStrictEqual(configuration.settings.teamMembers, ['Taylor']);
   });
 });

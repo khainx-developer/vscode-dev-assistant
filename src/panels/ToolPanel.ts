@@ -26,7 +26,7 @@ export class ToolPanel {
       return;
     }
 
-    const panel = vscode.window.createWebviewPanel('devUtilities.tool', tool.title, vscode.ViewColumn.Active, {
+    const panel = vscode.window.createWebviewPanel('devAssistant.tool', tool.title, vscode.ViewColumn.Active, {
       enableScripts: true,
       retainContextWhenHidden: true,
       localResourceRoots: [extensionUri],

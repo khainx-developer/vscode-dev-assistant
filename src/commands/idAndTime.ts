@@ -6,19 +6,19 @@ import { currentUnixTimestamp, unixTimestampToIso } from '../core/timestamp';
 
 export const idAndTimeCommands: DevUtilityCommand[] = [
   {
-    id: 'devUtilities.generateUuid',
+    id: 'devAssistant.generateUuid',
     handler: async (editor) => {
       await insertAtCursor(editor, generateUuid());
     },
   },
   {
-    id: 'devUtilities.dateToUnixTimestamp',
+    id: 'devAssistant.dateToUnixTimestamp',
     handler: async (editor) => {
       await insertAtCursor(editor, currentUnixTimestamp());
     },
   },
   {
-    id: 'devUtilities.unixTimestampToDate',
+    id: 'devAssistant.unixTimestampToDate',
     handler: async (editor) => {
       await transformSelections(editor, (text) => {
         try {

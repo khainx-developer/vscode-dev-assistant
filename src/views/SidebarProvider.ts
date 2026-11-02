@@ -54,6 +54,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this.githubServices.configStore,
       this.githubServices.connectionService,
       this.githubServices.lastSeenStore,
+      this.jiraServices.commentReadStateStore,
       this.githubServices.pullRequestCache,
       this.jiraServices.outputChannel,
     );
@@ -62,6 +63,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this.jiraServices.connectionStore,
       this.jiraServices.configStore,
       this.jiraServices.connectionService,
+      this.jiraServices.commentReadStateStore,
       this.jiraServices.pullRequestCache,
       this.jiraServices.outputChannel,
     );
@@ -70,9 +72,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.onDidReceiveMessage((message: IncomingMessage) => {
       if (message.command === 'openTool') {
-        void vscode.commands.executeCommand('devUtilities.openTool', message.toolId);
+        void vscode.commands.executeCommand('devAssistant.openTool', message.toolId);
       } else if (message.command === 'openDashboard') {
-        void vscode.commands.executeCommand('devUtilities.openDashboard');
+        void vscode.commands.executeCommand('devAssistant.openDashboard');
       } else if (typeof message.command === 'string' && message.command.startsWith('github.')) {
         void controller.handleMessage(message as GitHubIncomingMessage);
       } else if (typeof message.command === 'string' && message.command.startsWith('jira.')) {
@@ -322,43 +324,79 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     let lastState = null;
     let repoError = '';
     let authorError = '';
+    let jiraCurrentUserError = '';
 
-    function renderEntries(entries, kind) {
+    function operationFor(state, operationId) {
+      return state && state.pendingOperations ? state.pendingOperations[operationId] : null;
+    }
+
+    function operationStatus(state, operationId, successText) {
+      const operation = operationFor(state, operationId);
+      if (!operation) return '';
+      if (operation.pending) {
+        return '<div class="gh-label" role="status">Saving…</div>';
+      }
+      if (operation.result && !operation.result.ok) {
+        return '<div class="gh-error" role="alert">' + escapeHtmlClient(operation.result.reason || 'Could not complete the action.') + '</div>';
+      }
+      return operation.result && operation.result.ok
+        ? '<div class="gh-label" role="status">' + escapeHtmlClient(successText) + '</div>'
+        : '';
+    }
+
+    function renderEntries(entries, kind, state) {
       return entries
         .map((entry) => {
           const label = kind === 'repo' ? entry.owner + '/' + entry.repo : entry.username;
+          const operationId = kind === 'repo' ? 'github.removeRepo' : 'github.removeAuthor';
+          const pending = operationFor(state, operationId);
           const removeAttrs = kind === 'repo'
             ? 'data-remove-repo data-owner="' + escapeHtmlClient(entry.owner) + '" data-repo="' + escapeHtmlClient(entry.repo) + '"'
             : 'data-remove-author data-username="' + escapeHtmlClient(entry.username) + '"';
           const invalidClass = entry.status === 'invalid' ? ' invalid' : '';
           const title = entry.status === 'invalid' && entry.invalidReason ? ' title="' + escapeHtmlClient(entry.invalidReason) + '"' : '';
-          return '<li class="gh-entry' + invalidClass + '"' + title + '>' + escapeHtmlClient(label) + '<button ' + removeAttrs + '>&times;</button></li>';
+          return '<li class="gh-entry' + invalidClass + '"' + title + '>' + escapeHtmlClient(label) +
+            '<button ' + removeAttrs + ' aria-label="Remove ' + escapeHtmlClient(label) + '"' +
+            (pending && pending.pending ? ' disabled' : '') + '>&times;</button></li>';
         })
         .join('');
     }
 
     function renderGithub(state) {
       lastState = state;
+      const signInPending = operationFor(state, 'github.signIn');
       if (!state.authenticated) {
         githubRoot.innerHTML =
           '<div class="gh-section"><h3>GitHub configuration</h3><p>Sign in to GitHub to monitor repos and authors.</p>' +
           '<p class="description">Auto-refreshes every ' + ${REFRESH_INTERVAL_MINUTES} + ' minutes while this view is open.</p>' +
-          '<button class="gh-btn" data-sign-in>Sign in to GitHub</button></div>';
+          '<button class="gh-btn" data-sign-in' + (signInPending && signInPending.pending ? ' disabled' : '') + '>' +
+          (signInPending && signInPending.pending ? 'Signing in…' : 'Sign in to GitHub') + '</button>' +
+          operationStatus(state, 'github.signIn', 'Signed in.') + '</div>';
         wireActions();
         return;
       }
 
+      const addRepoPending = operationFor(state, 'github.addRepo');
+      const addAuthorPending = operationFor(state, 'github.addAuthor');
       githubRoot.innerHTML =
         '<div class="gh-section">' +
         '<h3>GitHub configuration</h3>' +
         '<p class="description">Signed in as ' + escapeHtmlClient(state.me || '') + '. Open <strong>Daily Tasks</strong> for the full dashboard.</p>' +
         '<p class="description">Auto-refreshes every ' + ${REFRESH_INTERVAL_MINUTES} + ' minutes while this view is open.</p>' +
-        '<div class="gh-row"><input id="ghRepoInput" placeholder="owner/repo" /><button class="gh-btn" data-add-repo>Add</button></div>' +
+        '<div class="gh-row"><input id="ghRepoInput" placeholder="owner/repo" aria-label="GitHub repository" />' +
+        '<button class="gh-btn" data-add-repo' + (addRepoPending && addRepoPending.pending ? ' disabled' : '') + '>' +
+        (addRepoPending && addRepoPending.pending ? 'Adding…' : 'Add') + '</button></div>' +
         '<div class="gh-error" id="ghRepoError">' + escapeHtmlClient(repoError) + '</div>' +
-        '<ul class="gh-entry-list">' + renderEntries(state.monitoredRepos, 'repo') + '</ul>' +
-        '<div class="gh-row"><input id="ghAuthorInput" placeholder="GitHub username" /><button class="gh-btn" data-add-author>Add</button></div>' +
+        operationStatus(state, 'github.addRepo', 'Repository added.') +
+        '<ul class="gh-entry-list">' + renderEntries(state.monitoredRepos, 'repo', state) + '</ul>' +
+        '<div class="gh-row"><input id="ghAuthorInput" placeholder="GitHub username" aria-label="GitHub username" />' +
+        '<button class="gh-btn" data-add-author' + (addAuthorPending && addAuthorPending.pending ? ' disabled' : '') + '>' +
+        (addAuthorPending && addAuthorPending.pending ? 'Adding…' : 'Add') + '</button></div>' +
         '<div class="gh-error" id="ghAuthorError">' + escapeHtmlClient(authorError) + '</div>' +
-        '<ul class="gh-entry-list">' + renderEntries(state.monitoredAuthors, 'author') + '</ul>' +
+        operationStatus(state, 'github.addAuthor', 'Author added.') +
+        '<ul class="gh-entry-list">' + renderEntries(state.monitoredAuthors, 'author', state) + '</ul>' +
+        operationStatus(state, 'github.removeRepo', 'Repository removed.') +
+        operationStatus(state, 'github.removeAuthor', 'Author removed.') +
         '</div>';
 
       wireActions();
@@ -367,28 +405,47 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     let jiraState = null;
     let jiraConnectionError = '';
     let jiraQueryError = '';
+    let jiraTeamError = '';
 
     function renderJira(state) {
       jiraState = state;
+      const operations = state.pendingOperations || {};
       if (!state.connected) {
         const failures = (state.failures || [])
           .filter((failure) => !failure.queryLabel)
           .map((failure) => failure.detail)
           .join(' ');
+        const connectPending = operationFor(state, 'jira.saveConnection');
         jiraRoot.innerHTML =
           '<div class="gh-section"><h3>Jira configuration</h3>' +
-          '<div class="gh-row"><input id="jiraSiteUrl" type="url" placeholder="https://your-site.atlassian.net" /></div>' +
+          '<div class="gh-row"><input id="jiraSiteUrl" type="url" aria-label="Jira site URL" placeholder="https://your-site.atlassian.net" /></div>' +
           '<div class="gh-error">' + escapeHtmlClient(jiraConnectionError || failures) + '</div>' +
-          '<button class="gh-btn" data-jira-save>Connect to Jira</button></div>';
+          '<button class="gh-btn" data-jira-save' + (connectPending && connectPending.pending ? ' disabled' : '') + '>' +
+          (connectPending && connectPending.pending ? 'Connecting…' : 'Connect to Jira') + '</button>' +
+          operationStatus(state, 'jira.saveConnection', 'Connected to Jira.') + '</div>';
         wireJiraActions();
         return;
       }
 
+      const removeQueryPending = operations['jira.removeQuery'];
       const queries = (state.savedQueries || []).map((query) =>
         '<li class="jira-query"><div class="jira-query-head"><strong>' + escapeHtmlClient(query.label) +
-        '</strong><button data-jira-remove="' + escapeHtmlClient(query.label) + '" title="Remove">&times;</button></div>' +
+        '</strong><button data-jira-remove="' + escapeHtmlClient(query.label) + '" aria-label="Remove query ' +
+        escapeHtmlClient(query.label) + '"' + (removeQueryPending && removeQueryPending.pending ? ' disabled' : '') +
+        '>&times;</button></div>' +
         '<div class="jira-query-jql">' + escapeHtmlClient(query.jql) + '</div></li>'
       ).join('');
+      const removeTeamPending = operations['jira.removeTeamMember'];
+      const teamMembers = (state.teamMembers || []).map((displayName) =>
+        '<li class="jira-query"><div class="jira-query-head"><strong>' + escapeHtmlClient(displayName) +
+        '</strong><button data-jira-remove-team="' + escapeHtmlClient(displayName) + '" aria-label="Remove teammate ' +
+        escapeHtmlClient(displayName) + '"' + (removeTeamPending && removeTeamPending.pending ? ' disabled' : '') +
+        '>&times;</button></div></li>'
+      ).join('');
+      const addTeamPending = operations['jira.addTeamMember'];
+      const setUserPending = operations['jira.setCurrentUser'];
+      const queryAddPending = operations['jira.addQuery'];
+      const disconnectPending = operations['jira.disconnect'];
       const failures = (state.failures || []).map((failure) =>
         '<div class="gh-error">' + escapeHtmlClient(
           (failure.queryLabel ? failure.queryLabel + ': ' : '') + failure.detail,
@@ -398,17 +455,33 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         '<div class="gh-section"><h3>Jira configuration</h3>' +
         '<div class="jira-status"><span><span class="dot">●</span> Connected to <span class="site">' +
         escapeHtmlClient(state.siteUrl || '') + '</span></span>' +
-        '<button data-jira-disconnect>Disconnect</button></div>' +
+        '<button data-jira-disconnect' + (disconnectPending && disconnectPending.pending ? ' disabled' : '') + '>' +
+        (disconnectPending && disconnectPending.pending ? 'Disconnecting…' : 'Disconnect') + '</button></div>' +
+        operationStatus(state, 'jira.disconnect', 'Disconnected.') +
         '<label class="gh-label" for="jiraCurrentUser">Your Jira display name (for &quot;My Jira Tasks&quot;)</label>' +
         '<div class="gh-row"><input id="jiraCurrentUser" placeholder="e.g. Jane Doe" value="' + escapeHtmlClient(state.currentUser || '') + '" />' +
-        '<button class="gh-btn" data-jira-save-user>Save</button></div>' +
+        '<button class="gh-btn" data-jira-save-user' + (setUserPending && setUserPending.pending ? ' disabled' : '') + '>' +
+        (setUserPending && setUserPending.pending ? 'Saving…' : 'Save') + '</button></div>' +
+        '<div class="gh-error">' + escapeHtmlClient(jiraCurrentUserError) + '</div>' +
+        operationStatus(state, 'jira.setCurrentUser', 'Jira user saved.') +
+        '<label class="gh-label" for="jiraTeamMember">Monitored Jira teammates</label>' +
+        '<ul class="jira-query-list">' + (teamMembers || '<li class="gh-error" style="border:none;padding:0;">No teammates configured.</li>') + '</ul>' +
+        '<div class="gh-row"><input id="jiraTeamMember" placeholder="e.g. Alex Smith" aria-label="Jira teammate display name" />' +
+        '<button class="gh-btn" data-jira-add-team' + (addTeamPending && addTeamPending.pending ? ' disabled' : '') + '>' +
+        (addTeamPending && addTeamPending.pending ? 'Adding…' : 'Add teammate') + '</button></div>' +
+        '<div class="gh-error">' + escapeHtmlClient(jiraTeamError) + '</div>' +
+        operationStatus(state, 'jira.addTeamMember', 'Teammate added.') +
+        operationStatus(state, 'jira.removeTeamMember', 'Teammate removed.') +
         '<ul class="jira-query-list">' + (queries || '<li class="gh-error" style="border:none;padding:0;">No saved queries yet.</li>') + '</ul>' +
         '<label class="gh-label" for="jiraQueryLabel">Query label</label>' +
         '<div class="gh-row"><input id="jiraQueryLabel" placeholder="e.g. My open tasks" /></div>' +
         '<label class="gh-label" for="jiraJql">JQL</label>' +
         '<div class="gh-row"><textarea id="jiraJql" placeholder="assignee = currentUser() AND resolution = Unresolved"></textarea></div>' +
         '<div class="gh-error">' + escapeHtmlClient(jiraQueryError) + '</div>' +
-        '<button class="gh-btn" data-jira-add>Add saved query</button>' +
+        '<button class="gh-btn" data-jira-add' + (queryAddPending && queryAddPending.pending ? ' disabled' : '') + '>' +
+        (queryAddPending && queryAddPending.pending ? 'Adding…' : 'Add saved query') + '</button>' +
+        operationStatus(state, 'jira.addQuery', 'Query added.') +
+        operationStatus(state, 'jira.removeQuery', 'Query removed.') +
         failures + '</div>';
       wireJiraActions();
     }
@@ -432,12 +505,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       const saveUser = jiraRoot.querySelector('[data-jira-save-user]');
       if (saveUser) {
         saveUser.addEventListener('click', () => {
+          jiraCurrentUserError = '';
           post({
             command: 'jira.setCurrentUser',
             displayName: document.getElementById('jiraCurrentUser').value,
           });
         });
       }
+
+      const addTeamMember = jiraRoot.querySelector('[data-jira-add-team]');
+      if (addTeamMember) {
+        addTeamMember.addEventListener('click', () => {
+          const input = document.getElementById('jiraTeamMember');
+          if (input && input.value.trim()) {
+            jiraTeamError = '';
+            post({ command: 'jira.addTeamMember', displayName: input.value.trim() });
+            input.value = '';
+          }
+        });
+      }
+
+      jiraRoot.querySelectorAll('[data-jira-remove-team]').forEach((button) => {
+        button.addEventListener('click', () =>
+          post({
+            command: 'jira.removeTeamMember',
+            displayName: button.getAttribute('data-jira-remove-team'),
+          })
+        );
+      });
 
       const add = jiraRoot.querySelector('[data-jira-add]');
       if (add) {
@@ -518,6 +613,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         if (jiraState) renderJira(jiraState);
       } else if (message && message.command === 'jira.queryResult') {
         jiraQueryError = message.ok ? '' : (message.reason || 'Could not add saved query.');
+        if (jiraState) renderJira(jiraState);
+      } else if (message && message.command === 'jira.teamMemberResult') {
+        jiraTeamError = message.ok ? '' : (message.reason || 'Could not update Jira teammates.');
+        if (jiraState) renderJira(jiraState);
+      } else if (message && message.command === 'jira.currentUserResult') {
+        jiraCurrentUserError = message.ok ? '' : (message.reason || 'Could not save your Jira display name.');
         if (jiraState) renderJira(jiraState);
       }
     });

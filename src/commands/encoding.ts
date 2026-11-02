@@ -6,13 +6,13 @@ import { urlEncode, urlDecode } from '../core/url';
 
 export const encodingCommands: DevUtilityCommand[] = [
   {
-    id: 'devUtilities.base64Encode',
+    id: 'devAssistant.base64Encode',
     handler: async (editor) => {
       await transformSelections(editor, base64Encode);
     },
   },
   {
-    id: 'devUtilities.base64Decode',
+    id: 'devAssistant.base64Decode',
     handler: async (editor) => {
       await transformSelections(editor, (text) => {
         try {
@@ -25,13 +25,13 @@ export const encodingCommands: DevUtilityCommand[] = [
     },
   },
   {
-    id: 'devUtilities.urlEncode',
+    id: 'devAssistant.urlEncode',
     handler: async (editor) => {
       await transformSelections(editor, urlEncode);
     },
   },
   {
-    id: 'devUtilities.urlDecode',
+    id: 'devAssistant.urlDecode',
     handler: async (editor) => {
       await transformSelections(editor, (text) => {
         try {

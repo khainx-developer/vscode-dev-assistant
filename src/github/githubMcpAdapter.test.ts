@@ -29,6 +29,36 @@ function makeConnectionService(opts: {
   return { service, connectCalls };
 }
 
+function makeListedPullRequest(owner: string, repo: string, number: number): unknown {
+  return {
+    number,
+    title: `PR ${number}`,
+    html_url: `https://github.com/${owner}/${repo}/pull/${number}`,
+    user: { login: 'author' },
+    state: 'open',
+    draft: false,
+    merged_at: null,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-02T00:00:00Z',
+  };
+}
+
+function makePullRequestComment(id: number): {
+  id: number;
+  user: { login: string };
+  body: string;
+  created_at: string;
+  html_url: string;
+} {
+  return {
+    id,
+    user: { login: `reviewer-${id}` },
+    body: `Comment ${id}`,
+    created_at: '2026-01-02T02:00:00Z',
+    html_url: `https://github.com/acme/widgets/pull/1#issuecomment-${id}`,
+  };
+}
+
 suite('GithubMcpAdapter', () => {
   test('fetchOpenPullRequests_sessionBearerPath_succeedsWithoutCallingConnect', async () => {
     let connectCount = 0;
@@ -75,7 +105,7 @@ suite('GithubMcpAdapter', () => {
     assert.deepStrictEqual(connectCalls[1], undefined);
   });
 
-  test('fetchOpenPullRequests_mapsMultiplePrs_filtersDrafts_attachesLabelColors', async () => {
+  test('fetchOpenPullRequests_mapsMultiplePrs_includesDraftsAndAttachesLabelColors', async () => {
     const { service } = makeConnectionService({
       callTool: async (_serverId, name, args) => {
         const typedArgs = args as Record<string, unknown>;
@@ -134,8 +164,9 @@ suite('GithubMcpAdapter', () => {
 
     const result = await GithubMcpAdapter.fetchOpenPullRequests(service, REPO, SESSION);
 
-    assert.strictEqual(result.length, 1);
+    assert.strictEqual(result.length, 2);
     assert.strictEqual(result[0].number, 1);
+    assert.strictEqual(result[0].draft, false);
     assert.strictEqual(result[0].headRef, 'feature/PROJ-123-add-feature');
     assert.strictEqual(result[0].mergeable, 'MERGEABLE');
     assert.deepStrictEqual(result[0].labels, [{ name: 'bug', color: 'ff0000' }]);
@@ -143,6 +174,151 @@ suite('GithubMcpAdapter', () => {
     assert.deepStrictEqual(result[0].reviews, [{ author: 'dave', state: 'APPROVED', submittedAt: '2026-01-02T01:00:00Z' }]);
     assert.strictEqual(result[0].comments[0].author, 'erin');
     assert.deepStrictEqual(result[0].requestedReviewers, ['bob']);
+    assert.strictEqual(result[1].number, 2);
+    assert.strictEqual(result[1].draft, true);
+  });
+
+  test('fetchOpenPullRequests_getComments_pagesFromOneUntilShortPage', async () => {
+    const repo = { owner: 'comment-pages', repo: 'short-page' };
+    const pageOne = Array.from({ length: 100 }, (_, index) => makePullRequestComment(index + 1));
+    const commentCalls: unknown[] = [];
+    const { service } = makeConnectionService({
+      callTool: async (_serverId, name, args) => {
+        if (name === 'list_pull_requests') {
+          return toolResult([makeListedPullRequest(repo.owner, repo.repo, 101)]);
+        }
+        if (name === 'pull_request_read') {
+          const typedArgs = args as Record<string, unknown>;
+          if (typedArgs.method === 'get') return toolResult({ mergeable: true });
+          if (typedArgs.method === 'get_comments') {
+            commentCalls.push(args);
+            return toolResult(typedArgs.page === 1 ? pageOne : []);
+          }
+          return toolResult([]);
+        }
+        throw new Error(`unexpected tool call: ${name}`);
+      },
+    });
+
+    const result = await GithubMcpAdapter.fetchOpenPullRequests(service, repo, SESSION);
+
+    assert.deepStrictEqual(commentCalls, [
+      { owner: repo.owner, repo: repo.repo, pullNumber: 101, method: 'get_comments', page: 1, perPage: 100 },
+      { owner: repo.owner, repo: repo.repo, pullNumber: 101, method: 'get_comments', page: 2, perPage: 100 },
+    ]);
+    assert.strictEqual(result[0].comments.length, 100);
+  });
+
+  test('fetchOpenPullRequests_getComments_concatenatesInOrder', async () => {
+    const repo = { owner: 'comment-pages', repo: 'order' };
+    const pageOne = Array.from({ length: 100 }, (_, index) => makePullRequestComment(index + 1));
+    const pageTwo = [makePullRequestComment(101), makePullRequestComment(102)];
+    const { service } = makeConnectionService({
+      callTool: async (_serverId, name, args) => {
+        if (name === 'list_pull_requests') {
+          return toolResult([makeListedPullRequest(repo.owner, repo.repo, 102)]);
+        }
+        if (name === 'pull_request_read') {
+          const typedArgs = args as Record<string, unknown>;
+          if (typedArgs.method === 'get') return toolResult({ mergeable: true });
+          if (typedArgs.method === 'get_comments') {
+            return toolResult(typedArgs.page === 1 ? pageOne : pageTwo);
+          }
+          return toolResult([]);
+        }
+        throw new Error(`unexpected tool call: ${name}`);
+      },
+    });
+
+    const result = await GithubMcpAdapter.fetchOpenPullRequests(service, repo, SESSION);
+
+    assert.deepStrictEqual(
+      result[0].comments.map((comment) => comment.id),
+      Array.from({ length: 102 }, (_, index) => String(index + 1)),
+    );
+  });
+
+  test('fetchOpenPullRequests_getComments_mapsAuthorLogin', async () => {
+    const repo = { owner: 'comment-pages', repo: 'author-login' };
+    const { service } = makeConnectionService({
+      callTool: async (_serverId, name, args) => {
+        if (name === 'list_pull_requests') {
+          return toolResult([makeListedPullRequest(repo.owner, repo.repo, 103)]);
+        }
+        if (name === 'pull_request_read') {
+          const typedArgs = args as Record<string, unknown>;
+          if (typedArgs.method === 'get') return toolResult({ mergeable: true });
+          if (typedArgs.method === 'get_comments') {
+            return toolResult([{
+              ...makePullRequestComment(103),
+              user: { login: 'reviewer-login' },
+            }]);
+          }
+          return toolResult([]);
+        }
+        throw new Error(`unexpected tool call: ${name}`);
+      },
+    });
+
+    const result = await GithubMcpAdapter.fetchOpenPullRequests(service, repo, SESSION);
+
+    assert.strictEqual(result[0].comments[0].author, 'reviewer-login');
+  });
+
+  test('fetchOpenPullRequests_getComments_emptyPageStops', async () => {
+    const repo = { owner: 'comment-pages', repo: 'empty-page' };
+    const commentPages: unknown[] = [];
+    const { service } = makeConnectionService({
+      callTool: async (_serverId, name, args) => {
+        if (name === 'list_pull_requests') {
+          return toolResult([makeListedPullRequest(repo.owner, repo.repo, 104)]);
+        }
+        if (name === 'pull_request_read') {
+          const typedArgs = args as Record<string, unknown>;
+          if (typedArgs.method === 'get') return toolResult({ mergeable: true });
+          if (typedArgs.method === 'get_comments') {
+            commentPages.push(typedArgs.page);
+            return toolResult([]);
+          }
+          return toolResult([]);
+        }
+        throw new Error(`unexpected tool call: ${name}`);
+      },
+    });
+
+    const result = await GithubMcpAdapter.fetchOpenPullRequests(service, repo, SESSION);
+
+    assert.deepStrictEqual(commentPages, [1]);
+    assert.deepStrictEqual(result[0].comments, []);
+  });
+
+  test('fetchOpenPullRequests_getComments_failureUsesExistingErrorPath', async () => {
+    const repo = { owner: 'comment-pages', repo: 'failure' };
+    const { service } = makeConnectionService({
+      callTool: async (_serverId, name, args) => {
+        if (name === 'list_pull_requests') {
+          return toolResult([makeListedPullRequest(repo.owner, repo.repo, 105)]);
+        }
+        if (name === 'pull_request_read') {
+          const typedArgs = args as Record<string, unknown>;
+          if (typedArgs.method === 'get') return toolResult({ mergeable: true });
+          if (typedArgs.method === 'get_comments') {
+            throw { serverId: 'github', category: 'network', detail: 'comments unavailable' };
+          }
+          return toolResult([]);
+        }
+        throw new Error(`unexpected tool call: ${name}`);
+      },
+    });
+
+    await assert.rejects(
+      GithubMcpAdapter.fetchOpenPullRequests(service, repo, SESSION),
+      (error: { status?: number; message?: string }) => {
+        assert.strictEqual(error.status, 0);
+        assert.strictEqual(error.message, 'comments unavailable');
+        return true;
+      },
+    );
   });
 
   test('fetchOpenPullRequests_unchangedPrs_reusesMetadataAndLabelColors', async () => {

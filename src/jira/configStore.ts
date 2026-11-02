@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { McpConnectionService } from '../mcp/connectionService';
 import { AtlassianMcpAdapter } from './atlassianMcpAdapter';
 import type { JiraConnectionStore } from './connectionStore';
-import type { JiraSavedQuery } from './types';
+import type { JiraSavedQuery, OperationResult } from './types';
 
 export class JiraConfigStore {
   constructor(
@@ -19,10 +19,59 @@ export class JiraConfigStore {
     return value === '' ? null : value;
   }
 
-  async setCurrentUser(displayName: string): Promise<void> {
-    await vscode.workspace
-      .getConfiguration('devAssistant.jira')
-      .update('currentUser', displayName.trim(), vscode.ConfigurationTarget.Global);
+  getTeamMembers(): string[] {
+    return vscode.workspace.getConfiguration('devAssistant.jira').get<string[]>('teamMembers', []);
+  }
+
+  async addTeamMember(displayName: string): Promise<OperationResult> {
+    const trimmedDisplayName = displayName.trim();
+    if (trimmedDisplayName === '') {
+      return { ok: false, reason: 'Display name is required.' };
+    }
+
+    const cfg = vscode.workspace.getConfiguration('devAssistant.jira');
+    const current = cfg.get<string[]>('teamMembers', []);
+    const normalizedDisplayName = trimmedDisplayName.toLowerCase();
+    if (current.some((member) => member.toLowerCase() === normalizedDisplayName)) {
+      return { ok: false, reason: 'This team member already exists.' };
+    }
+
+    const currentUser = cfg.get<string>('currentUser', '').trim();
+    if (currentUser.toLowerCase() === normalizedDisplayName) {
+      return { ok: false, reason: 'The current user cannot be added as a team member.' };
+    }
+
+    await cfg.update(
+      'teamMembers',
+      [...current, trimmedDisplayName],
+      vscode.ConfigurationTarget.Global,
+    );
+    return { ok: true };
+  }
+
+  async removeTeamMember(displayName: string): Promise<void> {
+    const normalizedDisplayName = displayName.trim().toLowerCase();
+    const cfg = vscode.workspace.getConfiguration('devAssistant.jira');
+    const current = cfg.get<string[]>('teamMembers', []);
+    const filtered = current.filter((member) => member.toLowerCase() !== normalizedDisplayName);
+    await cfg.update('teamMembers', filtered, vscode.ConfigurationTarget.Global);
+  }
+
+  async setCurrentUser(displayName: string): Promise<OperationResult> {
+    const trimmedDisplayName = displayName.trim();
+    const cfg = vscode.workspace.getConfiguration('devAssistant.jira');
+    const teamMembers = cfg.get<string[]>('teamMembers', []);
+    const normalizedDisplayName = trimmedDisplayName.toLowerCase();
+
+    if (
+      normalizedDisplayName !== '' &&
+      teamMembers.some((member) => member.toLowerCase() === normalizedDisplayName)
+    ) {
+      return { ok: false, reason: 'The current user cannot also be a team member.' };
+    }
+
+    await cfg.update('currentUser', trimmedDisplayName, vscode.ConfigurationTarget.Global);
+    return { ok: true };
   }
 
   async addQuery(label: string, jql: string): Promise<{ ok: true } | { ok: false; reason: string }> {

@@ -11,6 +11,7 @@ import { PullRequestCache } from './github/pullRequestCache';
 import { McpConnectionService } from './mcp/connectionService';
 import { JiraConfigStore } from './jira/configStore';
 import { JiraConnectionStore } from './jira/connectionStore';
+import { CommentReadStateStore } from './attention/commentReadStateStore';
 
 export function activate(context: vscode.ExtensionContext): void {
   for (const command of allCommands) {
@@ -29,7 +30,7 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('devUtilities.openTool', (toolId: string) => {
+    vscode.commands.registerCommand('devAssistant.openTool', (toolId: string) => {
       ToolPanel.createOrShow(context.extensionUri, toolId);
     })
   );
@@ -41,12 +42,14 @@ export function activate(context: vscode.ExtensionContext): void {
   const configStore = new GitHubConfigStore(authService, connectionService);
   const jiraConnectionStore = new JiraConnectionStore(context, connectionService);
   const jiraConfigStore = new JiraConfigStore(jiraConnectionStore, connectionService);
+  const commentReadStateStore = new CommentReadStateStore(context);
   const jiraOutputChannel = vscode.window.createOutputChannel('Dev Assistant');
   context.subscriptions.push(jiraOutputChannel);
   const jiraServices = {
     connectionStore: jiraConnectionStore,
     configStore: jiraConfigStore,
     connectionService,
+    commentReadStateStore,
     pullRequestCache,
     outputChannel: jiraOutputChannel,
   };
@@ -61,17 +64,17 @@ export function activate(context: vscode.ExtensionContext): void {
     pullRequestCache,
   }, jiraServices);
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('devUtilities.sidebar', sidebarProvider)
+    vscode.window.registerWebviewViewProvider('devAssistant.sidebar', sidebarProvider)
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('devUtilities.githubSignIn', () => {
+    vscode.commands.registerCommand('devAssistant.githubSignIn', () => {
       void authService.getSession(true);
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('devUtilities.openDashboard', () => {
+    vscode.commands.registerCommand('devAssistant.openDashboard', () => {
       DashboardPanel.createOrShow(context.extensionUri, context, {
         authService,
         configStore,

@@ -235,6 +235,7 @@ function mapPullRequest(
     url: entry.html_url,
     author: entry.user?.login ?? '',
     state: entry.state === 'open' ? 'OPEN' : entry.merged_at ? 'MERGED' : 'CLOSED',
+    draft: entry.draft,
     mergedAt: entry.merged_at,
     createdAt: entry.created_at,
     updatedAt: entry.updated_at,
@@ -352,7 +353,36 @@ export const GithubMcpAdapter = {
     void session;
     return { remaining: Infinity, resetAt: new Date(0).toISOString() };
   },
-};
+}
+
+async function fetchAllPullRequestComments(
+  connectionService: McpConnectionService,
+  repo: MonitoredRepo,
+  session: GitHubSession,
+  pullNumber: number,
+): Promise<PullRequestComment[]> {
+  const comments: PullRequestComment[] = [];
+  for (let page = 1; ; page += 1) {
+    const pageComments = parseToolResultText<PullRequestComment[]>(
+      await callWithSessionFallback(connectionService, session, 'pull_request_read', {
+        owner: repo.owner,
+        repo: repo.repo,
+        pullNumber,
+        method: 'get_comments',
+        page,
+        perPage: 100,
+      }),
+    );
+    if (!Array.isArray(pageComments)) {
+      throw new Error('GitHub MCP get_comments result must be an array.');
+    }
+
+    comments.push(...pageComments);
+    if (pageComments.length < 100) {
+      return comments;
+    }
+  }
+}
 
 async function fetchOpenPullRequestsImpl(
   connectionService: McpConnectionService,
@@ -367,7 +397,6 @@ async function fetchOpenPullRequestsImpl(
       state: 'open',
     }),
   );
-  const nonDraft = listed.filter((entry) => !entry.draft);
   const activeDetailsKeys = new Set(listed.map((entry) => `${session.username}:${repoKey}#${entry.number}`));
   const detailsCachePrefix = `${session.username}:${repoKey}#`;
   for (const cachedKey of pullRequestDetailsCache.keys()) {
@@ -377,7 +406,7 @@ async function fetchOpenPullRequestsImpl(
   }
 
   const details = await Promise.all(
-    nonDraft.map(async (entry) => {
+    listed.map(async (entry) => {
       const detailsKey = `${session.username}:${repoKey}#${entry.number}`;
       const cachedDetails = pullRequestDetailsCache.get(detailsKey);
       const metadataPromise = cachedDetails?.updatedAt === entry.updated_at
@@ -395,12 +424,7 @@ async function fetchOpenPullRequestsImpl(
             pullNumber: entry.number,
             method: 'get_reviews',
           }).then((result) => parseToolResultText<PullRequestReview[]>(result)),
-          callWithSessionFallback(connectionService, session, 'pull_request_read', {
-            owner: repo.owner,
-            repo: repo.repo,
-            pullNumber: entry.number,
-            method: 'get_comments',
-          }).then((result) => parseToolResultText<PullRequestComment[]>(result)),
+          fetchAllPullRequestComments(connectionService, repo, session, entry.number),
         ]).then(([detail, reviews, comments]) => {
           const fetchedDetails = { updatedAt: entry.updated_at, detail, reviews, comments };
           pullRequestDetailsCache.set(detailsKey, fetchedDetails);
@@ -420,7 +444,7 @@ async function fetchOpenPullRequestsImpl(
   );
 
   const uniqueLabelNames = [...new Set(
-    nonDraft.flatMap((entry) => (entry.labels ?? []).map(getLabelName).filter((name): name is string => name !== undefined)),
+    listed.flatMap((entry) => (entry.labels ?? []).map(getLabelName).filter((name): name is string => name !== undefined)),
   )];
   const labelColors = new Map<string, string>();
   const uncachedLabelNames = uniqueLabelNames.filter((name) => {

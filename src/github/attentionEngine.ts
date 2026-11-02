@@ -1,5 +1,10 @@
+import type { CommentAttentionSummary } from '../attention/commentAttention';
 import { AttentionItem, AttentionReason, GitHubAttentionResult, PullRequestSummary, ReviewState } from './types';
 import { prKey } from './lastSeenStore';
+
+export function githubCommentSourceKey(repoKey: string, number: number): string {
+  return `github:${prKey(repoKey, number)}`;
+}
 
 function classifyReviewState(pr: PullRequestSummary): ReviewState {
   if (pr.reviews.length === 0) {
@@ -12,7 +17,7 @@ function classifyReviewState(pr: PullRequestSummary): ReviewState {
       latestByAuthor.set(review.author, review);
     }
   }
-  const states = [...latestByAuthor.values()].map((r) => r.state);
+  const states = [...latestByAuthor.values()].map((review) => review.state);
   if (states.includes('CHANGES_REQUESTED')) return 'changes_requested';
   if (states.includes('APPROVED')) return 'approved';
   return 'pending_review';
@@ -22,26 +27,22 @@ function computeReasonsForPr(
   pr: PullRequestSummary,
   isMine: boolean,
   isTeam: boolean,
-  seenAt: number | undefined,
   me: string,
-  now: number,
+  commentAttention: CommentAttentionSummary | undefined,
 ): AttentionReason[] {
   const reasons: AttentionReason[] = [];
-  const effectiveSeenAt = seenAt ?? now; // first-sight: never earlier than "now" -> nothing after it qualifies
+  const hasUnreadComments = (commentAttention?.unreadCount ?? 0) > 0;
   if (isMine) {
-    const hasNewActivity =
-      pr.comments.some((c) => new Date(c.createdAt).getTime() > effectiveSeenAt) ||
-      pr.reviews.some((r) => new Date(r.submittedAt).getTime() > effectiveSeenAt);
-    if (hasNewActivity) reasons.push('new_activity');
-    if (pr.reviews.length === 0) reasons.push('waiting_for_review');
-    if (pr.state === 'MERGED' && pr.mergedAt && new Date(pr.mergedAt).getTime() > effectiveSeenAt) {
-      reasons.push('merged');
-    }
+    if (classifyReviewState(pr) === 'changes_requested') reasons.push('pr-changes-requested');
+    if (pr.checkStatus === 'FAILURE' || pr.checkStatus === 'ERROR') reasons.push('pr-checks-failing');
+    if (hasUnreadComments) reasons.push('pr-unread-comment');
+    if (pr.reviews.length === 0) reasons.push('pr-waiting-review');
   }
   if (isTeam) {
-    const reviewedByMe = pr.reviews.some((r) => r.author === me);
+    if (hasUnreadComments) reasons.push('pr-unread-comment');
+    const reviewedByMe = pr.reviews.some((review) => review.author === me);
     if (pr.requestedReviewers.includes(me) && !reviewedByMe) {
-      reasons.push('needs_my_review');
+      reasons.push('pr-needs-my-review');
     }
   }
   return reasons;
@@ -50,26 +51,27 @@ function computeReasonsForPr(
 export const AttentionEngine = {
   computeAttentionState(
     prs: PullRequestSummary[],
-    lastSeen: Map<string, number>,
+    reviewLastSeen: Map<string, number>,
     me: string,
     monitoredAuthors: string[],
     now: number,
+    commentAttentionBySource: Map<string, CommentAttentionSummary>,
   ): GitHubAttentionResult {
+    void reviewLastSeen;
+    void now;
     const myPRs: AttentionItem[] = [];
     const teamPRs: AttentionItem[] = [];
     const attentionInbox: AttentionItem[] = [];
 
     for (const pr of prs) {
       const isMine = pr.author === me;
-      const isTeam = !isMine && monitoredAuthors.includes(pr.author);
-      if (!isMine && !isTeam) continue;
+      const isTeam = !isMine && !pr.draft && monitoredAuthors.includes(pr.author);
+      if ((!isMine && !isTeam) || pr.state !== 'OPEN') continue;
 
-      const key = prKey(pr.repoKey, pr.number);
-      const seenAt = lastSeen.get(key);
+      const commentAttention = commentAttentionBySource.get(githubCommentSourceKey(pr.repoKey, pr.number));
       const reviewState = classifyReviewState(pr);
-      const reasons = computeReasonsForPr(pr, isMine, isTeam, seenAt, me, now);
+      const reasons = computeReasonsForPr(pr, isMine, isTeam, me, commentAttention);
       const item: AttentionItem = { pr, reviewState, reasons };
-
       if (isMine) myPRs.push(item);
       if (isTeam) teamPRs.push(item);
       if (reasons.length > 0) attentionInbox.push(item);
