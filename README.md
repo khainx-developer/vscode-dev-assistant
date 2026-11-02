@@ -43,17 +43,17 @@ Press `F5` in VS Code to launch an Extension Development Host with the extension
 
 ## Installing
 
-Install **Dev Assistant** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=dev-assistant-tools.daily-tasks), or build it yourself:
+Install **Dev Assistant Toolkit** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=dev-assistant-tools.dev-assistant-toolkit), or build it yourself:
 
 ```bash
 npm install
 npm run package
 ```
 
-This produces `daily-tasks-<version>.vsix` in the project root, installable via:
+This produces `dev-assistant-toolkit-<version>.vsix` in the project root, installable via:
 
 - VS Code UI: Extensions view → `...` menu → **Install from VSIX...**
-- or CLI: `code --install-extension daily-tasks-<version>.vsix`
+- or CLI: `code --install-extension dev-assistant-toolkit-<version>.vsix`
 
 ## Publishing
 
