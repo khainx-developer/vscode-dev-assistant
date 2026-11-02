@@ -43,6 +43,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const jiraConnectionStore = new JiraConnectionStore(context, connectionService);
   const jiraConfigStore = new JiraConfigStore(jiraConnectionStore, connectionService);
   const jiraOutputChannel = vscode.window.createOutputChannel('Dev Assistant');
+  context.subscriptions.push(jiraOutputChannel);
   const jiraServices = {
     connectionStore: jiraConnectionStore,
     configStore: jiraConfigStore,

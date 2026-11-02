@@ -24,6 +24,27 @@ suite('McpErrorMapper', () => {
     assert.deepStrictEqual(result, { serverId: 'github', category: 'rate-limited', detail: 'Rate limited' });
   });
 
+  test('mapError_streamableHttpErrorCode429_rateLimited', () => {
+    const result = McpErrorMapper.mapError('github', {
+      code: 429,
+      message: 'Streamable HTTP error: Error POSTing to endpoint: too many requests',
+    }, 'https://api.githubcopilot.com/mcp/?token=do-not-display#fragment');
+    assert.deepStrictEqual(result, {
+      serverId: 'github',
+      category: 'rate-limited',
+      detail: 'Streamable HTTP error: Error POSTing to endpoint: too many requests (endpoint: https://api.githubcopilot.com/mcp/; HTTP status: 429)',
+    });
+  });
+
+  test('mapError_unknownShape_includesEndpointAndUnavailableStatus', () => {
+    const result = McpErrorMapper.mapError('atlassian', new Error('fetch failed'), 'https://mcp.atlassian.com/v2/mcp');
+    assert.deepStrictEqual(result, {
+      serverId: 'atlassian',
+      category: 'network',
+      detail: 'fetch failed (endpoint: https://mcp.atlassian.com/v2/mcp; HTTP status: unavailable)',
+    });
+  });
+
   test('mapError_status400_invalidEntry', () => {
     const result = McpErrorMapper.mapError('atlassian', { status: 400, message: 'Bad request' });
     assert.deepStrictEqual(result, { serverId: 'atlassian', category: 'invalid-entry', detail: 'Bad request' });

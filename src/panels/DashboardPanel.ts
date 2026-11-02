@@ -82,6 +82,7 @@ export class DashboardPanel {
       githubServices.connectionService,
       githubServices.lastSeenStore,
       githubServices.pullRequestCache,
+      jiraServices.outputChannel,
     );
     this.jiraController = new JiraViewController(
       panel,

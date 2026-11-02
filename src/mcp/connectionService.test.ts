@@ -131,7 +131,11 @@ suite('McpConnectionService', () => {
 
     await assert.rejects(
       service.callTool('atlassian', 'search', {}),
-      { serverId: 'atlassian', category: 'auth-expired', detail: 'Token expired' },
+      {
+        serverId: 'atlassian',
+        category: 'auth-expired',
+        detail: 'Token expired (endpoint: https://mcp.atlassian.com/v2/mcp; HTTP status: 401)',
+      },
     );
   });
 
@@ -194,7 +198,11 @@ suite('McpConnectionService', () => {
 
     await assert.rejects(
       service.connect('atlassian'),
-      { serverId: 'atlassian', category: 'auth-expired', detail: 'Dynamic client registration rejected' },
+      {
+        serverId: 'atlassian',
+        category: 'auth-expired',
+        detail: 'Dynamic client registration rejected (endpoint: https://mcp.atlassian.com/v2/mcp; HTTP status: 401)',
+      },
     );
     assert.strictEqual(service.isConnected('atlassian'), false);
     assert.strictEqual(redirectCalls.length, 0);

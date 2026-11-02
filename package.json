@@ -230,6 +230,7 @@
     "@modelcontextprotocol/sdk": "1.32.2"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.90.0",
     "@typescript-eslint/eslint-plugin": "^7.14.1",

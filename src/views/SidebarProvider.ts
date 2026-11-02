@@ -55,6 +55,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this.githubServices.connectionService,
       this.githubServices.lastSeenStore,
       this.githubServices.pullRequestCache,
+      this.jiraServices.outputChannel,
     );
     const jiraController = new JiraViewController(
       webviewView,

@@ -28,7 +28,6 @@ export class GitHubViewController {
   private failures: GitHubFailure[] = [];
   private me: string | undefined;
   private monitoredAuthorNames: string[] = [];
-  private readonly outputChannel = vscode.window.createOutputChannel('Dev Assistant');
 
   constructor(
     _context: vscode.ExtensionContext,
@@ -38,6 +37,7 @@ export class GitHubViewController {
     private readonly connectionService: McpConnectionService,
     private readonly lastSeenStore: LastSeenStore,
     private readonly pullRequestCache: PullRequestCache = new PullRequestCache(),
+    private readonly outputChannel: Pick<vscode.OutputChannel, 'appendLine'> = { appendLine: () => {} },
   ) {}
 
   async handleMessage(msg: GitHubIncomingMessage): Promise<void> {

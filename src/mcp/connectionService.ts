@@ -111,12 +111,16 @@ export class McpConnectionService {
     }
     const connected = this.connectedClients.get(serverId);
     if (!connected) {
-      throw McpErrorMapper.mapError(serverId, new Error(`Not connected to "${serverId}"`));
+      throw McpErrorMapper.mapError(
+        serverId,
+        new Error(`Not connected to "${serverId}"`),
+        this.serverUrls.get(serverId),
+      );
     }
     try {
       return await connected.client.callTool({ name, arguments: args });
     } catch (error) {
-      throw McpErrorMapper.mapError(serverId, error);
+      throw McpErrorMapper.mapError(serverId, error, this.serverUrls.get(serverId));
     }
   }
 
@@ -160,7 +164,7 @@ export class McpConnectionService {
 
       this.connectedClients.set(serverId, { client, transport });
     } catch (error) {
-      throw McpErrorMapper.mapError(serverId, error);
+      throw McpErrorMapper.mapError(serverId, error, this.serverUrls.get(serverId));
     }
   }
 

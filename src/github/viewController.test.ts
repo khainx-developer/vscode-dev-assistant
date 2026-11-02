@@ -448,6 +448,7 @@ suite('GitHubViewController', () => {
       throw { status: 500, message: 'Internal Server Error' };
     });
     const config: GitHubExtensionConfig = { monitoredRepos: [{ owner: 'o', repo: 'r' }], monitoredAuthors: [] };
+    const outputChannel = { appendLine: (value: string) => appended.push(value) };
     const controller = new GitHubViewController(
       makeContext(),
       view,
@@ -456,13 +457,8 @@ suite('GitHubViewController', () => {
       client,
       new LastSeenStore(makeContext()),
       new PullRequestCache(),
+      outputChannel,
     );
-    const outputChannel = (controller as any).outputChannel as vscode.OutputChannel;
-    const originalAppendLine = outputChannel.appendLine.bind(outputChannel);
-    outputChannel.appendLine = (value: string) => {
-      appended.push(value);
-      return originalAppendLine(value);
-    };
 
     await controller.refresh();
 
