@@ -43,22 +43,22 @@ Press `F5` in VS Code to launch an Extension Development Host with the extension
 
 ## Installing
 
-Install **Dev Assistant** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=khainx-developer.dev-assistant), or build it yourself:
+Install **Dev Assistant** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=dev-assistant-tools.daily-tasks), or build it yourself:
 
 ```bash
 npm install
 npm run package
 ```
 
-This produces `dev-assistant-<version>.vsix` in the project root, installable via:
+This produces `daily-tasks-<version>.vsix` in the project root, installable via:
 
 - VS Code UI: Extensions view → `...` menu → **Install from VSIX...**
-- or CLI: `code --install-extension dev-assistant-<version>.vsix`
+- or CLI: `code --install-extension daily-tasks-<version>.vsix`
 
 ## Publishing
 
 ```bash
-npx vsce login khainx-developer   # one-time, needs an Azure DevOps PAT with Marketplace (Manage) scope
+npx vsce login dev-assistant-tools   # one-time, needs an Azure DevOps PAT with Marketplace (Manage) scope
 npm run package
 npx vsce publish
 ```
