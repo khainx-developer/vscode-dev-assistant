@@ -6,10 +6,10 @@ import { GitHubViewController } from '../github/viewController';
 import { LastSeenStore } from '../github/lastSeenStore';
 import type { McpConnectionService } from '../mcp/connectionService';
 import type { PullRequestCache } from '../github/pullRequestCache';
-import { RefreshScheduler, RefreshVisibilityHost } from '../github/refreshScheduler';
+import { RefreshScheduler, RefreshVisibilityHost, REFRESH_INTERVAL_MINUTES } from '../github/refreshScheduler';
 import { JiraViewController } from '../jira/viewController';
 import type { JiraIncomingMessage } from '../jira/types';
-import type { JiraServices } from './JiraDashboardPanel';
+import type { JiraServices } from './jiraServices';
 import { getNonce } from '../webview/nonce';
 
 interface GitHubServices {
@@ -160,6 +160,7 @@ export class DashboardPanel {
     }
     button.secondary:hover { background-color: var(--vscode-button-secondaryHoverBackground); }
     .last-refresh { color: var(--vscode-descriptionForeground); font-size: 0.85em; margin-left: auto; }
+    .refresh-hint { color: var(--vscode-descriptionForeground); font-size: 0.85em; }
 
     a.section-link { color: var(--vscode-textLink-foreground); font-size: 0.82em; text-decoration: none; }
     a.section-link:hover { text-decoration: underline; }
@@ -344,8 +345,14 @@ export class DashboardPanel {
 
     function renderJiraItem(task) {
       const due = dueDateInfo(task.dueDate);
+      const prLinkBadge = task.prLink.kind === 'linked'
+        ? '<span class="item-badge badge-green">Has PR #' + escapeHtml(task.prLink.pr.number) + ' · ' + escapeHtml(task.prLink.pr.state) + '</span>'
+        : task.prLink.kind === 'no-match'
+        ? '<span class="item-badge badge-neutral">No PR</span>'
+        : '<span class="item-badge badge-neutral">PR status unavailable</span>';
       const badges = '<span class="item-badge badge-neutral">' + escapeHtml(task.status) + '</span>' +
-        (due ? '<span class="item-badge ' + due.cls + '">' + escapeHtml(due.label) + '</span>' : '');
+        (due ? '<span class="item-badge ' + due.cls + '">' + escapeHtml(due.label) + '</span>' : '') +
+        prLinkBadge;
       return '<div class="item-card" data-command="jira.openTask" data-url="' + escapeHtml(task.url) + '">' +
         '<span class="item-icon">🔷</span>' +
         '<div class="item-body">' +
@@ -446,6 +453,7 @@ export class DashboardPanel {
       root.innerHTML =
         '<div class="toolbar">' +
         '<button data-command="refreshAll">Refresh</button>' +
+        '<span class="refresh-hint">Auto-refreshes every ' + ${REFRESH_INTERVAL_MINUTES} + ' minutes while visible.</span>' +
         '<span class="last-refresh">' + escapeHtml(lastRefresh) + '</span>' +
         '</div>' +
         failureBanner +

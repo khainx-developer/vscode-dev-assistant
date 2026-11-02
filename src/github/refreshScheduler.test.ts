@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { RefreshScheduler } from './refreshScheduler';
+import { REFRESH_INTERVAL_MS, RefreshScheduler } from './refreshScheduler';
 
 interface FakeInterval {
   id: number;
@@ -25,6 +25,7 @@ function installFakeTimers() {
 
   return {
     activeCount: () => intervals.size,
+    intervalMs: () => [...intervals.values()][0]?.ms,
     fireAll: () => {
       for (const interval of [...intervals.values()]) {
         interval.callback();
@@ -78,6 +79,7 @@ suite('RefreshScheduler', () => {
 
     assert.strictEqual(calls, 1);
     assert.strictEqual(timers.activeCount(), 1);
+    assert.strictEqual(timers.intervalMs(), REFRESH_INTERVAL_MS);
   });
 
   test('RefreshScheduler_doesNotStartTimer_whenHiddenAtConstruction', async () => {

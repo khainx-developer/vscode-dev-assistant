@@ -52,8 +52,7 @@ export type JiraIncomingMessage =
   | { command: 'jira.refresh' }
   | { command: 'jira.addQuery'; label: string; jql: string }
   | { command: 'jira.removeQuery'; label: string }
-  | { command: 'jira.openTask'; url: string }
-  | { command: 'jira.openPr'; url: string };
+  | { command: 'jira.openTask'; url: string };
 
 export type JiraOutgoingMessage =
   | { command: 'jira.state'; state: JiraViewState }

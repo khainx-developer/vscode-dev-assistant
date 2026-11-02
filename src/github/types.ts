@@ -44,6 +44,7 @@ export interface PullRequestSummary {
   repoKey: string; // "owner/repo"
   number: number;
   title: string;
+  headRef?: string;
   url: string;
   author: string;
   state: 'OPEN' | 'MERGED' | 'CLOSED';

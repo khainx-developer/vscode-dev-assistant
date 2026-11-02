@@ -40,6 +40,22 @@ suite('matchPullRequestForIssue', () => {
     assert.strictEqual(matchPullRequestForIssue('PROJ-123', [match]), match);
   });
 
+  test('matchPullRequestForIssue_matchesIssueKeyInBranchName', () => {
+    const match = createPullRequest('Implement feature', '2026-01-02T00:00:00Z');
+    match.headRef = 'feature/PROJ-123-new-view';
+
+    assert.strictEqual(matchPullRequestForIssue('PROJ-123', [match]), match);
+  });
+
+  test('matchPullRequestForIssue_doesNotMatchPartialIssueKey', () => {
+    const prs = [
+      createPullRequest('Fix APROJ-123 issue', '2026-01-02T00:00:00Z'),
+      createPullRequest('Fix PROJ-1234 issue', '2026-01-03T00:00:00Z'),
+    ];
+
+    assert.strictEqual(matchPullRequestForIssue('PROJ-123', prs), undefined);
+  });
+
   test('matchPullRequestForIssue_returnsMostRecentlyUpdated_whenMultiplePrsMatch', () => {
     const older = createPullRequest('PROJ-123 fix', '2026-01-02T00:00:00Z');
     const newer = createPullRequest('Follow-up for PROJ-123', '2026-01-03T00:00:00Z');

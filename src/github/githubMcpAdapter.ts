@@ -13,6 +13,7 @@ type RestUser = { login: string } | null;
 type ListedPullRequest = {
   number: number;
   title: string;
+  head?: { ref?: string | null } | null;
   html_url: string;
   user: RestUser;
   state: 'open' | 'closed';
@@ -230,6 +231,7 @@ function mapPullRequest(
     repoKey,
     number: entry.number,
     title: entry.title,
+    headRef: entry.head?.ref ?? undefined,
     url: entry.html_url,
     author: entry.user?.login ?? '',
     state: entry.state === 'open' ? 'OPEN' : entry.merged_at ? 'MERGED' : 'CLOSED',

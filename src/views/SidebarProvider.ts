@@ -7,11 +7,11 @@ import { GitHubIncomingMessage } from '../github/types';
 import { GitHubViewController } from '../github/viewController';
 import { LastSeenStore } from '../github/lastSeenStore';
 import { PullRequestCache } from '../github/pullRequestCache';
-import { RefreshScheduler } from '../github/refreshScheduler';
+import { RefreshScheduler, REFRESH_INTERVAL_MINUTES } from '../github/refreshScheduler';
 import { JiraViewController } from '../jira/viewController';
 import type { JiraIncomingMessage } from '../jira/types';
 import type { McpConnectionService } from '../mcp/connectionService';
-import type { JiraServices } from '../panels/JiraDashboardPanel';
+import type { JiraServices } from '../panels/jiraServices';
 
 type IncomingMessage =
   | { command: 'openTool' | 'openDashboard'; toolId?: string }
@@ -342,6 +342,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       if (!state.authenticated) {
         githubRoot.innerHTML =
           '<div class="gh-section"><h3>GitHub configuration</h3><p>Sign in to GitHub to monitor repos and authors.</p>' +
+          '<p class="description">Auto-refreshes every ' + ${REFRESH_INTERVAL_MINUTES} + ' minutes while this view is open.</p>' +
           '<button class="gh-btn" data-sign-in>Sign in to GitHub</button></div>';
         wireActions();
         return;
@@ -351,6 +352,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         '<div class="gh-section">' +
         '<h3>GitHub configuration</h3>' +
         '<p class="description">Signed in as ' + escapeHtmlClient(state.me || '') + '. Open <strong>Daily Tasks</strong> for the full dashboard.</p>' +
+        '<p class="description">Auto-refreshes every ' + ${REFRESH_INTERVAL_MINUTES} + ' minutes while this view is open.</p>' +
         '<div class="gh-row"><input id="ghRepoInput" placeholder="owner/repo" /><button class="gh-btn" data-add-repo>Add</button></div>' +
         '<div class="gh-error" id="ghRepoError">' + escapeHtmlClient(repoError) + '</div>' +
         '<ul class="gh-entry-list">' + renderEntries(state.monitoredRepos, 'repo') + '</ul>' +

@@ -252,7 +252,7 @@ suite('JiraViewController', () => {
 
   test('refresh_linkageComputedViaMatchPullRequestForIssue', async () => {
     const pullRequestCache = new PullRequestCache();
-    const pr = makePr({ title: 'Fix APP-1 JIRA issue' });
+    const pr = makePr({ title: 'Implement issue fix', headRef: 'feature/APP-1-jira-linkage' });
     pullRequestCache.setForRepo('owner/repo', [pr]);
     const { controller } = createController({
       queries: [{ label: 'Tasks', jql: 'project = APP' }],

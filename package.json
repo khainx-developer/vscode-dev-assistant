@@ -98,10 +98,6 @@
         "title": "Dev Assistant: Open Daily Tasks Dashboard"
       },
       {
-        "command": "devUtilities.openJiraDashboard",
-        "title": "Dev Assistant: Open Jira Tasks"
-      },
-      {
         "command": "devUtilities.base64Encode",
         "title": "Dev Assistant: Base64 Encode Selection"
       },

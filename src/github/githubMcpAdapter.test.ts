@@ -84,6 +84,7 @@ suite('GithubMcpAdapter', () => {
             {
               number: 1,
               title: 'Add feature',
+              head: { ref: 'feature/PROJ-123-add-feature' },
               html_url: 'https://github.com/acme/widgets/pull/1',
               user: { login: 'alice' },
               state: 'open',
@@ -135,6 +136,7 @@ suite('GithubMcpAdapter', () => {
 
     assert.strictEqual(result.length, 1);
     assert.strictEqual(result[0].number, 1);
+    assert.strictEqual(result[0].headRef, 'feature/PROJ-123-add-feature');
     assert.strictEqual(result[0].mergeable, 'MERGEABLE');
     assert.deepStrictEqual(result[0].labels, [{ name: 'bug', color: 'ff0000' }]);
     assert.strictEqual(result[0].checkStatus, 'SUCCESS');

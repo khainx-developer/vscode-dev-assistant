@@ -64,7 +64,6 @@ export class JiraViewController {
         await this.refresh();
         break;
       case 'jira.openTask':
-      case 'jira.openPr':
         await vscode.env.openExternal(vscode.Uri.parse(msg.url));
         break;
     }

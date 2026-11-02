@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
-const INTERVAL_MS = 5 * 60 * 1000;
+export const REFRESH_INTERVAL_MINUTES = 10;
+export const REFRESH_INTERVAL_MS = REFRESH_INTERVAL_MINUTES * 60 * 1000;
 
 export interface RefreshVisibilityHost {
   readonly visible: boolean;
@@ -31,7 +32,7 @@ export class RefreshScheduler {
 
   private startTimer(): void {
     if (this.intervalHandle) return;
-    this.intervalHandle = setInterval(() => void this.onRefresh(), INTERVAL_MS);
+    this.intervalHandle = setInterval(() => void this.onRefresh(), REFRESH_INTERVAL_MS);
   }
 
   private pauseTimer(): void {

@@ -11,7 +11,6 @@ import { PullRequestCache } from './github/pullRequestCache';
 import { McpConnectionService } from './mcp/connectionService';
 import { JiraConfigStore } from './jira/configStore';
 import { JiraConnectionStore } from './jira/connectionStore';
-import { JiraDashboardPanel } from './panels/JiraDashboardPanel';
 
 export function activate(context: vscode.ExtensionContext): void {
   for (const command of allCommands) {
@@ -83,11 +82,6 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('devUtilities.openJiraDashboard', () => {
-      JiraDashboardPanel.createOrShow(context.extensionUri, context, jiraServices);
-    })
-  );
 }
 
 export function deactivate(): void {}
