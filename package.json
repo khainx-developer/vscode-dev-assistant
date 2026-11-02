@@ -1,10 +1,28 @@
 {
   "name": "dev-assistant",
   "displayName": "Dev Assistant",
-  "description": "A collection of handy developer utilities for VS Code (private/internal use).",
+  "description": "A collection of handy developer utilities for VS Code: GitHub PR & Jira task tracking, Base64/URL/JSON tools, UUIDs, timestamps, and case conversions.",
   "version": "0.0.1",
   "publisher": "khainx-developer",
-  "private": true,
+  "license": "MIT",
+  "icon": "media/dev-assistant-activity-icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/khainx-developer/vscode-dev-assistant.git"
+  },
+  "bugs": {
+    "url": "https://github.com/khainx-developer/vscode-dev-assistant/issues"
+  },
+  "homepage": "https://github.com/khainx-developer/vscode-dev-assistant#readme",
+  "keywords": [
+    "github",
+    "jira",
+    "base64",
+    "uuid",
+    "json",
+    "productivity",
+    "utilities"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -83,7 +101,7 @@
         {
           "id": "devAssistantContainer",
           "title": "Dev Assistant",
-          "icon": "media/activity-icon.svg"
+          "icon": "media/dev-assistant-activity-icon.png"
         }
       ]
     },
