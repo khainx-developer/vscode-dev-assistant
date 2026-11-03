@@ -57,7 +57,7 @@ export class DashboardPanel {
     }
 
     const panel = vscode.window.createWebviewPanel(
-      'devAssistant.dashboard',
+      'devMateKit.dashboard',
       'Daily Tasks',
       vscode.ViewColumn.Active,
       {
@@ -106,6 +106,7 @@ export class DashboardPanel {
     );
     this.scheduler = new RefreshScheduler(panelVisibilityHost(panel), async () => {
       await Promise.all([this.githubController.refresh(), this.jiraController.refresh()]);
+      this.jiraController.refreshPullRequestLinks();
     });
 
     this.panel.webview.onDidReceiveMessage(
@@ -113,7 +114,7 @@ export class DashboardPanel {
         if (typeof message.command === 'string' && message.command.startsWith('jira.')) {
           void this.jiraController.handleMessage(message as JiraIncomingMessage);
         } else {
-          void this.githubController.handleMessage(message as GitHubIncomingMessage);
+          void this.handleGitHubMessage(message as GitHubIncomingMessage);
         }
       },
       undefined,
@@ -121,6 +122,14 @@ export class DashboardPanel {
     );
 
     this.panel.onDidDispose(() => this.dispose(), undefined, this.disposables);
+  }
+
+  private async handleGitHubMessage(message: GitHubIncomingMessage): Promise<void> {
+    try {
+      await this.githubController.handleMessage(message);
+    } finally {
+      this.jiraController.refreshPullRequestLinks();
+    }
   }
 
   private dispose(): void {
@@ -171,6 +180,7 @@ export class DashboardPanel {
     h1 { font-size: 1.4em; margin: 0 0 4px; }
     .subtitle { color: var(--vscode-descriptionForeground); margin: 0 0 20px; }
     .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .attention-action-row { margin: 8px 0 0; }
     button {
       background-color: var(--vscode-button-background);
       color: var(--vscode-button-foreground);
@@ -225,9 +235,46 @@ export class DashboardPanel {
       margin-bottom: 18px;
       background-color: var(--vscode-editorWidget-background, transparent);
     }
-    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      list-style: none;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+    .section-header::-webkit-details-marker { display: none; }
+    .section-header::marker { content: ''; }
     .section-header h2 { font-size: 1em; margin: 0; display: flex; align-items: center; gap: 6px; }
+    .section-chevron {
+      width: 7px;
+      height: 7px;
+      border-right: 1.5px solid var(--vscode-descriptionForeground);
+      border-bottom: 1.5px solid var(--vscode-descriptionForeground);
+      transform: rotate(45deg);
+      margin: 0 2px 4px 0;
+      flex: none;
+    }
+    details.section:not([open]) > .section-header .section-chevron {
+      transform: rotate(-45deg);
+      margin-bottom: 0;
+    }
+    .section-header:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 3px; }
+    .team-filter {
+      max-width: 220px;
+      min-width: 150px;
+      background-color: var(--vscode-dropdown-background);
+      color: var(--vscode-dropdown-foreground);
+      border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, transparent));
+      border-radius: 4px;
+      padding: 5px 8px;
+    }
+    .team-filter-row { display: flex; justify-content: flex-end; margin-bottom: 8px; }
     .section-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+    @media (max-width: 700px) {
+      .team-filter-row { justify-content: stretch; }
+      .team-filter { max-width: none; width: 100%; }
+    }
 
     .item-list { display: flex; flex-direction: column; gap: 8px; }
     .item-card {
@@ -245,6 +292,7 @@ export class DashboardPanel {
     .item-body { flex: 1; min-width: 0; }
     .item-title { font-weight: 600; font-size: 0.92em; }
     .item-meta { color: var(--vscode-descriptionForeground); font-size: 0.8em; margin-top: 2px; }
+    .attention-linked-pr { border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); margin-top: 8px; padding-top: 8px; }
     .item-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
     .item-badge { font-size: 0.7em; border-radius: 3px; padding: 2px 7px; white-space: nowrap; }
     .badge-red { background-color: rgba(248, 81, 73, 0.18); color: var(--vscode-charts-red, #f85149); }
@@ -275,6 +323,15 @@ export class DashboardPanel {
     let githubState = null;
     let jiraState = null;
     let attentionInbox = null;
+    let teamJiraFilter = '';
+    let teamPrFilter = '';
+    const expandedSections = {
+      attentionSection: true,
+      jiraSection: true,
+      myPrsSection: true,
+      teamJiraSection: true,
+      teamPrsSection: true,
+    };
 
     function escapeHtml(value) {
       return String(value ?? '')
@@ -405,18 +462,23 @@ export class DashboardPanel {
     function renderAttentionItem(item) {
       const task = item.jiraTask;
       const pr = item.pr;
+      const relatedPRs = item.relatedPRs || [];
       const jiraOpen = jiraState && jiraState.pendingOperations && jiraState.pendingOperations['jira.openTask'];
       const githubOpen = githubState && githubState.pendingOperations && githubState.pendingOperations['github.openPr'];
       const githubCommentOpen = githubState && githubState.pendingOperations && githubState.pendingOperations['github.openComment'];
-      const reasonBadges = item.reasons.map((reason) => {
+      const visibleReasons = relatedPRs.length > 0
+        ? item.reasons.filter((reason) => reason.startsWith('jira-'))
+        : item.reasons;
+      const renderReasonBadge = (reason, unreadCount) => {
         const info = PR_REASON_LABELS[reason] || { label: reason.replace(/-/g, ' '), cls: 'badge-neutral' };
         const count = reason === 'jira-unread-comment'
           ? ' (' + item.jiraUnreadCount + ')'
           : reason === 'pr-unread-comment'
-          ? ' (' + item.prUnreadCount + ')'
+          ? ' (' + unreadCount + ')'
           : '';
         return '<span class="item-badge ' + info.cls + '">' + escapeHtml(info.label + count) + '</span>';
-      }).join('');
+      };
+      const reasonBadges = visibleReasons.map((reason) => renderReasonBadge(reason, item.prUnreadCount)).join('');
       const previewText = (comment) => {
         const body = String(comment.bodyText ?? '');
         return escapeHtml(body.length > 120 ? body.slice(0, 120) + '…' : body);
@@ -426,15 +488,64 @@ export class DashboardPanel {
           ? '<div class="item-meta">Jira comment from ' + escapeHtml(item.jiraLatestUnreadComment.authorIdentity) +
             ': "' + previewText(item.jiraLatestUnreadComment) + '"</div>'
           : '',
-        item.prLatestUnreadComment
+        item.prLatestUnreadComment && relatedPRs.length === 0
           ? '<div class="item-meta">PR comment from ' + escapeHtml(item.prLatestUnreadComment.authorIdentity) +
             ': "' + previewText(item.prLatestUnreadComment) + '"</div>'
           : '',
       ].join('');
+      const relatedPRsHtml = relatedPRs.map((related) => {
+        const linkedPR = related.pr;
+        const sourceKey = 'github:' + linkedPR.repoKey + '#' + linkedPR.number;
+        const commentState = githubState && githubState.commentStatusBySource
+          ? githubState.commentStatusBySource[sourceKey]
+          : '';
+        const commentStatus = commentState === 'stale'
+          ? '<span class="item-badge badge-orange">PR comments stale</span>'
+          : commentState === 'unavailable'
+          ? '<span class="item-badge badge-neutral">PR comments unavailable</span>'
+          : '';
+        const badges = related.reasons
+          .map((reason) => renderReasonBadge(reason, related.unreadCount))
+          .join('');
+        const commentPreview = related.latestUnreadComment
+          ? '<div class="item-meta">PR comment from ' + escapeHtml(related.latestUnreadComment.authorIdentity) +
+            ': "' + previewText(related.latestUnreadComment) + '"</div>'
+          : '';
+        const openPR = '<button type="button" class="secondary" data-command="github.openPr" data-repo-key="' +
+          escapeHtml(linkedPR.repoKey) + '" data-number="' + linkedPR.number + '" data-url="' +
+          escapeHtml(linkedPR.url) + '" aria-label="Open pull request ' + linkedPR.number + '"' +
+          (githubOpen && githubOpen.pending ? ' disabled' : '') + '>' +
+          (githubOpen && githubOpen.pending ? 'Opening PR…' : 'Open PR') + '</button>';
+        const openComment = related.latestUnreadComment
+          ? '<button type="button" class="secondary" data-command="github.openComment" data-repo-key="' +
+            escapeHtml(linkedPR.repoKey) + '" data-number="' + linkedPR.number + '" data-url="' +
+            escapeHtml(related.latestUnreadComment.url) + '" aria-label="Open latest comment on pull request ' +
+            linkedPR.number + '"' + (githubCommentOpen && githubCommentOpen.pending ? ' disabled' : '') + '>' +
+            (githubCommentOpen && githubCommentOpen.pending ? 'Opening comment…' : 'Open comment') + '</button>'
+          : '';
+        const errors = operationError(githubState, 'github.openPr') || operationError(githubState, 'github.openComment')
+          ? '<span class="gh-error" role="alert">' +
+            escapeHtml(operationError(githubState, 'github.openPr') || operationError(githubState, 'github.openComment')) +
+            '</span>'
+          : '';
+        const linkedPRCommentsBadge = (linkedPR.comments && linkedPR.comments.length > 0) || related.unreadCount > 0
+          ? '<span class="item-badge badge-neutral">PR comments</span>'
+          : '';
+        return '<div class="attention-linked-pr">' +
+          '<div class="item-title">#' + linkedPR.number + ' ' + escapeHtml(linkedPR.title) + '</div>' +
+          '<div class="item-meta">' + escapeHtml(linkedPR.repoKey) + ' · by ' + escapeHtml(linkedPR.author) + '</div>' +
+          '<div class="item-badges">' + badges + linkedPRCommentsBadge + statusBadges(linkedPR) + commentStatus + '</div>' +
+          commentPreview + '<div class="toolbar attention-action-row">' + openPR + openComment + errors + '</div></div>';
+      }).join('');
       const jiraCommentState = task && task.commentState === 'stale'
         ? '<span class="item-badge badge-orange">Jira comments stale</span>'
         : task && task.commentState === 'unavailable'
         ? '<span class="item-badge badge-neutral">Jira comments unavailable</span>'
+        : '';
+      const jiraCommentsBadge = task && (
+        (task.comments && task.comments.length > 0) || (task.commentAttention && task.commentAttention.unreadCount > 0)
+      )
+        ? '<span class="item-badge badge-neutral">Jira comments</span>'
         : '';
       const githubSourceKey = pr ? 'github:' + pr.repoKey + '#' + pr.number : '';
       const githubCommentState = pr && githubState && githubState.commentStatusBySource
@@ -444,6 +555,11 @@ export class DashboardPanel {
         ? '<span class="item-badge badge-orange">PR comments stale</span>'
         : githubCommentState === 'unavailable'
         ? '<span class="item-badge badge-neutral">PR comments unavailable</span>'
+        : '';
+      const prCommentsBadge = pr && (
+        (pr.comments && pr.comments.length > 0) || item.prUnreadCount > 0
+      )
+        ? '<span class="item-badge badge-neutral">PR comments</span>'
         : '';
       const jiraTitle = task
         ? escapeHtml(task.key) + ' — ' + escapeHtml(task.summary)
@@ -482,16 +598,31 @@ export class DashboardPanel {
       const activity = item.latestRelevantAt
         ? '<div class="item-meta">Updated ' + escapeHtml(relativeTime(item.latestRelevantAt)) + '</div>'
         : '';
+      const jiraActionHtml = jiraAction
+        ? '<div class="toolbar attention-action-row">' + jiraAction + '</div>'
+        : '';
+      const relatedPRList = relatedPRs.length > 0
+        ? '<div class="attention-linked-prs"><div class="item-meta">Related PRs (' + relatedPRs.length + ')</div>' +
+          relatedPRsHtml + '</div>'
+        : '';
+      const standalonePRAction = prAction
+        ? '<div class="toolbar attention-action-row">' + prAction + '</div>'
+        : '';
 
       return '<div class="item-card"><span class="item-icon">' + (task ? '🔷' : '🐙') + '</span>' +
         '<div class="item-body">' + title +
-        '<div class="item-badges">' + reasonBadges + jiraCommentState + githubCommentStatus + '</div>' +
-        commentPreviews + activity +
-        '<div class="toolbar">' + jiraAction + prAction + '</div></div></div>';
+        '<div class="item-badges">' + reasonBadges + jiraCommentsBadge + prCommentsBadge +
+        jiraCommentState + githubCommentStatus + '</div>' +
+        commentPreviews + jiraActionHtml + relatedPRList + activity + standalonePRAction +
+        '</div></div>';
     }
 
     function renderList(html, emptyText) {
       return html || '<div class="empty-state">' + escapeHtml(emptyText) + '</div>';
+    }
+
+    function sectionOpenAttribute(sectionId) {
+      return expandedSections[sectionId] ? ' open' : '';
     }
 
     function getAllJiraTasks() {
@@ -500,12 +631,15 @@ export class DashboardPanel {
       return Object.keys(byQuery).flatMap((label) => byQuery[label]);
     }
 
-    // "My Jira Tasks" is filtered to the configured display name once set (devAssistant.jira.currentUser);
-    // saved queries are arbitrary JQL and may include tasks assigned to teammates, not just the user's own.
+    // Saved queries may include teammate tasks, so "My Jira Tasks" always filters by the configured user.
     function getMyJiraTasks() {
       const all = getAllJiraTasks();
-      if (!jiraState || !jiraState.currentUser) return all;
-      return all.filter((task) => task.assignee === jiraState.currentUser);
+      const currentUser = jiraState && jiraState.currentUser
+        ? jiraState.currentUser.trim().toLowerCase()
+        : '';
+      if (!currentUser) return [];
+      return all.filter((task) =>
+        task.assignee && task.assignee.trim().toLowerCase() === currentUser);
     }
 
     function getTeamJiraTasks() {
@@ -513,7 +647,27 @@ export class DashboardPanel {
         .map((name) => name.trim().toLowerCase())
         .filter(Boolean));
       return getAllJiraTasks().filter((task) =>
-        task.assignee && members.has(task.assignee.trim().toLowerCase()));
+        task.assignee && members.has(task.assignee.trim().toLowerCase()) &&
+        (!teamJiraFilter || task.assignee.trim().toLowerCase() === teamJiraFilter.trim().toLowerCase()));
+    }
+
+    function uniqueNames(names) {
+      const seen = new Set();
+      return names
+        .filter((name) => {
+          const normalized = name.trim().toLowerCase();
+          if (!normalized || seen.has(normalized)) return false;
+          seen.add(normalized);
+          return true;
+        })
+        .sort((a, b) => a.localeCompare(b));
+    }
+
+    function renderTeammateOptions(teammates, selected) {
+      return '<option value="">All teammates</option>' + teammates.map((name) =>
+        '<option value="' + escapeHtml(name) + '"' + (name.toLowerCase() === selected.toLowerCase() ? ' selected' : '') + '>' +
+        escapeHtml(name) + '</option>'
+      ).join('');
     }
 
     function render() {
@@ -521,7 +675,18 @@ export class DashboardPanel {
       const jiraReady = jiraState !== null;
       const githubAuthenticated = githubReady && githubState.authenticated;
       const myPrItems = githubAuthenticated ? githubState.attention.myPRs : [];
-      const teamPrItems = githubAuthenticated ? githubState.attention.teamPRs : [];
+      const teamPrTeammates = githubAuthenticated
+        ? uniqueNames((githubState.monitoredAuthors || []).filter((author) => author.status === 'valid').map((author) => author.username))
+        : [];
+      const teamJiraTeammates = jiraReady
+        ? uniqueNames((jiraState.teamMembers || []).map((name) => name.trim()))
+        : [];
+      if (teamPrFilter && !teamPrTeammates.some((name) => name.toLowerCase() === teamPrFilter.toLowerCase())) teamPrFilter = '';
+      if (teamJiraFilter && !teamJiraTeammates.some((name) => name.toLowerCase() === teamJiraFilter.toLowerCase())) teamJiraFilter = '';
+      const teamPrItems = githubAuthenticated
+        ? githubState.attention.teamPRs.filter((item) =>
+          !teamPrFilter || item.pr.author.toLowerCase() === teamPrFilter.toLowerCase())
+        : [];
       const myJiraTasks = getMyJiraTasks();
       const teamJiraTasks = getTeamJiraTasks();
       const inboxItems = attentionInbox;
@@ -571,14 +736,18 @@ export class DashboardPanel {
         : renderList(inboxItems.map(renderAttentionItem).join(''), 'Nothing here. You\\'re all caught up.');
       const myPrsHtml = renderList(myPrItems.map(renderPrItem).join(''), 'No open PRs of yours.');
       const teamPrsHtml = renderList(teamPrItems.map(renderPrItem).join(''), 'No team PRs to show.');
-      const jiraUserHint = jiraReady && jiraState.connected && !jiraState.currentUser
-        ? '<div class="empty-state">Showing all saved-query results — set your Jira display name in the Configuration tab to filter to just your tasks.</div>'
-        : '';
+      const hasJiraCurrentUser = !!(jiraReady && jiraState.currentUser && jiraState.currentUser.trim());
+      const jiraEmptyText = !hasJiraCurrentUser
+        ? 'Set your Jira display name in the Configuration tab to see tasks assigned to you.'
+        : !jiraState.savedQueries.length
+        ? 'No saved Jira queries yet.'
+        : 'No tasks matched "' + jiraState.currentUser.trim() +
+          '". Verify this matches the Jira assignee display name in Configuration.';
       const jiraHtml = !jiraReady
         ? '<div class="empty-state">Loading…</div>'
         : !jiraState.connected
         ? '<div class="empty-state">Connect Jira from the Configuration tab to see your tasks here.</div>'
-        : jiraUserHint + renderList(myJiraTasks.map(renderJiraItem).join(''), 'No saved Jira queries yet.');
+        : renderList(myJiraTasks.map(renderJiraItem).join(''), jiraEmptyText);
       const teamJiraHtml = !jiraReady
         ? '<div class="empty-state">Loading…</div>'
         : !jiraState.connected
@@ -597,35 +766,64 @@ export class DashboardPanel {
         signInCard +
         failureBanner +
         '<div class="stat-grid">' + statTiles + '</div>' +
-        '<section class="section" id="attentionSection">' +
-        '<div class="section-header"><h2>🔔 Attention Inbox (' + (inboxItems ? inboxItems.length : 0) + ')</h2></div>' +
+        '<details class="section" id="attentionSection"' + sectionOpenAttribute('attentionSection') + '>' +
+        '<summary class="section-header"><h2>🔔 Attention Inbox (' + (inboxItems ? inboxItems.length : 0) + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
         '<div class="item-list">' + attentionHtml + '</div>' +
-        '</section>' +
+        '</details>' +
         '<div class="section-row">' +
-        '<section class="section" id="jiraSection">' +
-        '<div class="section-header"><h2>🔷 My Jira Tasks (' + myJiraTasks.length + ')</h2></div>' +
+        '<details class="section" id="jiraSection"' + sectionOpenAttribute('jiraSection') + '>' +
+        '<summary class="section-header"><h2>🔷 My Jira Tasks (' + myJiraTasks.length + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
         '<div class="item-list">' + jiraHtml + '</div>' +
-        '</section>' +
-        '<section class="section" id="myPrsSection">' +
-        '<div class="section-header"><h2>🐙 My PRs (' + myPrItems.length + ')</h2></div>' +
+        '</details>' +
+        '<details class="section" id="myPrsSection"' + sectionOpenAttribute('myPrsSection') + '>' +
+        '<summary class="section-header"><h2>🐙 My PRs (' + myPrItems.length + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
         '<div class="item-list">' + myPrsHtml + '</div>' +
-        '</section>' +
+        '</details>' +
         '</div>' +
         '<div class="section-row">' +
-        '<section class="section" id="teamJiraSection">' +
-        '<div class="section-header"><h2>🔷 Team Jira Tasks (' + teamJiraTasks.length + ')</h2></div>' +
+        '<details class="section" id="teamJiraSection"' + sectionOpenAttribute('teamJiraSection') + '>' +
+        '<summary class="section-header"><h2>🔷 Team Jira Tasks (' + teamJiraTasks.length + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
+        '<div class="team-filter-row"><select class="team-filter" id="teamJiraFilter" aria-label="Filter Team Jira Tasks by teammate"' + (!teamJiraTeammates.length ? ' disabled' : '') + '>' +
+        renderTeammateOptions(teamJiraTeammates, teamJiraFilter) + '</select></div>' +
         '<div class="item-list">' + teamJiraHtml + '</div>' +
-        '</section>' +
-        '<section class="section" id="teamPrsSection">' +
-        '<div class="section-header"><h2>👥 Team PRs (' + teamPrItems.length + ')</h2></div>' +
+        '</details>' +
+        '<details class="section" id="teamPrsSection"' + sectionOpenAttribute('teamPrsSection') + '>' +
+        '<summary class="section-header"><h2>👥 Team PRs (' + teamPrItems.length + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
+        '<div class="team-filter-row"><select class="team-filter" id="teamPrFilter" aria-label="Filter Team PRs by teammate"' + (!teamPrTeammates.length ? ' disabled' : '') + '>' +
+        renderTeammateOptions(teamPrTeammates, teamPrFilter) + '</select></div>' +
         '<div class="item-list">' + teamPrsHtml + '</div>' +
-        '</section>' +
+        '</details>' +
         '</div>';
 
       wireActions();
     }
 
     function wireActions() {
+      root.querySelectorAll('details.section').forEach((section) => {
+        const summary = section.querySelector('summary');
+        summary.addEventListener('click', () => {
+          expandedSections[section.id] = !section.open;
+        });
+        section.addEventListener('toggle', () => {
+          expandedSections[section.id] = section.open;
+        });
+      });
+
+      const jiraFilter = root.querySelector('#teamJiraFilter');
+      if (jiraFilter) {
+        jiraFilter.addEventListener('change', () => {
+          teamJiraFilter = jiraFilter.value;
+          render();
+        });
+      }
+      const prFilter = root.querySelector('#teamPrFilter');
+      if (prFilter) {
+        prFilter.addEventListener('change', () => {
+          teamPrFilter = prFilter.value;
+          render();
+        });
+      }
+
       root.querySelectorAll('[data-command]').forEach((el) => {
         const activate = () => {
           const command = el.getAttribute('data-command');

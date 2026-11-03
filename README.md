@@ -1,4 +1,4 @@
-# Dev Assistant
+# DevMate Kit
 
 A VS Code extension bundling handy developer utilities: a daily-tasks dashboard that tracks your GitHub pull requests and Jira issues, plus a set of quick text-transform commands.
 
@@ -6,22 +6,22 @@ A VS Code extension bundling handy developer utilities: a daily-tasks dashboard 
 
 A typical day pulls you across a half-dozen browser tabs just to know what to work on next: GitHub for PRs waiting on your review, Jira for ticket status and due dates, email for notifications about both, maybe Slack on top of that. Switching out of the editor to check each one breaks focus, and it's easy to miss a review request or an overdue ticket buried in a tab you haven't looked at in hours.
 
-Dev Assistant pulls GitHub pull requests and Jira issues into a single dashboard inside VS Code, so you can see what needs your attention without leaving the editor.
+DevMate Kit pulls GitHub pull requests and Jira issues into a single dashboard inside VS Code, so you can see what needs your attention without leaving the editor.
 
 ## Features
 
 ### Daily Tasks Dashboard
 
-A sidebar view (Dev Assistant activity bar icon) that surfaces:
+A sidebar view (DevMate Kit activity bar icon) that surfaces:
 
-- Your open GitHub pull requests, and PRs from teammates you monitor (`devAssistant.github.monitoredRepos`, `devAssistant.github.monitoredAuthors`)
-- Your Jira issues and saved JQL queries (`devAssistant.jira.*` settings)
+- Your open GitHub pull requests, and PRs from teammates you monitor (`devMateKit.github.monitoredRepos`, `devMateKit.github.monitoredAuthors`)
+- Your Jira issues and saved JQL queries (`devMateKit.jira.*` settings)
 
-Sign in to GitHub via **Dev Assistant: Sign in to GitHub**, then open it via **Dev Assistant: Open Daily Tasks Dashboard**.
+Sign in to GitHub via **DevMate Kit: Sign in to GitHub**, then open it via **DevMate Kit: Open Daily Tasks Dashboard**.
 
 ### Text utilities
 
-All commands work on the current selection(s) (or the current line if nothing is selected), available via the Command Palette (`Ctrl+Shift+P`) and the editor right-click menu under **Dev Assistant**:
+All commands work on the current selection(s) (or the current line if nothing is selected), available via the Command Palette (`Ctrl+Shift+P`) and the editor right-click menu under **DevMate Kit**:
 
 - Base64 Encode / Decode
 - URL Encode / Decode
@@ -32,7 +32,7 @@ All commands work on the current selection(s) (or the current line if nothing is
 
 ## Installing
 
-Install **Dev Assistant Toolkit** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=dev-assistant-tools.dev-assistant-toolkit).
+Install **DevMate Kit** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=khainx-developer.devmate-kit).
 
 ## Contributing
 

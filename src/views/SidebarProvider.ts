@@ -15,8 +15,15 @@ import type { JiraServices } from '../panels/jiraServices';
 
 type IncomingMessage =
   | { command: 'openTool' | 'openDashboard'; toolId?: string }
+  | { command: 'ai.update'; setting: 'provider' | 'model'; value: string }
   | GitHubIncomingMessage
   | JiraIncomingMessage;
+
+interface AiModelOption {
+  id: string;
+  name: string;
+  family: string;
+}
 
 interface GitHubServices {
   authService: GitHubAuthService;
@@ -67,27 +74,95 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this.jiraServices.pullRequestCache,
       this.jiraServices.outputChannel,
     );
-    void webviewView.webview.postMessage({ command: 'jira.state', state: jiraController.getState() });
-    const scheduler = new RefreshScheduler(webviewView, () => controller.refresh());
+    const runGitHubAndRelinkJira = async (operation: () => Promise<void>): Promise<void> => {
+      try {
+        await operation();
+      } finally {
+        jiraController.refreshPullRequestLinks();
+      }
+    };
+    const scheduler = new RefreshScheduler(
+      webviewView,
+      () => runGitHubAndRelinkJira(() => controller.refresh()),
+    );
+    let availableAiModels: AiModelOption[] = [];
+
+    const refreshAiModels = async (): Promise<void> => {
+      const aiConfig = vscode.workspace.getConfiguration('devMateKit.ai');
+      if (aiConfig.get<string>('provider', 'none') !== 'githubCopilot') {
+        availableAiModels = [];
+        void webviewView.webview.postMessage({ command: 'ai.models', models: [], selectedModel: aiConfig.get<string>('model', 'GPT-6 Luna') });
+        return;
+      }
+
+      if (typeof vscode.lm?.selectChatModels !== 'function') {
+        availableAiModels = [];
+        void webviewView.webview.postMessage({ command: 'ai.models', models: [], selectedModel: aiConfig.get<string>('model', 'GPT-6 Luna') });
+        return;
+      }
+
+      try {
+        const models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+        availableAiModels = models.map((model) => ({ id: model.id, name: model.name, family: model.family }));
+      } catch {
+        availableAiModels = [];
+      }
+      void webviewView.webview.postMessage({
+        command: 'ai.models',
+        models: availableAiModels,
+        selectedModel: aiConfig.get<string>('model', 'GPT-6 Luna'),
+      });
+    };
+
+    const modelChangeListener = vscode.lm?.onDidChangeChatModels?.(() => {
+      void refreshAiModels();
+    });
+    void refreshAiModels();
 
     webviewView.webview.onDidReceiveMessage((message: IncomingMessage) => {
       if (message.command === 'openTool') {
-        void vscode.commands.executeCommand('devAssistant.openTool', message.toolId);
+        void vscode.commands.executeCommand('devMateKit.openTool', message.toolId);
       } else if (message.command === 'openDashboard') {
-        void vscode.commands.executeCommand('devAssistant.openDashboard');
+        void vscode.commands.executeCommand('devMateKit.openDashboard');
+      } else if (message.command === 'ai.update') {
+        const aiConfig = vscode.workspace.getConfiguration('devMateKit.ai');
+        if (message.setting === 'provider' && ['none', 'githubCopilot'].includes(message.value)) {
+          void aiConfig.update('provider', message.value, vscode.ConfigurationTarget.Global).then(
+            async () => {
+              await refreshAiModels();
+              void webviewView.webview.postMessage({ command: 'ai.saved' });
+            },
+            () => void webviewView.webview.postMessage({ command: 'ai.saveFailed' }),
+          );
+        } else if (
+          message.setting === 'model' &&
+          aiConfig.get<string>('provider', 'none') === 'githubCopilot' &&
+          availableAiModels.some((model) => model.id === message.value)
+        ) {
+          void aiConfig.update('model', message.value, vscode.ConfigurationTarget.Global).then(
+            () => void webviewView.webview.postMessage({ command: 'ai.saved' }),
+            () => void webviewView.webview.postMessage({ command: 'ai.saveFailed' }),
+          );
+        }
       } else if (typeof message.command === 'string' && message.command.startsWith('github.')) {
-        void controller.handleMessage(message as GitHubIncomingMessage);
+        void runGitHubAndRelinkJira(() => controller.handleMessage(message as GitHubIncomingMessage));
       } else if (typeof message.command === 'string' && message.command.startsWith('jira.')) {
         void jiraController.handleMessage(message as JiraIncomingMessage);
       }
     });
 
-    webviewView.onDidDispose(() => scheduler.dispose());
+    webviewView.onDidDispose(() => {
+      scheduler.dispose();
+      modelChangeListener?.dispose();
+    });
   }
 
   private render(): string {
     const nonce = getNonce();
     const csp = `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';`;
+    const aiConfig = vscode.workspace.getConfiguration('devMateKit.ai');
+    const aiProvider = aiConfig.get<string>('provider', 'none') === 'githubCopilot' ? 'githubCopilot' : 'none';
+    const aiModel = aiConfig.get<string>('model', 'GPT-6 Luna');
 
     const tabButtons = TAB_ORDER.map(
       (tab) => `<button class="tab${tab.id === 'daily' ? ' active' : ''}" data-tab="${tab.id}">${escapeHtml(tab.label)}</button>`
@@ -113,7 +188,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dev Assistant</title>
+  <title>DevMate Kit</title>
   <style>
     body {
       font-family: var(--vscode-font-family);
@@ -131,6 +206,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       padding: 4px 10px;
       font-size: 0.8em;
       cursor: pointer;
+    }
+    .gh-select {
+      width: 100%;
+      background-color: var(--vscode-dropdown-background);
+      color: var(--vscode-dropdown-foreground);
+      border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, transparent));
+      border-radius: 4px;
+      padding: 4px 6px;
     }
     .tab.active {
       background-color: var(--vscode-button-background);
@@ -164,9 +247,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     .empty-state { text-align: center; color: var(--vscode-descriptionForeground); padding: 24px 8px; font-size: 0.85em; }
 
-    #githubRoot { display: none; font-size: 0.85em; }
+    #githubRoot, #jiraRoot { display: none; font-size: 0.85em; }
     .gh-section { margin-bottom: 14px; }
-    .gh-section h3 { font-size: 0.85em; margin: 0 0 6px; color: var(--vscode-foreground); }
+    #aiRoot { font-size: 0.85em; }
+    .gh-section h3 { font-size: 1em; margin: 0 0 6px; color: var(--vscode-foreground); }
+    .config-section > summary {
+      color: var(--vscode-foreground);
+      cursor: pointer;
+      font-size: 1em;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .config-list { margin: 8px 0; }
+    .config-list-title { font-weight: 600; margin-bottom: 4px; }
     .gh-row { display: flex; gap: 6px; margin-bottom: 4px; }
     .gh-row input {
       flex: 1;
@@ -262,6 +355,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   <div id="githubRoot"></div>
   <div id="jiraRoot"></div>
+  <details id="aiRoot" class="gh-section config-section" style="display:none">
+    <summary>AI runtime</summary>
+    <label class="gh-label" for="aiProvider">AI provider</label>
+    <select class="gh-select" id="aiProvider" aria-label="AI provider">
+      <option value="none"${aiProvider === 'none' ? ' selected' : ''}>None</option>
+      <option value="githubCopilot"${aiProvider === 'githubCopilot' ? ' selected' : ''}>GitHub Copilot</option>
+    </select>
+    <div id="aiSaveStatus" class="gh-label" role="status"></div>
+    <div id="aiModelSection" style="display:${aiProvider === 'githubCopilot' ? 'block' : 'none'}">
+      <label class="gh-label" for="aiModel">AI model</label>
+      <select class="gh-select" id="aiModel" aria-label="AI model" disabled>
+        <option value="${escapeHtml(aiModel)}">Loading Copilot models...</option>
+      </select>
+      <div id="aiModelStatus" class="gh-label" role="status"></div>
+    </div>
+  </details>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
@@ -271,6 +380,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const dailyPlaceholder = document.getElementById('dailyPlaceholder');
     const githubRoot = document.getElementById('githubRoot');
     const jiraRoot = document.getElementById('jiraRoot');
+    const aiRoot = document.getElementById('aiRoot');
+    const aiProvider = document.getElementById('aiProvider');
+    const aiModel = document.getElementById('aiModel');
+    const aiModelSection = document.getElementById('aiModelSection');
+    const aiModelStatus = document.getElementById('aiModelStatus');
+    const aiSaveStatus = document.getElementById('aiSaveStatus');
     let activeTab = 'daily';
 
     function applyTab(selected) {
@@ -279,6 +394,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       dailyDashboardCard.style.display = selected === 'daily' ? '' : 'none';
       githubRoot.style.display = selected === 'config' ? 'block' : 'none';
       jiraRoot.style.display = selected === 'config' ? 'block' : 'none';
+      aiRoot.style.display = selected === 'config' ? 'block' : 'none';
       cards.forEach((card) => {
         card.style.display = selected === 'other' ? '' : 'none';
       });
@@ -292,6 +408,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       });
     });
     applyTab('daily');
+
+    aiProvider.addEventListener('change', () => {
+      const useCopilot = aiProvider.value === 'githubCopilot';
+      aiModelSection.style.display = useCopilot ? 'block' : 'none';
+      if (useCopilot) {
+        aiModel.disabled = true;
+        aiModelStatus.textContent = 'Loading Copilot models...';
+      }
+      aiSaveStatus.textContent = 'Saving...';
+      vscode.postMessage({ command: 'ai.update', setting: 'provider', value: aiProvider.value });
+    });
+    aiModel.addEventListener('change', () => {
+      aiSaveStatus.textContent = 'Saving...';
+      vscode.postMessage({ command: 'ai.update', setting: 'model', value: aiModel.value });
+    });
 
     dailyDashboardCard.addEventListener('click', () => vscode.postMessage({ command: 'openDashboard' }));
     dailyDashboardCard.addEventListener('keydown', (e) => {
@@ -364,14 +495,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     function renderGithub(state) {
       lastState = state;
+      const sectionOpen = githubRoot.querySelector('details.config-section')?.open ?? false;
+      const sectionOpenAttribute = sectionOpen ? ' open' : '';
       const signInPending = operationFor(state, 'github.signIn');
       if (!state.authenticated) {
+        if (state.isRefreshing) {
+          githubRoot.innerHTML =
+            '<details class="gh-section config-section"' + sectionOpenAttribute + '><summary>GitHub configuration</summary>' +
+            '<p class="description" role="status">Checking GitHub configuration...</p></details>';
+          return;
+        }
         githubRoot.innerHTML =
-          '<div class="gh-section"><h3>GitHub configuration</h3><p>Sign in to GitHub to monitor repos and authors.</p>' +
+          '<details class="gh-section config-section"' + sectionOpenAttribute + '><summary>GitHub configuration</summary><p>Sign in to GitHub to monitor repos and authors.</p>' +
           '<p class="description">Auto-refreshes every ' + ${REFRESH_INTERVAL_MINUTES} + ' minutes while this view is open.</p>' +
           '<button class="gh-btn" data-sign-in' + (signInPending && signInPending.pending ? ' disabled' : '') + '>' +
           (signInPending && signInPending.pending ? 'Signing in…' : 'Sign in to GitHub') + '</button>' +
-          operationStatus(state, 'github.signIn', 'Signed in.') + '</div>';
+          operationStatus(state, 'github.signIn', 'Signed in.') + '</details>';
         wireActions();
         return;
       }
@@ -379,8 +518,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       const addRepoPending = operationFor(state, 'github.addRepo');
       const addAuthorPending = operationFor(state, 'github.addAuthor');
       githubRoot.innerHTML =
-        '<div class="gh-section">' +
-        '<h3>GitHub configuration</h3>' +
+        '<details class="gh-section config-section"' + sectionOpenAttribute + '>' +
+        '<summary>GitHub configuration</summary>' +
         '<p class="description">Signed in as ' + escapeHtmlClient(state.me || '') + '. Open <strong>Daily Tasks</strong> for the full dashboard.</p>' +
         '<p class="description">Auto-refreshes every ' + ${REFRESH_INTERVAL_MINUTES} + ' minutes while this view is open.</p>' +
         '<div class="gh-row"><input id="ghRepoInput" placeholder="owner/repo" aria-label="GitHub repository" />' +
@@ -388,16 +527,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         (addRepoPending && addRepoPending.pending ? 'Adding…' : 'Add') + '</button></div>' +
         '<div class="gh-error" id="ghRepoError">' + escapeHtmlClient(repoError) + '</div>' +
         operationStatus(state, 'github.addRepo', 'Repository added.') +
-        '<ul class="gh-entry-list">' + renderEntries(state.monitoredRepos, 'repo', state) + '</ul>' +
+        '<div class="config-list"><div class="config-list-title">Monitored repositories (' + state.monitoredRepos.length + ')</div>' +
+        '<ul class="gh-entry-list">' + (state.monitoredRepos.length ? renderEntries(state.monitoredRepos, 'repo', state) : '<li class="gh-error">No repositories configured.</li>') + '</ul></div>' +
         '<div class="gh-row"><input id="ghAuthorInput" placeholder="GitHub username" aria-label="GitHub username" />' +
         '<button class="gh-btn" data-add-author' + (addAuthorPending && addAuthorPending.pending ? ' disabled' : '') + '>' +
         (addAuthorPending && addAuthorPending.pending ? 'Adding…' : 'Add') + '</button></div>' +
         '<div class="gh-error" id="ghAuthorError">' + escapeHtmlClient(authorError) + '</div>' +
         operationStatus(state, 'github.addAuthor', 'Author added.') +
-        '<ul class="gh-entry-list">' + renderEntries(state.monitoredAuthors, 'author', state) + '</ul>' +
+        '<div class="config-list"><div class="config-list-title">Monitored authors (' + state.monitoredAuthors.length + ')</div>' +
+        '<ul class="gh-entry-list">' + (state.monitoredAuthors.length ? renderEntries(state.monitoredAuthors, 'author', state) : '<li class="gh-error">No authors configured.</li>') + '</ul></div>' +
         operationStatus(state, 'github.removeRepo', 'Repository removed.') +
         operationStatus(state, 'github.removeAuthor', 'Author removed.') +
-        '</div>';
+        '</details>';
 
       wireActions();
     }
@@ -409,32 +550,35 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     function renderJira(state) {
       jiraState = state;
+      const sectionOpen = jiraRoot.querySelector('details.config-section')?.open ?? false;
+      const sectionOpenAttribute = sectionOpen ? ' open' : '';
       const operations = state.pendingOperations || {};
       if (!state.connected) {
+        if (state.isRefreshing) {
+          jiraRoot.innerHTML =
+            '<details class="gh-section config-section"' + sectionOpenAttribute + '><summary>Jira configuration</summary>' +
+            '<p class="description" role="status">Checking Jira configuration...</p></details>';
+          return;
+        }
         const failures = (state.failures || [])
           .filter((failure) => !failure.queryLabel)
           .map((failure) => failure.detail)
           .join(' ');
         const connectPending = operationFor(state, 'jira.saveConnection');
         jiraRoot.innerHTML =
-          '<div class="gh-section"><h3>Jira configuration</h3>' +
+          '<details class="gh-section config-section"' + sectionOpenAttribute + '><summary>Jira configuration</summary>' +
           '<div class="gh-row"><input id="jiraSiteUrl" type="url" aria-label="Jira site URL" placeholder="https://your-site.atlassian.net" /></div>' +
           '<div class="gh-error">' + escapeHtmlClient(jiraConnectionError || failures) + '</div>' +
           '<button class="gh-btn" data-jira-save' + (connectPending && connectPending.pending ? ' disabled' : '') + '>' +
           (connectPending && connectPending.pending ? 'Connecting…' : 'Connect to Jira') + '</button>' +
-          operationStatus(state, 'jira.saveConnection', 'Connected to Jira.') + '</div>';
+          operationStatus(state, 'jira.saveConnection', 'Connected to Jira.') + '</details>';
         wireJiraActions();
         return;
       }
 
       const removeQueryPending = operations['jira.removeQuery'];
-      const queries = (state.savedQueries || []).map((query) =>
-        '<li class="jira-query"><div class="jira-query-head"><strong>' + escapeHtmlClient(query.label) +
-        '</strong><button data-jira-remove="' + escapeHtmlClient(query.label) + '" aria-label="Remove query ' +
-        escapeHtmlClient(query.label) + '"' + (removeQueryPending && removeQueryPending.pending ? ' disabled' : '') +
-        '>&times;</button></div>' +
-        '<div class="jira-query-jql">' + escapeHtmlClient(query.jql) + '</div></li>'
-      ).join('');
+      const savedQuery = (state.savedQueries || [])[0];
+      const teamMemberCount = (state.teamMembers || []).length;
       const removeTeamPending = operations['jira.removeTeamMember'];
       const teamMembers = (state.teamMembers || []).map((displayName) =>
         '<li class="jira-query"><div class="jira-query-head"><strong>' + escapeHtmlClient(displayName) +
@@ -452,7 +596,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         ) + '</div>'
       ).join('');
       jiraRoot.innerHTML =
-        '<div class="gh-section"><h3>Jira configuration</h3>' +
+        '<details class="gh-section config-section"' + sectionOpenAttribute + '><summary>Jira configuration</summary>' +
         '<div class="jira-status"><span><span class="dot">●</span> Connected to <span class="site">' +
         escapeHtmlClient(state.siteUrl || '') + '</span></span>' +
         '<button data-jira-disconnect' + (disconnectPending && disconnectPending.pending ? ' disabled' : '') + '>' +
@@ -464,25 +608,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         (setUserPending && setUserPending.pending ? 'Saving…' : 'Save') + '</button></div>' +
         '<div class="gh-error">' + escapeHtmlClient(jiraCurrentUserError) + '</div>' +
         operationStatus(state, 'jira.setCurrentUser', 'Jira user saved.') +
-        '<label class="gh-label" for="jiraTeamMember">Monitored Jira teammates</label>' +
-        '<ul class="jira-query-list">' + (teamMembers || '<li class="gh-error" style="border:none;padding:0;">No teammates configured.</li>') + '</ul>' +
+        '<div class="config-list"><div class="config-list-title">Monitored Jira teammates (' + teamMemberCount + ')</div>' +
+        '<ul class="jira-query-list">' + (teamMembers || '<li class="gh-error" style="border:none;padding:0;">No teammates configured.</li>') + '</ul></div>' +
         '<div class="gh-row"><input id="jiraTeamMember" placeholder="e.g. Alex Smith" aria-label="Jira teammate display name" />' +
         '<button class="gh-btn" data-jira-add-team' + (addTeamPending && addTeamPending.pending ? ' disabled' : '') + '>' +
         (addTeamPending && addTeamPending.pending ? 'Adding…' : 'Add teammate') + '</button></div>' +
         '<div class="gh-error">' + escapeHtmlClient(jiraTeamError) + '</div>' +
         operationStatus(state, 'jira.addTeamMember', 'Teammate added.') +
         operationStatus(state, 'jira.removeTeamMember', 'Teammate removed.') +
-        '<ul class="jira-query-list">' + (queries || '<li class="gh-error" style="border:none;padding:0;">No saved queries yet.</li>') + '</ul>' +
+        '<div class="config-list"><div class="config-list-title">Saved JQL</div>' +
+        (savedQuery ? '<div class="jira-query-head"><strong>' + escapeHtmlClient(savedQuery.label) + '</strong><button data-jira-remove="' + escapeHtmlClient(savedQuery.label) + '" aria-label="Remove saved JQL"' + (removeQueryPending && removeQueryPending.pending ? ' disabled' : '') + '>&times;</button></div>' : '') +
         '<label class="gh-label" for="jiraQueryLabel">Query label</label>' +
-        '<div class="gh-row"><input id="jiraQueryLabel" placeholder="e.g. My open tasks" /></div>' +
+        '<div class="gh-row"><input id="jiraQueryLabel" placeholder="e.g. My open tasks" value="' + escapeHtmlClient(savedQuery ? savedQuery.label : '') + '" /></div>' +
         '<label class="gh-label" for="jiraJql">JQL</label>' +
-        '<div class="gh-row"><textarea id="jiraJql" placeholder="assignee = currentUser() AND resolution = Unresolved"></textarea></div>' +
+        '<div class="gh-row"><textarea id="jiraJql" placeholder="assignee = currentUser() AND resolution = Unresolved">' + escapeHtmlClient(savedQuery ? savedQuery.jql : '') + '</textarea></div>' +
         '<div class="gh-error">' + escapeHtmlClient(jiraQueryError) + '</div>' +
         '<button class="gh-btn" data-jira-add' + (queryAddPending && queryAddPending.pending ? ' disabled' : '') + '>' +
-        (queryAddPending && queryAddPending.pending ? 'Adding…' : 'Add saved query') + '</button>' +
-        operationStatus(state, 'jira.addQuery', 'Query added.') +
+        (queryAddPending && queryAddPending.pending ? 'Saving…' : 'Save JQL') + '</button>' +
+        operationStatus(state, 'jira.addQuery', 'JQL saved.') +
         operationStatus(state, 'jira.removeQuery', 'Query removed.') +
-        failures + '</div>';
+        '</div>' + failures + '</details>';
       wireJiraActions();
     }
 
@@ -597,7 +742,35 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     window.addEventListener('message', (event) => {
       const message = event.data;
-      if (message && message.command === 'github.state') {
+      if (message && message.command === 'ai.models') {
+        aiModel.innerHTML = '';
+        const models = Array.isArray(message.models) ? message.models : [];
+        if (models.length === 0) {
+          const option = document.createElement('option');
+          option.value = '';
+          option.textContent = 'No GitHub Copilot models available';
+          aiModel.appendChild(option);
+          aiModel.disabled = true;
+          aiModelStatus.textContent = '';
+        } else {
+          const selected = models.find((model) =>
+            model.id === message.selectedModel || model.name === message.selectedModel || model.family === message.selectedModel
+          );
+          models.forEach((model) => {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = model.name || model.family || model.id;
+            aiModel.appendChild(option);
+          });
+          aiModel.value = selected ? selected.id : models[0].id;
+          aiModel.disabled = false;
+          aiModelStatus.textContent = selected ? '' : 'The configured model is unavailable. Select an available model.';
+        }
+      } else if (message && message.command === 'ai.saved') {
+        aiSaveStatus.textContent = 'Saved.';
+      } else if (message && message.command === 'ai.saveFailed') {
+        aiSaveStatus.textContent = 'Could not save AI settings.';
+      } else if (message && message.command === 'github.state') {
         renderGithub(message.state);
       } else if (message && message.command === 'github.addResult' && !message.ok) {
         if (message.kind === 'repo') {

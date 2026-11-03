@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { matchPullRequestForIssue } from './prLinkMatcher';
+import { findPullRequestsForIssue, matchPullRequestForIssue } from './prLinkMatcher';
 import type { PullRequestSummary } from '../github/types';
 
 function createPullRequest(title: string, updatedAt: string): PullRequestSummary {
@@ -23,6 +23,13 @@ function createPullRequest(title: string, updatedAt: string): PullRequestSummary
 }
 
 suite('matchPullRequestForIssue', () => {
+  test('findPullRequestsForIssue_returnsAllMatchesNewestFirst', () => {
+    const older = createPullRequest('PROJ-123 fix', '2026-01-02T00:00:00Z');
+    const newer = createPullRequest('Follow-up for PROJ-123', '2026-01-03T00:00:00Z');
+
+    assert.deepStrictEqual(findPullRequestsForIssue('PROJ-123', [older, newer]), [newer, older]);
+  });
+
   test('matchPullRequestForIssue_returnsUndefined_whenNoPrMatches', () => {
     assert.strictEqual(
       matchPullRequestForIssue('PROJ-123', [createPullRequest('Fix another issue', '2026-01-02T00:00:00Z')]),

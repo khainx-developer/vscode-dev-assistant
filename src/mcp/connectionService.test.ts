@@ -149,10 +149,10 @@ suite('McpConnectionService', () => {
     );
 
     await service.connect('atlassian');
-    await (context.secrets as vscode.SecretStorage).store('devAssistant.mcp.atlassian.tokens', '{"access_token":"x"}');
+    await (context.secrets as vscode.SecretStorage).store('devMateKit.mcp.atlassian.tokens', '{"access_token":"x"}');
     await service.disconnect('atlassian');
 
-    assert.strictEqual(await context.secrets.get('devAssistant.mcp.atlassian.tokens'), undefined);
+    assert.strictEqual(await context.secrets.get('devMateKit.mcp.atlassian.tokens'), undefined);
     assert.strictEqual(service.isConnected('atlassian'), false);
   });
 

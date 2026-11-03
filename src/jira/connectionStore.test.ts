@@ -16,7 +16,7 @@ function stubConfiguration(initial: { siteUrl?: string; siteId?: string } = {}) 
     getConfiguration: typeof vscode.workspace.getConfiguration;
   };
   workspace.getConfiguration = ((section?: string) => {
-    if (section !== 'devAssistant.jira') {
+    if (section !== 'devMateKit.jira') {
       return original.call(vscode.workspace, section);
     }
     return {
@@ -148,14 +148,14 @@ suite('JiraConnectionStore', () => {
     const configuration = stubConfiguration({ siteUrl: VALID_SITE_URL, siteId: 'cloud-1' });
     restoreConfiguration = configuration.restore;
     const { service, disconnectCalls } = fakeConnectionService();
-    const secretStore = new Map([['devAssistant.jira.apiToken', 'legacy-token']]);
+    const secretStore = new Map([['devMateKit.jira.apiToken', 'legacy-token']]);
     const store = new JiraConnectionStore(fakeContext(secretStore), service);
 
     await store.clearConnection();
 
     assert.deepStrictEqual(configuration.settings, { siteUrl: '', siteId: '' });
     assert.deepStrictEqual(disconnectCalls, ['atlassian']);
-    assert.strictEqual(secretStore.has('devAssistant.jira.apiToken'), false);
+    assert.strictEqual(secretStore.has('devMateKit.jira.apiToken'), false);
   });
 
   test('saveConnection_onSuccess_deletesLegacySecretIfPresent', async () => {
@@ -163,11 +163,11 @@ suite('JiraConnectionStore', () => {
     restoreConfiguration = configuration.restore;
     const { service } = fakeConnectionService();
     AtlassianMcpAdapter.validateConnection = async () => ({ ok: true, siteId: 'cloud-1' });
-    const secretStore = new Map([['devAssistant.jira.apiToken', 'legacy-token']]);
+    const secretStore = new Map([['devMateKit.jira.apiToken', 'legacy-token']]);
     const store = new JiraConnectionStore(fakeContext(secretStore), service);
 
     await store.saveConnection(VALID_SITE_URL);
 
-    assert.strictEqual(secretStore.has('devAssistant.jira.apiToken'), false);
+    assert.strictEqual(secretStore.has('devMateKit.jira.apiToken'), false);
   });
 });

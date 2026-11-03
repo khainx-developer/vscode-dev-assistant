@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-const STORAGE_KEY = 'devAssistant.github.lastSeen';
+const STORAGE_KEY = 'devMateKit.github.lastSeen';
 
 export function prKey(repoKey: string, number: number): string {
   return `${repoKey}#${number}`;

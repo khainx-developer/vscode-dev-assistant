@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-const STORAGE_KEY = 'devAssistant.comments.readState.v1';
+const STORAGE_KEY = 'devMateKit.comments.readState.v1';
 
 interface CommentReadStateRecord {
   version: 1;

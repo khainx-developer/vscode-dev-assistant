@@ -43,7 +43,7 @@ export async function createOAuthClientProvider(
         token_endpoint_auth_method: 'none',
         grant_types: ['authorization_code', 'refresh_token'],
         response_types: ['code'],
-        client_name: 'Dev Assistant (VS Code)',
+        client_name: 'DevMate Kit (VS Code)',
         // RFC 7591/8252: without this, a registration server may assume `application_type:
         // 'web'` (the RFC 7591 default), which typically forbids a loopback `http://127.0.0.1`
         // redirect_uri — exactly what this provider uses. `'native'` explicitly permits it.

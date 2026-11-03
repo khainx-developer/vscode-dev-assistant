@@ -13,7 +13,7 @@ export class GitHubConfigStore {
   ) {}
 
   getConfig(): GitHubExtensionConfig {
-    const cfg = vscode.workspace.getConfiguration('devAssistant.github');
+    const cfg = vscode.workspace.getConfiguration('devMateKit.github');
     const repos = cfg.get<string[]>('monitoredRepos', []);
     const authors = cfg.get<string[]>('monitoredAuthors', []);
 
@@ -47,7 +47,7 @@ export class GitHubConfigStore {
       return { ok: false, reason: 'Repo not found or not accessible.' };
     }
 
-    const cfg = vscode.workspace.getConfiguration('devAssistant.github');
+    const cfg = vscode.workspace.getConfiguration('devMateKit.github');
     const stored = cfg.get<string[]>('monitoredRepos', []);
     await cfg.update('monitoredRepos', [...stored, value], vscode.ConfigurationTarget.Global);
     return { ok: true };
@@ -77,21 +77,21 @@ export class GitHubConfigStore {
       return { ok: false, reason: 'GitHub user not found.' };
     }
 
-    const cfg = vscode.workspace.getConfiguration('devAssistant.github');
+    const cfg = vscode.workspace.getConfiguration('devMateKit.github');
     const stored = cfg.get<string[]>('monitoredAuthors', []);
     await cfg.update('monitoredAuthors', [...stored, value], vscode.ConfigurationTarget.Global);
     return { ok: true };
   }
 
   async removeRepo(owner: string, repo: string): Promise<void> {
-    const cfg = vscode.workspace.getConfiguration('devAssistant.github');
+    const cfg = vscode.workspace.getConfiguration('devMateKit.github');
     const stored = cfg.get<string[]>('monitoredRepos', []);
     const filtered = stored.filter((value) => value !== `${owner}/${repo}`);
     await cfg.update('monitoredRepos', filtered, vscode.ConfigurationTarget.Global);
   }
 
   async removeAuthor(username: string): Promise<void> {
-    const cfg = vscode.workspace.getConfiguration('devAssistant.github');
+    const cfg = vscode.workspace.getConfiguration('devMateKit.github');
     const stored = cfg.get<string[]>('monitoredAuthors', []);
     const filtered = stored.filter((value) => value !== username);
     await cfg.update('monitoredAuthors', filtered, vscode.ConfigurationTarget.Global);

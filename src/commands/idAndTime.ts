@@ -6,25 +6,25 @@ import { currentUnixTimestamp, unixTimestampToIso } from '../core/timestamp';
 
 export const idAndTimeCommands: DevUtilityCommand[] = [
   {
-    id: 'devAssistant.generateUuid',
+    id: 'devMateKit.generateUuid',
     handler: async (editor) => {
       await insertAtCursor(editor, generateUuid());
     },
   },
   {
-    id: 'devAssistant.dateToUnixTimestamp',
+    id: 'devMateKit.dateToUnixTimestamp',
     handler: async (editor) => {
       await insertAtCursor(editor, currentUnixTimestamp());
     },
   },
   {
-    id: 'devAssistant.unixTimestampToDate',
+    id: 'devMateKit.unixTimestampToDate',
     handler: async (editor) => {
       await transformSelections(editor, (text) => {
         try {
           return unixTimestampToIso(text);
         } catch {
-          vscode.window.showErrorMessage('Dev Assistant: Selection is not a valid Unix timestamp.');
+          vscode.window.showErrorMessage('DevMate Kit: Selection is not a valid Unix timestamp.');
           return text;
         }
       });

@@ -32,18 +32,24 @@ function computeReasonsForPr(
 ): AttentionReason[] {
   const reasons: AttentionReason[] = [];
   const hasUnreadComments = (commentAttention?.unreadCount ?? 0) > 0;
+  const normalizedMe = me.toLowerCase();
   if (isMine) {
     if (classifyReviewState(pr) === 'changes_requested') reasons.push('pr-changes-requested');
     if (pr.checkStatus === 'FAILURE' || pr.checkStatus === 'ERROR') reasons.push('pr-checks-failing');
     if (hasUnreadComments) reasons.push('pr-unread-comment');
-    if (pr.reviews.length === 0) reasons.push('pr-waiting-review');
   }
   if (isTeam) {
     if (hasUnreadComments) reasons.push('pr-unread-comment');
-    const reviewedByMe = pr.reviews.some((review) => review.author === me);
-    if (pr.requestedReviewers.includes(me) && !reviewedByMe) {
+    const reviewedByMe = pr.reviews.some((review) => review.author.toLowerCase() === normalizedMe);
+    const needsMyReview = pr.requestedReviewers.some(
+      (reviewer) => reviewer.toLowerCase() === normalizedMe,
+    ) && !reviewedByMe;
+    if (needsMyReview) {
       reasons.push('pr-needs-my-review');
     }
+  }
+  if (isMine && pr.reviews.length === 0) {
+    reasons.push('pr-waiting-review');
   }
   return reasons;
 }
@@ -64,8 +70,11 @@ export const AttentionEngine = {
     const attentionInbox: AttentionItem[] = [];
 
     for (const pr of prs) {
-      const isMine = pr.author === me;
-      const isTeam = !isMine && !pr.draft && monitoredAuthors.includes(pr.author);
+      const author = pr.author.toLowerCase();
+      const normalizedMe = me.toLowerCase();
+      const isMine = author === normalizedMe;
+      const isTeam = !isMine && !pr.draft
+        && monitoredAuthors.some((monitoredAuthor) => monitoredAuthor.toLowerCase() === author);
       if ((!isMine && !isTeam) || pr.state !== 'OPEN') continue;
 
       const commentAttention = commentAttentionBySource.get(githubCommentSourceKey(pr.repoKey, pr.number));

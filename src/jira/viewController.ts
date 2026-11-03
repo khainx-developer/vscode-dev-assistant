@@ -41,6 +41,11 @@ function jiraSourceKey(siteId: string, issueKey: string): string {
   return `jira:${siteId}:${issueKey}`;
 }
 
+function samePRLink(left: JiraTask['prLink'], right: JiraTask['prLink']): boolean {
+  if (left.kind !== right.kind) return false;
+  return left.kind !== 'linked' || (right.kind === 'linked' && left.pr === right.pr);
+}
+
 function classifyFailure(error: unknown, queryLabel: string): JiraFailure {
   return { ...JiraErrorClassifier.classify(error as McpToolError), queryLabel };
 }
@@ -142,6 +147,21 @@ export class JiraViewController {
 
   async refresh(): Promise<void> {
     await this.performRefresh();
+  }
+
+  refreshPullRequestLinks(): void {
+    let changed = false;
+    this.tasksByQuery = Object.fromEntries(
+      Object.entries(this.tasksByQuery).map(([label, tasks]) => [
+        label,
+        tasks.map((task) => {
+          const updatedTask = this.buildTaskWithLinkage(task);
+          if (!samePRLink(task.prLink, updatedTask.prLink)) changed = true;
+          return updatedTask;
+        }),
+      ]),
+    );
+    if (changed) this.postState();
   }
 
   getState(): JiraViewState {

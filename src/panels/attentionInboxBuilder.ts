@@ -7,6 +7,7 @@ import type {
 } from '../github/types';
 import type { JiraTask, JiraViewState } from '../jira/types';
 import type { ProviderCommentCandidate } from '../attention/commentAttention';
+import { findPullRequestsForIssue } from '../jira/prLinkMatcher';
 
 export type AttentionReason =
   | 'jira-review'
@@ -24,6 +25,7 @@ export interface AttentionInboxItem {
   key: string;
   jiraTask?: JiraTask;
   pr?: PullRequestSummary;
+  relatedPRs: AttentionInboxPullRequest[];
   reasons: AttentionReason[];
   priority: 1 | 2 | 3 | 4;
   latestRelevantAt: string | null;
@@ -31,6 +33,13 @@ export interface AttentionInboxItem {
   jiraLatestUnreadComment: ProviderCommentCandidate | null;
   prUnreadCount: number;
   prLatestUnreadComment: ProviderCommentCandidate | null;
+}
+
+export interface AttentionInboxPullRequest {
+  pr: PullRequestSummary;
+  reasons: AttentionReason[];
+  unreadCount: number;
+  latestUnreadComment: ProviderCommentCandidate | null;
 }
 
 interface DueDateInfo {
@@ -58,9 +67,19 @@ function jiraSourceKey(task: JiraTask): string {
   return task.commentSourceKey ?? `jira:${task.url}`;
 }
 
+function isMonitoredJiraTask(task: JiraTask, jiraState: JiraViewState): boolean {
+  const assignee = task.assignee?.trim().toLowerCase();
+  if (!jiraState.connected || !assignee) return false;
+
+  const currentUser = jiraState.currentUser?.trim().toLowerCase();
+  if (currentUser && assignee === currentUser) return true;
+
+  return jiraState.teamMembers.some((member) => member.trim().toLowerCase() === assignee);
+}
+
 function latestRelevantAt(
   task: JiraTask | undefined,
-  pr: PullRequestSummary | undefined,
+  prs: PullRequestSummary[],
   githubState: GitHubViewState,
 ): string | null {
   const timestamps: number[] = [];
@@ -77,7 +96,7 @@ function latestRelevantAt(
     addTimestamp(task.updatedAt);
     addTimestamp(task.commentAttention?.latestUnreadAt);
   }
-  if (pr) {
+  for (const pr of prs) {
     addTimestamp(pr.updatedAt);
     addTimestamp(
       githubState.commentAttentionBySource[githubCommentSourceKey(pr.repoKey, pr.number)]?.latestUnreadAt,
@@ -135,24 +154,35 @@ function createInboxItem(
   pr: PullRequestSummary | undefined,
   reasons: AttentionReason[],
   githubState: GitHubViewState,
+  relatedPRs: AttentionInboxPullRequest[] = [],
 ): AttentionInboxItem {
   const jiraSource = jiraTask ? jiraSourceKey(jiraTask) : undefined;
-  const githubSource = pr ? githubCommentSourceKey(pr.repoKey, pr.number) : undefined;
+  const displayedPRs = relatedPRs.length > 0 ? relatedPRs.map((item) => item.pr) : pr ? [pr] : [];
+  const githubSources = displayedPRs.map((item) => githubCommentSourceKey(item.repoKey, item.number));
   const jiraAttention = jiraTask?.commentAttention;
-  const prAttention = githubSource ? githubState.commentAttentionBySource[githubSource] : undefined;
+  const prAttentions = githubSources.map((source) => githubState.commentAttentionBySource[source]);
+  const prUnreadComments = prAttentions.flatMap((attention) =>
+    attention?.latestUnreadComment ? [attention.latestUnreadComment] : []);
+  const latestPRComment = prUnreadComments.reduce<ProviderCommentCandidate | null>(
+    (latest, comment) => !latest || Date.parse(comment.createdAt) > Date.parse(latest.createdAt)
+      ? comment
+      : latest,
+    null,
+  );
   return {
-    key: jiraSource && githubSource
-      ? `${jiraSource}|${githubSource}`
-      : jiraSource ?? githubSource ?? '',
+    key: jiraSource && githubSources.length > 0
+      ? `${jiraSource}|${githubSources.join('|')}`
+      : jiraSource ?? githubSources[0] ?? '',
     jiraTask,
     pr,
+    relatedPRs,
     reasons,
     priority: getPriority(reasons),
-    latestRelevantAt: latestRelevantAt(jiraTask, pr, githubState),
+    latestRelevantAt: latestRelevantAt(jiraTask, displayedPRs, githubState),
     jiraUnreadCount: jiraAttention?.unreadCount ?? 0,
     jiraLatestUnreadComment: jiraAttention?.latestUnreadComment ?? null,
-    prUnreadCount: prAttention?.unreadCount ?? 0,
-    prLatestUnreadComment: prAttention?.latestUnreadComment ?? null,
+    prUnreadCount: prAttentions.reduce((total, attention) => total + (attention?.unreadCount ?? 0), 0),
+    prLatestUnreadComment: latestPRComment,
   };
 }
 
@@ -184,34 +214,55 @@ export function buildAttentionInbox(
   const githubItemsByKey = new Map(
     githubState.attention.attentionInbox.map((item) => [prKey(item.pr.repoKey, item.pr.number), item]),
   );
+  const monitoredPRsByKey = new Map(
+    [
+      ...githubState.attention.myPRs,
+      ...githubState.attention.teamPRs,
+      ...githubState.attention.attentionInbox,
+    ].map((item) => [prKey(item.pr.repoKey, item.pr.number), item.pr]),
+  );
   const consumedPRs = new Set<string>();
   const items: AttentionInboxItem[] = [];
 
   for (const task of tasksByKey.values()) {
+    if (!isMonitoredJiraTask(task, jiraState)) continue;
+
     const dueInfo = getDueDateInfo(task.dueDate, now);
     const jiraReasons: AttentionReason[] = [];
     if (task.status === 'Review') jiraReasons.push('jira-review');
     if ((task.commentAttention?.unreadCount ?? 0) > 0) jiraReasons.push('jira-unread-comment');
     if (dueInfo) jiraReasons.push(dueInfo.reason);
 
-    const linkedPR = task.prLink.kind === 'linked' ? task.prLink.pr : undefined;
-    const linkedPRKey = linkedPR ? prKey(linkedPR.repoKey, linkedPR.number) : undefined;
-    const githubItem = linkedPRKey ? githubItemsByKey.get(linkedPRKey) : undefined;
-    if (githubItem && linkedPR && linkedPRKey) {
-      const githubSourceKey = githubCommentSourceKey(linkedPR.repoKey, linkedPR.number);
-      const reasons = [
-        ...jiraReasons,
-        ...mapPRReasons(
-          githubItem.reasons,
-          (githubState.commentAttentionBySource[githubSourceKey]?.unreadCount ?? 0) > 0,
-        ),
-      ];
-      if (reasons.length > 0) {
-        items.push(createInboxItem(task, linkedPR, reasons, githubState));
-        consumedPRs.add(linkedPRKey);
+    const relatedPullRequests = findPullRequestsForIssue(task.key, [...monitoredPRsByKey.values()]);
+    const cachedLinkedPR = task.prLink.kind === 'linked'
+      ? monitoredPRsByKey.get(prKey(task.prLink.pr.repoKey, task.prLink.pr.number))
+      : undefined;
+    const cachedLinkedPRKey = cachedLinkedPR ? prKey(cachedLinkedPR.repoKey, cachedLinkedPR.number) : undefined;
+    if (cachedLinkedPR && !relatedPullRequests.some((pr) => prKey(pr.repoKey, pr.number) === cachedLinkedPRKey)) {
+      relatedPullRequests.push(cachedLinkedPR);
+    }
+    const relatedPRs = relatedPullRequests
+      .map((pr): AttentionInboxPullRequest => {
+        const key = prKey(pr.repoKey, pr.number);
+        const sourceKey = githubCommentSourceKey(pr.repoKey, pr.number);
+        const githubItem = githubItemsByKey.get(key);
+        const unreadCount = githubState.commentAttentionBySource[sourceKey]?.unreadCount ?? 0;
+        return {
+          pr,
+          reasons: mapPRReasons(githubItem?.reasons ?? [], unreadCount > 0),
+          unreadCount,
+          latestUnreadComment: githubState.commentAttentionBySource[sourceKey]?.latestUnreadComment ?? null,
+        };
+      });
+    const reasons = [...new Set([
+      ...jiraReasons,
+      ...relatedPRs.flatMap((relatedPR) => relatedPR.reasons),
+    ])];
+    if (reasons.length > 0) {
+      items.push(createInboxItem(task, undefined, reasons, githubState, relatedPRs));
+      for (const relatedPR of relatedPRs) {
+        consumedPRs.add(prKey(relatedPR.pr.repoKey, relatedPR.pr.number));
       }
-    } else if (jiraReasons.length > 0) {
-      items.push(createInboxItem(task, undefined, jiraReasons, githubState));
     }
   }
 

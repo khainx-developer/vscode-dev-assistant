@@ -16,7 +16,7 @@ export class ToolPanel {
   static createOrShow(extensionUri: vscode.Uri, toolId: string): void {
     const tool = getToolById(toolId);
     if (!tool) {
-      vscode.window.showErrorMessage(`Dev Assistant: Unknown tool "${toolId}".`);
+      vscode.window.showErrorMessage(`DevMate Kit: Unknown tool "${toolId}".`);
       return;
     }
 
@@ -26,7 +26,7 @@ export class ToolPanel {
       return;
     }
 
-    const panel = vscode.window.createWebviewPanel('devAssistant.tool', tool.title, vscode.ViewColumn.Active, {
+    const panel = vscode.window.createWebviewPanel('devMateKit.tool', tool.title, vscode.ViewColumn.Active, {
       enableScripts: true,
       retainContextWhenHidden: true,
       localResourceRoots: [extensionUri],
@@ -52,7 +52,7 @@ export class ToolPanel {
   private handleMessage(tool: ToolDefinition, message: IncomingMessage): void {
     if (message.command === 'copy') {
       void vscode.env.clipboard.writeText(message.text);
-      void vscode.window.setStatusBarMessage('Dev Assistant: Copied to clipboard', 2000);
+      void vscode.window.setStatusBarMessage('DevMate Kit: Copied to clipboard', 2000);
       return;
     }
 

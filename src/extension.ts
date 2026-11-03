@@ -23,14 +23,14 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         await command.handler(editor, context);
       } catch (err) {
-        vscode.window.showErrorMessage(`Dev Assistant: ${(err as Error).message}`);
+        vscode.window.showErrorMessage(`DevMate Kit: ${(err as Error).message}`);
       }
     });
     context.subscriptions.push(disposable);
   }
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('devAssistant.openTool', (toolId: string) => {
+    vscode.commands.registerCommand('devMateKit.openTool', (toolId: string) => {
       ToolPanel.createOrShow(context.extensionUri, toolId);
     })
   );
@@ -43,7 +43,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const jiraConnectionStore = new JiraConnectionStore(context, connectionService);
   const jiraConfigStore = new JiraConfigStore(jiraConnectionStore, connectionService);
   const commentReadStateStore = new CommentReadStateStore(context);
-  const jiraOutputChannel = vscode.window.createOutputChannel('Dev Assistant');
+  const jiraOutputChannel = vscode.window.createOutputChannel('DevMate Kit');
   context.subscriptions.push(jiraOutputChannel);
   const jiraServices = {
     connectionStore: jiraConnectionStore,
@@ -64,17 +64,17 @@ export function activate(context: vscode.ExtensionContext): void {
     pullRequestCache,
   }, jiraServices);
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('devAssistant.sidebar', sidebarProvider)
+    vscode.window.registerWebviewViewProvider('devMateKit.sidebar', sidebarProvider)
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('devAssistant.githubSignIn', () => {
+    vscode.commands.registerCommand('devMateKit.githubSignIn', () => {
       void authService.getSession(true);
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('devAssistant.openDashboard', () => {
+    vscode.commands.registerCommand('devMateKit.openDashboard', () => {
       DashboardPanel.createOrShow(context.extensionUri, context, {
         authService,
         configStore,

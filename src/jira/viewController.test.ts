@@ -434,6 +434,40 @@ suite('JiraViewController', () => {
     assert.strictEqual(controller.getState().tasksByQuery.Second[0].commentState, 'available');
   });
 
+  test('refreshPullRequestLinks_relinksTasksAfterGitHubCacheUpdates', async () => {
+    const pullRequestCache = new PullRequestCache();
+    const { controller, posted } = createController({
+      queries: [{ label: 'Watched', jql: 'project = APP' }],
+      fetchIssues: async () => [makeTask('APP-12')],
+      fetchIssueComments: async () => [],
+      pullRequestCache,
+    });
+
+    await controller.refresh();
+    assert.strictEqual(controller.getState().tasksByQuery.Watched[0].prLink.kind, 'not-available');
+
+    const pr = makePr({ number: 12, title: 'Fix APP-12' });
+    pullRequestCache.setForRepo('owner/repo', [pr]);
+    controller.refreshPullRequestLinks();
+
+    const linkedTask = controller.getState().tasksByQuery.Watched[0];
+    assert.strictEqual(linkedTask.prLink.kind, 'linked');
+    if (linkedTask.prLink.kind === 'linked') {
+      assert.strictEqual(linkedTask.prLink.pr.number, 12);
+    }
+
+    const stateMessages = posted.filter((message) => message.command === 'jira.state');
+    const publishedState = stateMessages[stateMessages.length - 1];
+    assert.strictEqual(publishedState.command, 'jira.state');
+    if (publishedState.command === 'jira.state') {
+      assert.strictEqual(publishedState.state.tasksByQuery.Watched[0].prLink.kind, 'linked');
+    }
+
+    const messageCount = posted.length;
+    controller.refreshPullRequestLinks();
+    assert.strictEqual(posted.length, messageCount);
+  });
+
   test('refresh_fetchesCommentsForWatchedTasks', async () => {
     const seenAt = Date.parse('2026-10-01T00:00:00Z');
     const sourceKey = 'jira:cloud-1:APP-10';

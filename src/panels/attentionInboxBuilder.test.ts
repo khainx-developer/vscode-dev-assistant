@@ -44,7 +44,7 @@ function makeTask(overrides: Partial<JiraTask> = {}): JiraTask {
     key,
     summary: `Task ${key}`,
     status: 'Open',
-    assignee: null,
+    assignee: 'me',
     dueDate: null,
     updatedAt: ACTIVITY_OLDER,
     commentSourceKey: `jira:cloud-1:${key}`,
@@ -89,12 +89,12 @@ function makeAttentionItem(
   };
 }
 
-function makeJiraState(tasks: JiraTask[]): JiraViewState {
+function makeJiraState(tasks: JiraTask[], teamMembers: string[] = []): JiraViewState {
   return {
     connected: true,
     siteUrl: 'https://example.atlassian.net',
     currentUser: 'me',
-    teamMembers: [],
+    teamMembers,
     savedQueries: [],
     tasksByQuery: { Watched: tasks },
     failures: [],
@@ -142,6 +142,17 @@ suite('buildAttentionInbox', () => {
     assert.strictEqual(inbox[0].priority, 3);
   });
 
+  test('buildAttentionInbox_excludesUnmonitoredJiraTickets', () => {
+    const task = makeTask({ assignee: 'Unmonitored', status: 'Review' });
+    const jiraState = {
+      ...makeJiraState([task], ['Alex Smith']),
+    };
+
+    const inbox = buildAttentionInbox(jiraState, makeGitHubState(), NOW);
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
   test('buildAttentionInbox_classifiesDueDateReasonsByCalendarDay', () => {
     const inbox = buildAttentionInbox(
       makeJiraState([
@@ -174,6 +185,53 @@ suite('buildAttentionInbox', () => {
     assert.strictEqual(inbox[0].jiraLatestUnreadComment?.id, 'comment-1');
   });
 
+  test('buildAttentionInbox_excludesReadJiraComments', () => {
+    const task = makeTask({
+      comments: [{
+        id: 'jira-comment-1',
+        author: 'Alex Smith',
+        body: 'Please review this change.',
+        createdAt: ACTIVITY_NEWER,
+        visibility: null,
+        url: 'https://example.atlassian.net/browse/APP-1?focusedCommentId=1',
+      }],
+    });
+
+    const inbox = buildAttentionInbox(makeJiraState([task]), makeGitHubState(), NOW);
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
+  test('buildAttentionInbox_doesNotShowLinkedJiraTicketWithoutActionableReason', () => {
+    const pr = makePR({ number: 17 });
+    const task = makeTask({ prLink: { kind: 'linked', pr } });
+
+    const inbox = buildAttentionInbox(makeJiraState([task]), makeGitHubState(), NOW);
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
+  test('buildAttentionInbox_excludesReadStandalonePRComments', () => {
+    const pr = makePR({
+      number: 18,
+      comments: [{
+        id: 'pr-comment-1',
+        author: 'teammate',
+        body: 'Please review this change.',
+        createdAt: ACTIVITY_NEWER,
+        url: 'https://github.com/owner/repo/pull/18#issuecomment-1',
+      }],
+    });
+
+    const inbox = buildAttentionInbox(
+      makeJiraState([]),
+      makeGitHubState({ myPRs: [makeAttentionItem(pr, [])] }),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
   test('buildAttentionInbox_combinesMonitoredLinkedJiraAndPR', () => {
     const pr = makePR({ repoKey: 'owner/repo', number: 12 });
     const task = makeTask({
@@ -196,13 +254,94 @@ suite('buildAttentionInbox', () => {
 
     assert.strictEqual(inbox.length, 1);
     assert.strictEqual(inbox[0].jiraTask?.key, 'APP-12');
-    assert.strictEqual(inbox[0].pr?.number, 12);
+    assert.deepStrictEqual(inbox[0].relatedPRs.map((item) => item.pr.number), [12]);
     assert.deepStrictEqual(inbox[0].reasons, [
       'jira-review',
       'pr-changes-requested',
       'pr-unread-comment',
     ]);
     assert.strictEqual(inbox[0].key, `jira:cloud-1:APP-12|${githubSourceKey}`);
+  });
+
+  test('buildAttentionInbox_combinesTeamJiraTicketAndLinkedPRComments', () => {
+    const pr = makePR({ author: 'teammate', repoKey: 'owner/repo', number: 16 });
+    const jiraSourceKey = 'jira:cloud-1:APP-16';
+    const githubSourceKey = `github:${pr.repoKey}#${pr.number}`;
+    const task = makeTask({
+      key: 'APP-16',
+      assignee: 'Alex Smith',
+      commentAttention: makeCommentAttention(jiraSourceKey, 1),
+      prLink: { kind: 'linked', pr },
+    });
+
+    const inbox = buildAttentionInbox(
+      makeJiraState([task], ['Alex Smith']),
+      makeGitHubState({
+        attentionInbox: [makeAttentionItem(pr, ['pr-unread-comment'])],
+        commentAttentionBySource: {
+          [githubSourceKey]: makeCommentAttention(githubSourceKey, 1),
+        },
+      }),
+      NOW,
+    );
+
+    assert.strictEqual(inbox.length, 1);
+    assert.strictEqual(inbox[0].jiraTask?.assignee, 'Alex Smith');
+    assert.deepStrictEqual(inbox[0].relatedPRs.map((item) => item.pr.number), [16]);
+    assert.deepStrictEqual(inbox[0].reasons, ['jira-unread-comment', 'pr-unread-comment']);
+  });
+
+  test('buildAttentionInbox_groupsAttentionPRByJiraKeyWhenAnotherPRIsTheCachedLink', () => {
+    const cachedPR = makePR({
+      number: 1748,
+      title: 'PM-33692 Update attachment rules',
+      updatedAt: ACTIVITY_OLDER,
+    });
+    const attentionPR = makePR({
+      number: 1738,
+      author: 'teammate',
+      title: 'PM-33692 Update attachment rules',
+      updatedAt: ACTIVITY_NEWER,
+    });
+    const task = makeTask({
+      key: 'PM-33692',
+      prLink: { kind: 'linked', pr: cachedPR },
+    });
+
+    const inbox = buildAttentionInbox(
+      makeJiraState([task]),
+      makeGitHubState({
+        myPRs: [makeAttentionItem(cachedPR, [])],
+        teamPRs: [makeAttentionItem(attentionPR, ['pr-needs-my-review'])],
+        attentionInbox: [makeAttentionItem(attentionPR, ['pr-needs-my-review'])],
+      }),
+      NOW,
+    );
+
+    assert.strictEqual(inbox.length, 1);
+    assert.strictEqual(inbox[0].jiraTask?.key, 'PM-33692');
+    assert.deepStrictEqual(inbox[0].relatedPRs.map((item) => item.pr.number), [1738, 1748]);
+    assert.deepStrictEqual(inbox[0].relatedPRs.map((item) => item.pr.author), ['teammate', 'me']);
+    assert.deepStrictEqual(inbox[0].reasons, ['pr-needs-my-review']);
+  });
+
+  test('buildAttentionInbox_doesNotShowUnmonitoredLinkedPR', () => {
+    const pr = makePR({ author: 'unmonitored', number: 19 });
+    const task = makeTask({
+      assignee: 'Alex Smith',
+      status: 'Review',
+      prLink: { kind: 'linked', pr },
+    });
+
+    const inbox = buildAttentionInbox(
+      makeJiraState([task], ['Alex Smith']),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.strictEqual(inbox.length, 1);
+    assert.strictEqual(inbox[0].jiraTask?.key, 'APP-1');
+    assert.strictEqual(inbox[0].pr, undefined);
   });
 
   test('buildAttentionInbox_deduplicatesIssueAcrossSavedQueries', () => {

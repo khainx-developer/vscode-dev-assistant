@@ -28,7 +28,7 @@ function stubConfiguration(
     getConfiguration: typeof vscode.workspace.getConfiguration;
   };
   workspace.getConfiguration = ((section?: string) => {
-    if (section !== 'devAssistant.jira') {
+    if (section !== 'devMateKit.jira') {
       return original.call(vscode.workspace, section);
     }
     return {
@@ -79,16 +79,16 @@ suite('JiraConfigStore', () => {
     });
   });
 
-  test('addQuery_duplicateLabel_returnsFailure', async () => {
+  test('addQuery_replacesExistingQuery_andKeepsOnlyOne', async () => {
     const configuration = stubConfiguration([{ label: 'Backlog', jql: 'project = DEMO' }]);
     restoreConfiguration = configuration.restore;
     AtlassianMcpAdapter.validateQuery = async () => ({ ok: true });
     const store = new JiraConfigStore(fakeConnectionStore(connection), fakeConnectionService);
 
-    assert.deepStrictEqual(await store.addQuery('backlog', 'project = OTHER'), {
-      ok: false,
-      reason: 'A saved query with this label already exists.',
-    });
+    assert.deepStrictEqual(await store.addQuery('In Progress', 'status = "In Progress"'), { ok: true });
+    assert.deepStrictEqual(configuration.settings.savedQueries, [
+      { label: 'In Progress', jql: 'status = "In Progress"' },
+    ]);
   });
 
   test('addQuery_validQuery_callsAdapterWithSiteId', async () => {
@@ -122,7 +122,7 @@ suite('JiraConfigStore', () => {
     assert.deepStrictEqual(configuration.settings.savedQueries, []);
   });
 
-  test('removeQuery_removesByLabel', async () => {
+  test('removeQuery_clearsTheSavedQuery', async () => {
     const configuration = stubConfiguration([
       { label: 'Backlog', jql: 'project = DEMO' },
       { label: 'In Progress', jql: 'status = "In Progress"' },
@@ -132,9 +132,7 @@ suite('JiraConfigStore', () => {
 
     await store.removeQuery('backlog');
 
-    assert.deepStrictEqual(configuration.settings.savedQueries, [
-      { label: 'In Progress', jql: 'status = "In Progress"' },
-    ]);
+    assert.deepStrictEqual(configuration.settings.savedQueries, []);
   });
 
   test('JiraConfigStore_addQuery_rejectsEmptyJql', async () => {
@@ -179,6 +177,17 @@ suite('JiraConfigStore', () => {
     const store = new JiraConfigStore(fakeConnectionStore(connection), fakeConnectionService);
 
     assert.deepStrictEqual(store.getSavedQueries(), []);
+  });
+
+  test('JiraConfigStore_getSavedQueries_returnsOnlyOne_whenLegacySettingsHaveSeveral', () => {
+    const configuration = stubConfiguration([
+      { label: 'Backlog', jql: 'project = DEMO' },
+      { label: 'In Progress', jql: 'status = "In Progress"' },
+    ]);
+    restoreConfiguration = configuration.restore;
+    const store = new JiraConfigStore(fakeConnectionStore(connection), fakeConnectionService);
+
+    assert.deepStrictEqual(store.getSavedQueries(), [{ label: 'Backlog', jql: 'project = DEMO' }]);
   });
 
   test('getTeamMembers_returnsEmptyWhenUnset', () => {

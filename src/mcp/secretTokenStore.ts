@@ -40,15 +40,15 @@ export class McpSecretTokenStore {
   }
 
   private clientInformationKey(): string {
-    return `devAssistant.mcp.${this.serverId}.clientInformation`;
+    return `devMateKit.mcp.${this.serverId}.clientInformation`;
   }
 
   private tokensKey(): string {
-    return `devAssistant.mcp.${this.serverId}.tokens`;
+    return `devMateKit.mcp.${this.serverId}.tokens`;
   }
 
   private codeVerifierKey(): string {
-    return `devAssistant.mcp.${this.serverId}.codeVerifier`;
+    return `devMateKit.mcp.${this.serverId}.codeVerifier`;
   }
 
   private async getJson(key: string): Promise<unknown | undefined> {

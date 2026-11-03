@@ -4,7 +4,7 @@ import { AtlassianMcpAdapter } from './atlassianMcpAdapter';
 import type { JiraConnection } from './types';
 
 const URL_FORMAT = /^https:\/\//;
-const LEGACY_SECRET_KEY = 'devAssistant.jira.apiToken';
+const LEGACY_SECRET_KEY = 'devMateKit.jira.apiToken';
 
 export class JiraConnectionStore {
   constructor(
@@ -13,7 +13,7 @@ export class JiraConnectionStore {
   ) {}
 
   async getConnection(): Promise<JiraConnection | undefined> {
-    const cfg = vscode.workspace.getConfiguration('devAssistant.jira');
+    const cfg = vscode.workspace.getConfiguration('devMateKit.jira');
     const siteUrl = cfg.get<string>('siteUrl', '');
     const siteId = cfg.get<string>('siteId', '');
     if (!siteUrl || !siteId) {
@@ -44,7 +44,7 @@ export class JiraConnectionStore {
       return { ok: false, reason: result.reason };
     }
 
-    const cfg = vscode.workspace.getConfiguration('devAssistant.jira');
+    const cfg = vscode.workspace.getConfiguration('devMateKit.jira');
     await cfg.update('siteUrl', siteUrl, vscode.ConfigurationTarget.Global);
     await cfg.update('siteId', result.siteId, vscode.ConfigurationTarget.Global);
     await this.context.secrets.delete(LEGACY_SECRET_KEY);
@@ -52,7 +52,7 @@ export class JiraConnectionStore {
   }
 
   async clearConnection(): Promise<void> {
-    const cfg = vscode.workspace.getConfiguration('devAssistant.jira');
+    const cfg = vscode.workspace.getConfiguration('devMateKit.jira');
     await cfg.update('siteUrl', '', vscode.ConfigurationTarget.Global);
     await cfg.update('siteId', '', vscode.ConfigurationTarget.Global);
     await this.connectionService.disconnect('atlassian');

@@ -13,7 +13,7 @@ function stubConfiguration(initial: { monitoredRepos?: string[]; monitoredAuthor
   };
   const original = vscode.workspace.getConfiguration;
   (vscode.workspace as any).getConfiguration = (section?: string) => {
-    if (section !== 'devAssistant.github') {
+    if (section !== 'devMateKit.github') {
       return original.call(vscode.workspace, section);
     }
     return {

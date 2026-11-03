@@ -130,6 +130,37 @@ suite('AttentionEngine', () => {
     assert.deepStrictEqual(result.teamPRs[0].reasons, ['pr-needs-my-review']);
   });
 
+  test('computeAttentionState_matchesMonitoredAuthorsAndReviewersCaseInsensitively', () => {
+    const pr = makePr({ author: 'Teammate', requestedReviewers: ['ME'] });
+
+    const result = AttentionEngine.computeAttentionState(
+      [pr],
+      new Map(),
+      'me',
+      ['teammate'],
+      NOW,
+      new Map(),
+    );
+
+    assert.deepStrictEqual(result.teamPRs[0].reasons, ['pr-needs-my-review']);
+  });
+
+  test('computeAttentionState_teamPR_withoutReviewRequest_isNotActionable', () => {
+    const pr = makePr({ author: 'teammate' });
+
+    const result = AttentionEngine.computeAttentionState(
+      [pr],
+      new Map(),
+      'me',
+      ['teammate'],
+      NOW,
+      new Map(),
+    );
+
+    assert.deepStrictEqual(result.teamPRs[0].reasons, []);
+    assert.deepStrictEqual(result.attentionInbox, []);
+  });
+
   test('computeAttentionState_teamPR_otherReasonIsExcluded', () => {
     const pr = makePr({
       author: 'teammate',

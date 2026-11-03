@@ -11,16 +11,16 @@ export class JiraConfigStore {
   ) {}
 
   getSavedQueries(): JiraSavedQuery[] {
-    return vscode.workspace.getConfiguration('devAssistant.jira').get<JiraSavedQuery[]>('savedQueries', []);
+    return vscode.workspace.getConfiguration('devMateKit.jira').get<JiraSavedQuery[]>('savedQueries', []).slice(0, 1);
   }
 
   getCurrentUser(): string | null {
-    const value = vscode.workspace.getConfiguration('devAssistant.jira').get<string>('currentUser', '').trim();
+    const value = vscode.workspace.getConfiguration('devMateKit.jira').get<string>('currentUser', '').trim();
     return value === '' ? null : value;
   }
 
   getTeamMembers(): string[] {
-    return vscode.workspace.getConfiguration('devAssistant.jira').get<string[]>('teamMembers', []);
+    return vscode.workspace.getConfiguration('devMateKit.jira').get<string[]>('teamMembers', []);
   }
 
   async addTeamMember(displayName: string): Promise<OperationResult> {
@@ -29,7 +29,7 @@ export class JiraConfigStore {
       return { ok: false, reason: 'Display name is required.' };
     }
 
-    const cfg = vscode.workspace.getConfiguration('devAssistant.jira');
+    const cfg = vscode.workspace.getConfiguration('devMateKit.jira');
     const current = cfg.get<string[]>('teamMembers', []);
     const normalizedDisplayName = trimmedDisplayName.toLowerCase();
     if (current.some((member) => member.toLowerCase() === normalizedDisplayName)) {
@@ -51,7 +51,7 @@ export class JiraConfigStore {
 
   async removeTeamMember(displayName: string): Promise<void> {
     const normalizedDisplayName = displayName.trim().toLowerCase();
-    const cfg = vscode.workspace.getConfiguration('devAssistant.jira');
+    const cfg = vscode.workspace.getConfiguration('devMateKit.jira');
     const current = cfg.get<string[]>('teamMembers', []);
     const filtered = current.filter((member) => member.toLowerCase() !== normalizedDisplayName);
     await cfg.update('teamMembers', filtered, vscode.ConfigurationTarget.Global);
@@ -59,7 +59,7 @@ export class JiraConfigStore {
 
   async setCurrentUser(displayName: string): Promise<OperationResult> {
     const trimmedDisplayName = displayName.trim();
-    const cfg = vscode.workspace.getConfiguration('devAssistant.jira');
+    const cfg = vscode.workspace.getConfiguration('devMateKit.jira');
     const teamMembers = cfg.get<string[]>('teamMembers', []);
     const normalizedDisplayName = trimmedDisplayName.toLowerCase();
 
@@ -82,11 +82,6 @@ export class JiraConfigStore {
     if (jql.trim() === '') {
       return { ok: false, reason: 'JQL is required.' };
     }
-    const current = this.getSavedQueries();
-    if (current.some((query) => query.label.toLowerCase() === trimmedLabel.toLowerCase())) {
-      return { ok: false, reason: 'A saved query with this label already exists.' };
-    }
-
     const connection = await this.connectionStore.getConnection();
     if (!connection) {
       return { ok: false, reason: 'Save a Jira connection first.' };
@@ -97,10 +92,10 @@ export class JiraConfigStore {
       return result;
     }
 
-    const cfg = vscode.workspace.getConfiguration('devAssistant.jira');
+    const cfg = vscode.workspace.getConfiguration('devMateKit.jira');
     await cfg.update(
       'savedQueries',
-      [...current, { label: trimmedLabel, jql }],
+      [{ label: trimmedLabel, jql }],
       vscode.ConfigurationTarget.Global,
     );
     return { ok: true };
@@ -108,9 +103,11 @@ export class JiraConfigStore {
 
   async removeQuery(label: string): Promise<void> {
     const current = this.getSavedQueries();
-    const filtered = current.filter((query) => query.label.toLowerCase() !== label.toLowerCase());
+    if (!current.some((query) => query.label.toLowerCase() === label.toLowerCase())) {
+      return;
+    }
     await vscode.workspace
-      .getConfiguration('devAssistant.jira')
-      .update('savedQueries', filtered, vscode.ConfigurationTarget.Global);
+      .getConfiguration('devMateKit.jira')
+      .update('savedQueries', [], vscode.ConfigurationTarget.Global);
   }
 }
