@@ -232,6 +232,55 @@ suite('AtlassianMcpAdapter', () => {
     });
   });
 
+  test('fetchIssueComments_coalescesIdenticalInFlightRequests', async () => {
+    let calls = 0;
+    let resolveCall: ((value: unknown) => void) | undefined;
+    const service = makeConnectionService(() => {
+      calls++;
+      return new Promise((resolve) => { resolveCall = resolve; });
+    });
+
+    const first = AtlassianMcpAdapter.fetchIssueComments(service, 'cloud-1', 'ABC-6', 'https://example.atlassian.net', 1);
+    const second = AtlassianMcpAdapter.fetchIssueComments(service, 'cloud-1', 'ABC-6', 'https://example.atlassian.net', 1);
+
+    assert.strictEqual(calls, 1);
+    resolveCall?.(commentPage([], 0, true));
+    await Promise.all([first, second]);
+  });
+
+  test('fetchIssueComments_limitsConcurrentAtlassianRequests', async () => {
+    let calls = 0;
+    let active = 0;
+    let maximumActive = 0;
+    const pending: Array<(value: unknown) => void> = [];
+    let resolveThirdStarted: (() => void) | undefined;
+    const thirdStarted = new Promise<void>((resolve) => { resolveThirdStarted = resolve; });
+    const service = makeConnectionService(() => {
+      calls++;
+      active++;
+      maximumActive = Math.max(maximumActive, active);
+      if (calls === 3) resolveThirdStarted?.();
+      return new Promise((resolve) => {
+        pending.push((value) => {
+          active--;
+          resolve(value);
+        });
+      });
+    });
+
+    const requests = ['ABC-7', 'ABC-8', 'ABC-9'].map((issueKey) =>
+      AtlassianMcpAdapter.fetchIssueComments(service, 'cloud-1', issueKey, 'https://example.atlassian.net', undefined));
+
+    assert.strictEqual(calls, 2);
+    pending.shift()?.(commentPage([], 0, true));
+    await thirdStarted;
+    assert.strictEqual(calls, 3);
+    assert.strictEqual(maximumActive, 2);
+
+    pending.splice(0).forEach((resolve) => resolve(commentPage([], 0, true)));
+    await Promise.all(requests);
+  });
+
   test('fetchIssueComments_mapsCommentFieldsAndVisibility', async () => {
     const service = makeConnectionService(() =>
       Promise.resolve(

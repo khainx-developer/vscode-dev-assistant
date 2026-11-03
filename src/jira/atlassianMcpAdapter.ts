@@ -35,6 +35,45 @@ type JiraCommentPage = {
   };
 };
 
+const MAX_CONCURRENT_ATLASSIAN_CALLS = 2;
+const inFlightAtlassianCalls = new Map<string, Promise<unknown>>();
+const queuedAtlassianCalls: Array<() => void> = [];
+let activeAtlassianCalls = 0;
+
+async function callAtlassianTool(
+  connectionService: McpConnectionService,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  const key = JSON.stringify([name, args]);
+  const inFlight = inFlightAtlassianCalls.get(key);
+  if (inFlight) return inFlight;
+
+  const request = (async () => {
+    if (activeAtlassianCalls >= MAX_CONCURRENT_ATLASSIAN_CALLS) {
+      await new Promise<void>((resolve) => queuedAtlassianCalls.push(resolve));
+    } else {
+      activeAtlassianCalls++;
+    }
+    try {
+      return await connectionService.callTool('atlassian', name, args);
+    } finally {
+      const next = queuedAtlassianCalls.shift();
+      if (next) next();
+      else activeAtlassianCalls--;
+    }
+  })();
+  inFlightAtlassianCalls.set(key, request);
+
+  try {
+    return await request;
+  } finally {
+    if (inFlightAtlassianCalls.get(key) === request) {
+      inFlightAtlassianCalls.delete(key);
+    }
+  }
+}
+
 function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, '').toLowerCase();
 }
@@ -169,7 +208,7 @@ export const AtlassianMcpAdapter = {
     siteUrl: string,
   ): Promise<{ ok: true; siteId: string } | { ok: false; reason: string }> {
     const raw = parseToolResultText<AccessibleResourcesResult>(
-      await connectionService.callTool('atlassian', 'getAccessibleAtlassianResources', {}),
+      await callAtlassianTool(connectionService, 'getAccessibleAtlassianResources', {}),
     );
 
     const normalizedTarget = normalizeUrl(siteUrl);
@@ -186,7 +225,7 @@ export const AtlassianMcpAdapter = {
     jql: string,
   ): Promise<{ ok: true } | { ok: false; reason: string }> {
     try {
-      await connectionService.callTool('atlassian', 'searchJiraIssuesUsingJql', {
+      await callAtlassianTool(connectionService, 'searchJiraIssuesUsingJql', {
         cloudId: siteId,
         jql,
         maxResults: 1,
@@ -209,7 +248,7 @@ export const AtlassianMcpAdapter = {
     siteUrl: string,
   ): Promise<JiraTask[]> {
     const result = parseToolResultText<SearchJqlResult>(
-      await connectionService.callTool('atlassian', 'searchJiraIssuesUsingJql', {
+      await callAtlassianTool(connectionService, 'searchJiraIssuesUsingJql', {
         cloudId: siteId,
         jql,
         maxResults: 50,
@@ -232,7 +271,7 @@ export const AtlassianMcpAdapter = {
 
     for (;;) {
       const page = parseCommentPage(
-        await connectionService.callTool('atlassian', 'listJiraIssueComments', {
+        await callAtlassianTool(connectionService, 'listJiraIssueComments', {
           cloudId: siteId,
           issueIdOrKey: issueKey,
           startAt,
