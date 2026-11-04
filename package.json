@@ -2,7 +2,7 @@
   "name": "devmate-kit",
   "displayName": "DevMate Kit",
   "description": "A collection of handy developer utilities for VS Code: GitHub PR & Jira task tracking, Base64/URL/JSON tools, UUIDs, timestamps, and case conversions.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "khainx-developer",
   "license": "MIT",
   "icon": "media/dev-assistant-activity-icon.png",

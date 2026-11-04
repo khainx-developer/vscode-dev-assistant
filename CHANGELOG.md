@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.3
+
+- Jira: Added support for saving and displaying multiple JQL queries on the Daily Tasks dashboard.
+- Dashboard: Updated the layout and font sizing for improved readability.
+
 ## 0.0.2
 
 - Dashboard: Updated the Attention Inbox to group Jira tickets with all matching monitored PRs, including per-PR authors, comment/review details, and Open Jira/Open PR actions.
