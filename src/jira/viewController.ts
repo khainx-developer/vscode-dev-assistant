@@ -133,6 +133,13 @@ export class JiraViewController {
           return result;
         });
         return;
+      case 'jira.updateQuery':
+        await this.runOperation(msg.command, async () => {
+          const result = await this.configStore.updateQuery(msg.originalLabel, msg.label, msg.jql);
+          await this.performRefresh();
+          return result;
+        });
+        return;
       case 'jira.removeQuery':
         await this.runOperation(msg.command, async () => {
           await this.configStore.removeQuery(msg.label);
@@ -512,6 +519,9 @@ export class JiraViewController {
       case 'jira.addQuery':
         this.postQueryResult(result);
         break;
+      case 'jira.updateQuery':
+        this.postUpdateQueryResult(result);
+        break;
     }
   }
 
@@ -552,6 +562,13 @@ export class JiraViewController {
     const message: JiraOutgoingMessage = result.ok
       ? { command: 'jira.queryResult', ok: true }
       : { command: 'jira.queryResult', ok: false, reason: result.reason };
+    void this.view.webview.postMessage(message);
+  }
+
+  private postUpdateQueryResult(result: OperationResult): void {
+    const message: JiraOutgoingMessage = result.ok
+      ? { command: 'jira.updateQueryResult', ok: true }
+      : { command: 'jira.updateQueryResult', ok: false, reason: result.reason };
     void this.view.webview.postMessage(message);
   }
 

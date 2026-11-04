@@ -74,6 +74,7 @@ function createController(options: {
       JiraConfigStore,
       | 'getSavedQueries'
       | 'addQuery'
+      | 'updateQuery'
       | 'removeQuery'
       | 'getCurrentUser'
       | 'setCurrentUser'
@@ -109,6 +110,7 @@ function createController(options: {
   const configStore = {
     getSavedQueries: () => options.queries ?? [],
     addQuery: async () => ({ ok: true }),
+    updateQuery: async () => ({ ok: true }),
     removeQuery: async () => {},
     getCurrentUser: () => options.currentUser ?? null,
     setCurrentUser: async () => ({ ok: true }),
@@ -701,6 +703,7 @@ suite('JiraViewController', () => {
   test('handleMessage_dispatchesEachCommand', async () => {
     let saved = false;
     let added = false;
+    let updated = false;
     let removed = false;
     const { controller, posted } = createController({
       connectionStoreOverrides: {
@@ -715,6 +718,13 @@ suite('JiraViewController', () => {
           added = true;
           return { ok: true };
         },
+        updateQuery: async (originalLabel, label, jql) => {
+          updated = true;
+          assert.strictEqual(originalLabel, 'Tasks');
+          assert.strictEqual(label, 'My tasks');
+          assert.strictEqual(jql, 'project = APP2');
+          return { ok: true };
+        },
         removeQuery: async () => {
           removed = true;
         },
@@ -726,15 +736,24 @@ suite('JiraViewController', () => {
       siteUrl: CONNECTION.siteUrl,
     });
     await controller.handleMessage({ command: 'jira.addQuery', label: 'Tasks', jql: 'project = APP' });
-    await controller.handleMessage({ command: 'jira.removeQuery', label: 'Tasks' });
+    await controller.handleMessage({
+      command: 'jira.updateQuery',
+      originalLabel: 'Tasks',
+      label: 'My tasks',
+      jql: 'project = APP2',
+    });
+    await controller.handleMessage({ command: 'jira.removeQuery', label: 'My tasks' });
 
     assert.strictEqual(saved, true);
     assert.strictEqual(added, true);
+    assert.strictEqual(updated, true);
     assert.strictEqual(removed, true);
     const connectionResult = posted.find((message) => message.command === 'jira.connectionResult');
     const queryResult = posted.find((message) => message.command === 'jira.queryResult');
+    const updateQueryResult = posted.find((message) => message.command === 'jira.updateQueryResult');
     assert.deepStrictEqual(connectionResult, { command: 'jira.connectionResult', ok: true });
     assert.deepStrictEqual(queryResult, { command: 'jira.queryResult', ok: true });
+    assert.deepStrictEqual(updateQueryResult, { command: 'jira.updateQueryResult', ok: true });
   });
 
   test('JiraViewController_handleMessage_openTask_opensExternalUrl', async () => {

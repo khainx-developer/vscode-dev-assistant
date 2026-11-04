@@ -171,6 +171,7 @@ export class DashboardPanel {
   <style>
     body {
       font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
       color: var(--vscode-foreground);
       background-color: var(--vscode-editor-background);
       padding: 24px 32px 40px;
@@ -188,7 +189,7 @@ export class DashboardPanel {
       border-radius: 4px;
       padding: 6px 14px;
       cursor: pointer;
-      font-size: 0.9em;
+      font-size: 1em;
     }
     button:hover { background-color: var(--vscode-button-hoverBackground); }
     button.secondary {
@@ -290,7 +291,7 @@ export class DashboardPanel {
     .item-card:hover { border-color: var(--vscode-focusBorder); }
     .item-icon { font-size: 1em; margin-top: 1px; }
     .item-body { flex: 1; min-width: 0; }
-    .item-title { font-weight: 600; font-size: 0.92em; }
+    .item-title { font-weight: 600; font-size: 1em; }
     .item-meta { color: var(--vscode-descriptionForeground); font-size: 0.8em; margin-top: 2px; }
     .attention-linked-pr { border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); margin-top: 8px; padding-top: 8px; }
     .item-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
@@ -323,15 +324,9 @@ export class DashboardPanel {
     let githubState = null;
     let jiraState = null;
     let attentionInbox = null;
-    let teamJiraFilter = '';
+    let jiraGroupFilters = {};
     let teamPrFilter = '';
-    const expandedSections = {
-      attentionSection: true,
-      jiraSection: true,
-      myPrsSection: true,
-      teamJiraSection: true,
-      teamPrsSection: true,
-    };
+    const expandedSections = {};
 
     function escapeHtml(value) {
       return String(value ?? '')
@@ -622,33 +617,35 @@ export class DashboardPanel {
     }
 
     function sectionOpenAttribute(sectionId) {
-      return expandedSections[sectionId] ? ' open' : '';
+      return expandedSections[sectionId] === false ? '' : ' open';
     }
 
-    function getAllJiraTasks() {
+    function slugify(label, index) {
+      const base = String(label).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      return 'jiraGroup-' + (base || 'group') + '-' + index;
+    }
+
+    function getJiraGroupTasks(label) {
       if (!jiraState || !jiraState.connected) return [];
-      const byQuery = jiraState.tasksByQuery || {};
-      return Object.keys(byQuery).flatMap((label) => byQuery[label]);
+      return (jiraState.tasksByQuery || {})[label] || [];
     }
 
-    // Saved queries may include teammate tasks, so "My Jira Tasks" always filters by the configured user.
-    function getMyJiraTasks() {
-      const all = getAllJiraTasks();
-      const currentUser = jiraState && jiraState.currentUser
-        ? jiraState.currentUser.trim().toLowerCase()
-        : '';
-      if (!currentUser) return [];
-      return all.filter((task) =>
-        task.assignee && task.assignee.trim().toLowerCase() === currentUser);
-    }
-
-    function getTeamJiraTasks() {
-      const members = new Set((jiraState && jiraState.teamMembers || [])
-        .map((name) => name.trim().toLowerCase())
-        .filter(Boolean));
-      return getAllJiraTasks().filter((task) =>
-        task.assignee && members.has(task.assignee.trim().toLowerCase()) &&
-        (!teamJiraFilter || task.assignee.trim().toLowerCase() === teamJiraFilter.trim().toLowerCase()));
+    function getJiraGroups() {
+      if (!jiraState || !jiraState.connected) return [];
+      return (jiraState.savedQueries || []).map((query, index) => {
+        const id = slugify(query.label, index);
+        const tasks = getJiraGroupTasks(query.label);
+        const assignees = uniqueNames(tasks.map((task) => (task.assignee || '').trim()).filter(Boolean));
+        if (jiraGroupFilters[query.label] && !assignees.some((name) =>
+          name.toLowerCase() === jiraGroupFilters[query.label].toLowerCase())) {
+          jiraGroupFilters[query.label] = '';
+        }
+        const filterValue = jiraGroupFilters[query.label] || '';
+        const filteredTasks = filterValue
+          ? tasks.filter((task) => (task.assignee || '').trim().toLowerCase() === filterValue.toLowerCase())
+          : tasks;
+        return { id, label: query.label, assignees, filterValue, tasks: filteredTasks };
+      });
     }
 
     function uniqueNames(names) {
@@ -663,8 +660,8 @@ export class DashboardPanel {
         .sort((a, b) => a.localeCompare(b));
     }
 
-    function renderTeammateOptions(teammates, selected) {
-      return '<option value="">All teammates</option>' + teammates.map((name) =>
+    function renderTeammateOptions(teammates, selected, placeholder) {
+      return '<option value="">' + escapeHtml(placeholder || 'All teammates') + '</option>' + teammates.map((name) =>
         '<option value="' + escapeHtml(name) + '"' + (name.toLowerCase() === selected.toLowerCase() ? ' selected' : '') + '>' +
         escapeHtml(name) + '</option>'
       ).join('');
@@ -678,17 +675,12 @@ export class DashboardPanel {
       const teamPrTeammates = githubAuthenticated
         ? uniqueNames((githubState.monitoredAuthors || []).filter((author) => author.status === 'valid').map((author) => author.username))
         : [];
-      const teamJiraTeammates = jiraReady
-        ? uniqueNames((jiraState.teamMembers || []).map((name) => name.trim()))
-        : [];
       if (teamPrFilter && !teamPrTeammates.some((name) => name.toLowerCase() === teamPrFilter.toLowerCase())) teamPrFilter = '';
-      if (teamJiraFilter && !teamJiraTeammates.some((name) => name.toLowerCase() === teamJiraFilter.toLowerCase())) teamJiraFilter = '';
       const teamPrItems = githubAuthenticated
         ? githubState.attention.teamPRs.filter((item) =>
           !teamPrFilter || item.pr.author.toLowerCase() === teamPrFilter.toLowerCase())
         : [];
-      const myJiraTasks = getMyJiraTasks();
-      const teamJiraTasks = getTeamJiraTasks();
+      const jiraGroups = getJiraGroups();
       const inboxItems = attentionInbox;
       const refreshing = !!(githubState && githubState.isRefreshing)
         || !!(jiraState && jiraState.isRefreshing);
@@ -708,8 +700,14 @@ export class DashboardPanel {
         { key: 'attention', icon: '🔔', accent: 'var(--vscode-charts-red, #f85149)', value: inboxItems ? inboxItems.length : '…', label: 'Needs Attention', href: '#attentionSection' },
         { key: 'mine', icon: '🐙', accent: 'var(--vscode-charts-blue, #1f6feb)', value: myPrItems.length, label: 'My PRs', href: '#myPrsSection' },
         { key: 'team', icon: '👥', accent: 'var(--vscode-charts-purple, #8957e5)', value: teamPrItems.length, label: 'Team PRs', href: '#teamPrsSection' },
-        { key: 'jira', icon: '🔷', accent: 'var(--vscode-charts-blue, #1f6feb)', value: myJiraTasks.length, label: 'My Jira Tasks', href: '#jiraSection' },
-        { key: 'teamJira', icon: '🔷', accent: 'var(--vscode-charts-green, #2ea043)', value: teamJiraTasks.length, label: 'Team Jira Tasks', href: '#teamJiraSection' },
+        ...jiraGroups.map((group) => ({
+          key: 'jira-' + group.id,
+          icon: '🔷',
+          accent: 'var(--vscode-charts-blue, #1f6feb)',
+          value: group.tasks.length,
+          label: group.label,
+          href: '#' + group.id,
+        })),
       ];
       const statTiles = tiles.map((t) =>
         '<a class="stat-tile" style="--tile-accent:' + t.accent + '" href="' + t.href + '">' +
@@ -736,25 +734,20 @@ export class DashboardPanel {
         : renderList(inboxItems.map(renderAttentionItem).join(''), 'Nothing here. You\\'re all caught up.');
       const myPrsHtml = renderList(myPrItems.map(renderPrItem).join(''), 'No open PRs of yours.');
       const teamPrsHtml = renderList(teamPrItems.map(renderPrItem).join(''), 'No team PRs to show.');
-      const hasJiraCurrentUser = !!(jiraReady && jiraState.currentUser && jiraState.currentUser.trim());
-      const jiraEmptyText = !hasJiraCurrentUser
-        ? 'Set your Jira display name in the Configuration tab to see tasks assigned to you.'
-        : !jiraState.savedQueries.length
-        ? 'No saved Jira queries yet.'
-        : 'No tasks matched "' + jiraState.currentUser.trim() +
-          '". Verify this matches the Jira assignee display name in Configuration.';
-      const jiraHtml = !jiraReady
-        ? '<div class="empty-state">Loading…</div>'
+      const jiraGroupsHtml = !jiraReady
+        ? '<div class="section"><div class="empty-state">Loading…</div></div>'
         : !jiraState.connected
-        ? '<div class="empty-state">Connect Jira from the Configuration tab to see your tasks here.</div>'
-        : renderList(myJiraTasks.map(renderJiraItem).join(''), jiraEmptyText);
-      const teamJiraHtml = !jiraReady
-        ? '<div class="empty-state">Loading…</div>'
-        : !jiraState.connected
-        ? '<div class="empty-state">Connect Jira from the Configuration tab to see team tasks here.</div>'
-        : !(jiraState.teamMembers || []).length
-        ? '<div class="empty-state">No Jira teammates configured.</div>'
-        : renderList(teamJiraTasks.map(renderJiraItem).join(''), 'No team Jira tasks found.');
+        ? '<div class="section"><div class="empty-state">Connect Jira from the Configuration tab to see your tasks here.</div></div>'
+        : jiraGroups.length === 0
+        ? '<div class="section"><div class="empty-state">No saved JQL queries yet. Add one from the Configuration tab.</div></div>'
+        : jiraGroups.map((group) =>
+          '<details class="section" id="' + group.id + '"' + sectionOpenAttribute(group.id) + '>' +
+          '<summary class="section-header"><h2>🔷 ' + escapeHtml(group.label) + ' (' + group.tasks.length + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
+          '<div class="team-filter-row"><select class="team-filter" data-jira-group-filter="' + escapeHtml(group.label) + '" aria-label="Filter ' + escapeHtml(group.label) + ' by assignee"' + (!group.assignees.length ? ' disabled' : '') + '>' +
+          renderTeammateOptions(group.assignees, group.filterValue, 'All assignees') + '</select></div>' +
+          '<div class="item-list">' + renderList(group.tasks.map(renderJiraItem).join(''), 'No tasks matched this query.') + '</div>' +
+          '</details>'
+        ).join('');
 
       root.innerHTML =
         '<div class="toolbar">' +
@@ -770,22 +763,11 @@ export class DashboardPanel {
         '<summary class="section-header"><h2>🔔 Attention Inbox (' + (inboxItems ? inboxItems.length : 0) + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
         '<div class="item-list">' + attentionHtml + '</div>' +
         '</details>' +
+        '<div class="section-row">' + jiraGroupsHtml + '</div>' +
         '<div class="section-row">' +
-        '<details class="section" id="jiraSection"' + sectionOpenAttribute('jiraSection') + '>' +
-        '<summary class="section-header"><h2>🔷 My Jira Tasks (' + myJiraTasks.length + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
-        '<div class="item-list">' + jiraHtml + '</div>' +
-        '</details>' +
         '<details class="section" id="myPrsSection"' + sectionOpenAttribute('myPrsSection') + '>' +
         '<summary class="section-header"><h2>🐙 My PRs (' + myPrItems.length + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
         '<div class="item-list">' + myPrsHtml + '</div>' +
-        '</details>' +
-        '</div>' +
-        '<div class="section-row">' +
-        '<details class="section" id="teamJiraSection"' + sectionOpenAttribute('teamJiraSection') + '>' +
-        '<summary class="section-header"><h2>🔷 Team Jira Tasks (' + teamJiraTasks.length + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
-        '<div class="team-filter-row"><select class="team-filter" id="teamJiraFilter" aria-label="Filter Team Jira Tasks by teammate"' + (!teamJiraTeammates.length ? ' disabled' : '') + '>' +
-        renderTeammateOptions(teamJiraTeammates, teamJiraFilter) + '</select></div>' +
-        '<div class="item-list">' + teamJiraHtml + '</div>' +
         '</details>' +
         '<details class="section" id="teamPrsSection"' + sectionOpenAttribute('teamPrsSection') + '>' +
         '<summary class="section-header"><h2>👥 Team PRs (' + teamPrItems.length + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
@@ -809,13 +791,12 @@ export class DashboardPanel {
         });
       });
 
-      const jiraFilter = root.querySelector('#teamJiraFilter');
-      if (jiraFilter) {
-        jiraFilter.addEventListener('change', () => {
-          teamJiraFilter = jiraFilter.value;
+      root.querySelectorAll('[data-jira-group-filter]').forEach((select) => {
+        select.addEventListener('change', () => {
+          jiraGroupFilters[select.getAttribute('data-jira-group-filter')] = select.value;
           render();
         });
-      }
+      });
       const prFilter = root.querySelector('#teamPrFilter');
       if (prFilter) {
         prFilter.addEventListener('change', () => {

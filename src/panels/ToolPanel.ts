@@ -97,6 +97,7 @@ export class ToolPanel {
   <style>
     body {
       font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
       color: var(--vscode-foreground);
       background-color: var(--vscode-editor-background);
       padding: 16px 20px 24px;
@@ -125,7 +126,7 @@ export class ToolPanel {
       border-radius: 4px;
       padding: 6px 14px;
       cursor: pointer;
-      font-size: 0.9em;
+      font-size: 1em;
     }
     button:hover { background-color: var(--vscode-button-hoverBackground); }
     button.secondary {

@@ -80,6 +80,7 @@ export type JiraIncomingMessage =
   | { command: 'jira.removeTeamMember'; displayName: string }
   | { command: 'jira.refresh' }
   | { command: 'jira.addQuery'; label: string; jql: string }
+  | { command: 'jira.updateQuery'; originalLabel: string; label: string; jql: string }
   | { command: 'jira.removeQuery'; label: string }
   | { command: 'jira.openTask'; url: string };
 
@@ -97,4 +98,5 @@ export type JiraOutgoingMessage =
   | ({ command: 'jira.currentUserResult' } & OperationResult)
   | ({ command: 'jira.teamMemberResult' } & OperationResult)
   | { command: 'jira.queryResult'; ok: boolean; reason?: string }
+  | { command: 'jira.updateQueryResult'; ok: boolean; reason?: string }
   | { command: 'jira.operationResult'; operationId: JiraOperationId; result: OperationResult };

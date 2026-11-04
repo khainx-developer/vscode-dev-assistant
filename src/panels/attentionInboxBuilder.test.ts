@@ -153,6 +153,28 @@ suite('buildAttentionInbox', () => {
     assert.deepStrictEqual(inbox, []);
   });
 
+  test('buildAttentionInbox_includesJiraTicketAcrossAnySavedQuery_whenAssigneeIsMonitored', () => {
+    const task = makeTask({ assignee: 'Alex Smith', status: 'Review' });
+    const jiraState = {
+      ...makeJiraState([]),
+      teamMembers: ['Alex Smith'],
+      tasksByQuery: { 'Team backlog': [task] },
+    };
+
+    const inbox = buildAttentionInbox(jiraState, makeGitHubState(), NOW);
+
+    assert.deepStrictEqual(inbox.map((item) => item.reasons), [['jira-review']]);
+  });
+
+  test('buildAttentionInbox_excludesJiraTasksWhenNotConnected', () => {
+    const task = makeTask({ status: 'Review' });
+    const jiraState = { ...makeJiraState([task]), connected: false };
+
+    const inbox = buildAttentionInbox(jiraState, makeGitHubState(), NOW);
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
   test('buildAttentionInbox_classifiesDueDateReasonsByCalendarDay', () => {
     const inbox = buildAttentionInbox(
       makeJiraState([

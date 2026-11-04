@@ -69,7 +69,7 @@ function jiraSourceKey(task: JiraTask): string {
 
 function isMonitoredJiraTask(task: JiraTask, jiraState: JiraViewState): boolean {
   const assignee = task.assignee?.trim().toLowerCase();
-  if (!jiraState.connected || !assignee) return false;
+  if (!assignee) return false;
 
   const currentUser = jiraState.currentUser?.trim().toLowerCase();
   if (currentUser && assignee === currentUser) return true;
@@ -205,9 +205,11 @@ export function buildAttentionInbox(
   now: number,
 ): AttentionInboxItem[] {
   const tasksByKey = new Map<string, JiraTask>();
-  for (const tasks of Object.values(jiraState.tasksByQuery)) {
-    for (const task of tasks) {
-      if (!tasksByKey.has(task.key)) tasksByKey.set(task.key, task);
+  if (jiraState.connected) {
+    for (const tasks of Object.values(jiraState.tasksByQuery)) {
+      for (const task of tasks) {
+        if (!tasksByKey.has(task.key)) tasksByKey.set(task.key, task);
+      }
     }
   }
 

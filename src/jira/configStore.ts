@@ -11,7 +11,7 @@ export class JiraConfigStore {
   ) {}
 
   getSavedQueries(): JiraSavedQuery[] {
-    return vscode.workspace.getConfiguration('devMateKit.jira').get<JiraSavedQuery[]>('savedQueries', []).slice(0, 1);
+    return vscode.workspace.getConfiguration('devMateKit.jira').get<JiraSavedQuery[]>('savedQueries', []);
   }
 
   getCurrentUser(): string | null {
@@ -76,18 +76,23 @@ export class JiraConfigStore {
 
   async addQuery(label: string, jql: string): Promise<{ ok: true } | { ok: false; reason: string }> {
     const trimmedLabel = label.trim();
+    const trimmedJql = jql.trim();
     if (trimmedLabel === '') {
       return { ok: false, reason: 'Label is required.' };
     }
-    if (jql.trim() === '') {
+    if (trimmedJql === '') {
       return { ok: false, reason: 'JQL is required.' };
+    }
+    const current = this.getSavedQueries();
+    if (current.some((query) => query.label.toLowerCase() === trimmedLabel.toLowerCase())) {
+      return { ok: false, reason: 'A saved query with this label already exists.' };
     }
     const connection = await this.connectionStore.getConnection();
     if (!connection) {
       return { ok: false, reason: 'Save a Jira connection first.' };
     }
 
-    const result = await AtlassianMcpAdapter.validateQuery(this.connectionService, connection.siteId, jql);
+    const result = await AtlassianMcpAdapter.validateQuery(this.connectionService, connection.siteId, trimmedJql);
     if (!result.ok) {
       return result;
     }
@@ -95,19 +100,61 @@ export class JiraConfigStore {
     const cfg = vscode.workspace.getConfiguration('devMateKit.jira');
     await cfg.update(
       'savedQueries',
-      [{ label: trimmedLabel, jql }],
+      [...current, { label: trimmedLabel, jql: trimmedJql }],
       vscode.ConfigurationTarget.Global,
     );
     return { ok: true };
   }
 
+  async updateQuery(
+    originalLabel: string,
+    label: string,
+    jql: string,
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+    const trimmedLabel = label.trim();
+    const trimmedJql = jql.trim();
+    if (trimmedLabel === '') {
+      return { ok: false, reason: 'Label is required.' };
+    }
+    if (trimmedJql === '') {
+      return { ok: false, reason: 'JQL is required.' };
+    }
+    const current = this.getSavedQueries();
+    const index = current.findIndex((query) => query.label.toLowerCase() === originalLabel.toLowerCase());
+    if (index === -1) {
+      return { ok: false, reason: 'This saved query no longer exists.' };
+    }
+    const collidesWithAnother = current.some((query, queryIndex) =>
+      queryIndex !== index && query.label.toLowerCase() === trimmedLabel.toLowerCase());
+    if (collidesWithAnother) {
+      return { ok: false, reason: 'A saved query with this label already exists.' };
+    }
+    const connection = await this.connectionStore.getConnection();
+    if (!connection) {
+      return { ok: false, reason: 'Save a Jira connection first.' };
+    }
+
+    const result = await AtlassianMcpAdapter.validateQuery(this.connectionService, connection.siteId, trimmedJql);
+    if (!result.ok) {
+      return result;
+    }
+
+    const next = [...current];
+    next[index] = { label: trimmedLabel, jql: trimmedJql };
+    await vscode.workspace
+      .getConfiguration('devMateKit.jira')
+      .update('savedQueries', next, vscode.ConfigurationTarget.Global);
+    return { ok: true };
+  }
+
   async removeQuery(label: string): Promise<void> {
     const current = this.getSavedQueries();
-    if (!current.some((query) => query.label.toLowerCase() === label.toLowerCase())) {
+    const filtered = current.filter((query) => query.label.toLowerCase() !== label.toLowerCase());
+    if (filtered.length === current.length) {
       return;
     }
     await vscode.workspace
       .getConfiguration('devMateKit.jira')
-      .update('savedQueries', [], vscode.ConfigurationTarget.Global);
+      .update('savedQueries', filtered, vscode.ConfigurationTarget.Global);
   }
 }

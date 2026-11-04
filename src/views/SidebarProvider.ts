@@ -192,6 +192,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   <style>
     body {
       font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
       color: var(--vscode-foreground);
       background-color: var(--vscode-sideBar-background, var(--vscode-editor-background));
       padding: 10px;
@@ -204,7 +205,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       border: 1px solid transparent;
       border-radius: 4px;
       padding: 4px 10px;
-      font-size: 0.8em;
+      font-size: 1em;
       cursor: pointer;
     }
     .gh-select {
@@ -234,8 +235,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
     .card-header .icon { font-size: 1.1em; }
-    .card-header .title { font-weight: 600; font-size: 0.95em; }
-    .card .description { margin: 0 0 6px; font-size: 0.82em; color: var(--vscode-descriptionForeground); }
+    .card-header .title { font-weight: 600; font-size: 1em; }
+    .card .description { margin: 0 0 6px; font-size: 0.92em; color: var(--vscode-descriptionForeground); }
     .tags { display: flex; flex-wrap: wrap; gap: 4px; }
     .tag {
       font-size: 0.65em;
@@ -247,9 +248,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     .empty-state { text-align: center; color: var(--vscode-descriptionForeground); padding: 24px 8px; font-size: 0.85em; }
 
-    #githubRoot, #jiraRoot { display: none; font-size: 0.85em; }
+    #githubRoot, #jiraRoot { display: none; }
     .gh-section { margin-bottom: 14px; }
-    #aiRoot { font-size: 0.85em; }
     .gh-section h3 { font-size: 1em; margin: 0 0 6px; color: var(--vscode-foreground); }
     .config-section > summary {
       color: var(--vscode-foreground);
@@ -276,7 +276,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       border-radius: 4px;
       padding: 3px 10px;
       cursor: pointer;
-      font-size: 0.85em;
+      font-size: 1em;
     }
     .gh-error { color: var(--vscode-errorForeground); font-size: 0.8em; margin: 2px 0 6px; }
     .gh-entry-list { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
@@ -304,7 +304,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .jira-status button {
       background-color: var(--vscode-button-secondaryBackground, var(--vscode-input-background));
       color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-      border: none; border-radius: 4px; padding: 2px 8px; font-size: 0.78em; cursor: pointer; white-space: nowrap;
+      border: none; border-radius: 4px; padding: 2px 8px; font-size: 1em; cursor: pointer; white-space: nowrap;
     }
     .gh-row textarea {
       flex: 1;
@@ -325,7 +325,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       padding: 6px 8px;
     }
     .jira-query-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-    .jira-query-head strong { font-size: 0.85em; }
+    .jira-query-head strong { font-size: 1em; }
     .jira-query-head button { background: none; border: none; cursor: pointer; color: var(--vscode-descriptionForeground); font-size: 0.9em; padding: 0 2px; }
     .jira-query-jql {
       margin-top: 2px;
@@ -547,6 +547,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     let jiraConnectionError = '';
     let jiraQueryError = '';
     let jiraTeamError = '';
+    let editingQueryLabel = null;
 
     function renderJira(state) {
       jiraState = state;
@@ -577,7 +578,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       }
 
       const removeQueryPending = operations['jira.removeQuery'];
-      const savedQuery = (state.savedQueries || [])[0];
+      const queries = state.savedQueries || [];
+      if (editingQueryLabel && !queries.some((q) => q.label === editingQueryLabel)) {
+        editingQueryLabel = null;
+      }
+      const editingQuery = editingQueryLabel ? queries.find((q) => q.label === editingQueryLabel) : null;
       const teamMemberCount = (state.teamMembers || []).length;
       const removeTeamPending = operations['jira.removeTeamMember'];
       const teamMembers = (state.teamMembers || []).map((displayName) =>
@@ -589,6 +594,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       const addTeamPending = operations['jira.addTeamMember'];
       const setUserPending = operations['jira.setCurrentUser'];
       const queryAddPending = operations['jira.addQuery'];
+      const queryUpdatePending = operations['jira.updateQuery'];
       const disconnectPending = operations['jira.disconnect'];
       const failures = (state.failures || []).map((failure) =>
         '<div class="gh-error">' + escapeHtmlClient(
@@ -602,7 +608,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         '<button data-jira-disconnect' + (disconnectPending && disconnectPending.pending ? ' disabled' : '') + '>' +
         (disconnectPending && disconnectPending.pending ? 'Disconnecting…' : 'Disconnect') + '</button></div>' +
         operationStatus(state, 'jira.disconnect', 'Disconnected.') +
-        '<label class="gh-label" for="jiraCurrentUser">Your Jira display name (for &quot;My Jira Tasks&quot;)</label>' +
+        '<label class="gh-label" for="jiraCurrentUser">Your Jira display name (used to detect your own comments)</label>' +
         '<div class="gh-row"><input id="jiraCurrentUser" placeholder="e.g. Jane Doe" value="' + escapeHtmlClient(state.currentUser || '') + '" />' +
         '<button class="gh-btn" data-jira-save-user' + (setUserPending && setUserPending.pending ? ' disabled' : '') + '>' +
         (setUserPending && setUserPending.pending ? 'Saving…' : 'Save') + '</button></div>' +
@@ -616,16 +622,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         '<div class="gh-error">' + escapeHtmlClient(jiraTeamError) + '</div>' +
         operationStatus(state, 'jira.addTeamMember', 'Teammate added.') +
         operationStatus(state, 'jira.removeTeamMember', 'Teammate removed.') +
-        '<div class="config-list"><div class="config-list-title">Saved JQL</div>' +
-        (savedQuery ? '<div class="jira-query-head"><strong>' + escapeHtmlClient(savedQuery.label) + '</strong><button data-jira-remove="' + escapeHtmlClient(savedQuery.label) + '" aria-label="Remove saved JQL"' + (removeQueryPending && removeQueryPending.pending ? ' disabled' : '') + '>&times;</button></div>' : '') +
+        '<div class="config-list"><div class="config-list-title">Saved JQL (' + queries.length + ')</div>' +
+        '<ul class="jira-query-list">' + (
+          queries.length
+            ? queries.map((query) =>
+              '<li class="jira-query"><div class="jira-query-head"><strong>' + escapeHtmlClient(query.label) + '</strong>' +
+              '<span><button data-jira-edit="' + escapeHtmlClient(query.label) + '" aria-label="Edit ' + escapeHtmlClient(query.label) + '">&#9998;</button>' +
+              '<button data-jira-remove="' + escapeHtmlClient(query.label) + '" aria-label="Remove ' + escapeHtmlClient(query.label) + '"' +
+              (removeQueryPending && removeQueryPending.pending ? ' disabled' : '') + '>&times;</button></span></div>' +
+              '<div class="jira-query-jql">' + escapeHtmlClient(query.jql) + '</div></li>'
+            ).join('')
+            : '<li class="gh-error" style="border:none;padding:0;">No saved queries yet.</li>'
+        ) + '</ul></div>' +
         '<label class="gh-label" for="jiraQueryLabel">Query label</label>' +
-        '<div class="gh-row"><input id="jiraQueryLabel" placeholder="e.g. My open tasks" value="' + escapeHtmlClient(savedQuery ? savedQuery.label : '') + '" /></div>' +
+        '<div class="gh-row"><input id="jiraQueryLabel" placeholder="e.g. My open tasks" value="' + escapeHtmlClient(editingQuery ? editingQuery.label : '') + '" /></div>' +
         '<label class="gh-label" for="jiraJql">JQL</label>' +
-        '<div class="gh-row"><textarea id="jiraJql" placeholder="assignee = currentUser() AND resolution = Unresolved">' + escapeHtmlClient(savedQuery ? savedQuery.jql : '') + '</textarea></div>' +
+        '<div class="gh-row"><textarea id="jiraJql" placeholder="assignee = currentUser() AND resolution = Unresolved">' + escapeHtmlClient(editingQuery ? editingQuery.jql : '') + '</textarea></div>' +
         '<div class="gh-error">' + escapeHtmlClient(jiraQueryError) + '</div>' +
-        '<button class="gh-btn" data-jira-add' + (queryAddPending && queryAddPending.pending ? ' disabled' : '') + '>' +
-        (queryAddPending && queryAddPending.pending ? 'Saving…' : 'Save JQL') + '</button>' +
+        '<div class="gh-row">' +
+        '<button class="gh-btn" data-jira-save-query' +
+        ((editingQueryLabel ? queryUpdatePending && queryUpdatePending.pending : queryAddPending && queryAddPending.pending) ? ' disabled' : '') + '>' +
+        (editingQueryLabel
+          ? (queryUpdatePending && queryUpdatePending.pending ? 'Updating…' : 'Update JQL')
+          : (queryAddPending && queryAddPending.pending ? 'Saving…' : 'Add JQL')) +
+        '</button>' +
+        (editingQueryLabel ? '<button class="gh-btn" data-jira-cancel-edit type="button">Cancel</button>' : '') +
+        '</div>' +
         operationStatus(state, 'jira.addQuery', 'JQL saved.') +
+        operationStatus(state, 'jira.updateQuery', 'JQL updated.') +
         operationStatus(state, 'jira.removeQuery', 'Query removed.') +
         '</div>' + failures + '</details>';
       wireJiraActions();
@@ -679,21 +703,42 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         );
       });
 
-      const add = jiraRoot.querySelector('[data-jira-add]');
-      if (add) {
-        add.addEventListener('click', () => {
-          post({
-            command: 'jira.addQuery',
-            label: document.getElementById('jiraQueryLabel').value,
-            jql: document.getElementById('jiraJql').value
-          });
+      const saveQuery = jiraRoot.querySelector('[data-jira-save-query]');
+      if (saveQuery) {
+        saveQuery.addEventListener('click', () => {
+          const label = document.getElementById('jiraQueryLabel').value;
+          const jql = document.getElementById('jiraJql').value;
+          if (editingQueryLabel) {
+            post({ command: 'jira.updateQuery', originalLabel: editingQueryLabel, label, jql });
+          } else {
+            post({ command: 'jira.addQuery', label, jql });
+          }
         });
       }
 
+      const cancelEdit = jiraRoot.querySelector('[data-jira-cancel-edit]');
+      if (cancelEdit) {
+        cancelEdit.addEventListener('click', () => {
+          editingQueryLabel = null;
+          jiraQueryError = '';
+          if (jiraState) renderJira(jiraState);
+        });
+      }
+
+      jiraRoot.querySelectorAll('[data-jira-edit]').forEach((button) => {
+        button.addEventListener('click', () => {
+          editingQueryLabel = button.getAttribute('data-jira-edit');
+          jiraQueryError = '';
+          if (jiraState) renderJira(jiraState);
+        });
+      });
+
       jiraRoot.querySelectorAll('[data-jira-remove]').forEach((button) => {
-        button.addEventListener('click', () =>
-          post({ command: 'jira.removeQuery', label: button.getAttribute('data-jira-remove') })
-        );
+        button.addEventListener('click', () => {
+          const label = button.getAttribute('data-jira-remove');
+          if (editingQueryLabel === label) editingQueryLabel = null;
+          post({ command: 'jira.removeQuery', label });
+        });
       });
     }
 
@@ -786,6 +831,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         if (jiraState) renderJira(jiraState);
       } else if (message && message.command === 'jira.queryResult') {
         jiraQueryError = message.ok ? '' : (message.reason || 'Could not add saved query.');
+        if (message.ok) editingQueryLabel = null;
+        if (jiraState) renderJira(jiraState);
+      } else if (message && message.command === 'jira.updateQueryResult') {
+        jiraQueryError = message.ok ? '' : (message.reason || 'Could not update saved query.');
+        if (message.ok) editingQueryLabel = null;
         if (jiraState) renderJira(jiraState);
       } else if (message && message.command === 'jira.teamMemberResult') {
         jiraTeamError = message.ok ? '' : (message.reason || 'Could not update Jira teammates.');
