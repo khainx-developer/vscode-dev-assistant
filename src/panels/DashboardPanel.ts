@@ -178,7 +178,7 @@ export class DashboardPanel {
       max-width: 1200px;
       margin: 0 auto;
     }
-    h1 { font-size: 1.4em; margin: 0 0 4px; }
+    h1 { font-size: 1.4em; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 4px; }
     .subtitle { color: var(--vscode-descriptionForeground); margin: 0 0 20px; }
     .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
     .attention-action-row { margin: 8px 0 0; }
@@ -214,9 +214,24 @@ export class DashboardPanel {
       background-color: var(--vscode-editorWidget-background, transparent);
       text-decoration: none;
       color: inherit;
+      transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+    }
+    .stat-tile:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+      border-color: var(--tile-accent, var(--vscode-focusBorder));
     }
     .stat-tile .stat-head { display: flex; align-items: center; justify-content: space-between; }
-    .stat-tile .stat-icon { font-size: 1.1em; }
+    .stat-tile .stat-icon {
+      font-size: 1.05em;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background-color: color-mix(in srgb, var(--tile-accent, var(--vscode-focusBorder)) 16%, transparent);
+    }
     .stat-tile .stat-value { font-size: 1.9em; font-weight: 700; line-height: 1.3; }
     .stat-tile .stat-label { color: var(--vscode-descriptionForeground); font-size: 0.82em; }
 
@@ -247,6 +262,18 @@ export class DashboardPanel {
     .section-header::-webkit-details-marker { display: none; }
     .section-header::marker { content: ''; }
     .section-header h2 { font-size: 1em; margin: 0; display: flex; align-items: center; gap: 6px; }
+    .count-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 0.78em;
+      font-weight: 600;
+      background-color: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+    }
     .section-chevron {
       width: 7px;
       height: 7px;
@@ -287,8 +314,13 @@ export class DashboardPanel {
       display: flex;
       align-items: flex-start;
       gap: 8px;
+      transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.1s ease;
     }
-    .item-card:hover { border-color: var(--vscode-focusBorder); }
+    .item-card:hover {
+      border-color: var(--vscode-focusBorder);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+    }
     .item-icon { font-size: 1em; margin-top: 1px; }
     .item-body { flex: 1; min-width: 0; }
     .item-title { font-weight: 600; font-size: 1em; }
@@ -368,6 +400,9 @@ export class DashboardPanel {
       'jira-due-today': { label: 'Due today', cls: 'badge-orange' },
       'jira-due-tomorrow': { label: 'Due tomorrow', cls: 'badge-orange' },
       'jira-unread-comment': { label: 'Unread comment', cls: 'badge-blue' },
+      'pr-merge-conflict': { label: 'Merge conflict', cls: 'badge-red' },
+      'pr-stale': { label: 'Stale', cls: 'badge-red' },
+      'jira-stale': { label: 'Stale', cls: 'badge-red' },
     };
 
     function prBadges(item) {
@@ -385,10 +420,23 @@ export class DashboardPanel {
         const cls = pr.checkStatus === 'SUCCESS' ? 'badge-green' : (pr.checkStatus === 'FAILURE' || pr.checkStatus === 'ERROR') ? 'badge-red' : 'badge-orange';
         html += '<span class="item-badge ' + cls + '">' + escapeHtml(CHECK_STATUS_LABELS[pr.checkStatus] || pr.checkStatus) + '</span>';
       }
-      if (pr.mergeable === 'CONFLICTING') {
-        html += '<span class="item-badge badge-red">Has conflicts</span>';
-      }
       return html;
+    }
+
+    // PR reasons already carry 'pr-merge-conflict' when relevant, so no separate badge needed here.
+
+    function itemAccent(reasons) {
+      if (!reasons || reasons.length === 0) return '';
+      if (reasons.some((r) => r === 'pr-changes-requested' || r === 'pr-checks-failing' || r === 'pr-merge-conflict' || r === 'pr-stale' || r === 'jira-stale' || r === 'jira-overdue')) {
+        return 'var(--vscode-charts-red, #f85149)';
+      }
+      if (reasons.some((r) => r === 'pr-unread-comment' || r === 'jira-unread-comment')) {
+        return 'var(--vscode-charts-blue, #1f6feb)';
+      }
+      if (reasons.some((r) => r === 'pr-waiting-review' || r === 'pr-needs-my-review' || r === 'jira-review' || r === 'jira-due-today' || r === 'jira-due-tomorrow')) {
+        return 'var(--vscode-charts-orange, #d29922)';
+      }
+      return '';
     }
 
     function latestComment(pr) {
@@ -411,7 +459,8 @@ export class DashboardPanel {
     function renderPrItem(item) {
       const pr = item.pr;
       const draftBadge = pr.draft ? '<span class="item-badge badge-neutral">Draft</span>' : '';
-      return '<div class="item-card" role="button" tabindex="0" data-command="github.openPr" data-repo-key="' + escapeHtml(pr.repoKey) +
+      const accent = itemAccent(item.reasons);
+      return '<div class="item-card" style="' + (accent ? '--item-accent:' + accent : '') + '" role="button" tabindex="0" data-command="github.openPr" data-repo-key="' + escapeHtml(pr.repoKey) +
         '" data-number="' + pr.number + '" data-url="' + escapeHtml(pr.url) + '">' +
         '<span class="item-icon">🐙</span>' +
         '<div class="item-body">' +
@@ -419,6 +468,19 @@ export class DashboardPanel {
         '<div class="item-meta">' + prMeta(item) + '</div>' +
         '<div class="item-badges">' + draftBadge + prBadges(item) + statusBadges(pr) + '</div>' +
         '</div></div>';
+    }
+
+    function jiraDueReason(dueDate) {
+      if (!dueDate) return null;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const due = new Date(dueDate + 'T00:00:00');
+      if (isNaN(due.getTime())) return null;
+      const diffDays = Math.round((due.getTime() - today.getTime()) / 86400000);
+      if (diffDays < 0) return 'jira-overdue';
+      if (diffDays === 0) return 'jira-due-today';
+      if (diffDays === 1) return 'jira-due-tomorrow';
+      return null;
     }
 
     function renderJiraItem(task) {
@@ -438,11 +500,19 @@ export class DashboardPanel {
           ? '<span class="item-badge badge-neutral">Comments unavailable</span>'
           : '') +
         prLinkBadge;
-      return '<div class="item-card" role="button" tabindex="0" data-command="jira.openTask" data-url="' + escapeHtml(task.url) + '">' +
+      const dueReason = jiraDueReason(task.dueDate);
+      const accentReasons = [
+        task.status === 'Review' ? 'jira-review' : null,
+        (task.commentAttention && task.commentAttention.unreadCount > 0) ? 'jira-unread-comment' : null,
+        dueReason,
+      ].filter(Boolean);
+      const accent = itemAccent(accentReasons);
+      const updatedMeta = task.updatedAt ? ' &middot; updated ' + escapeHtml(relativeTime(task.updatedAt)) : '';
+      return '<div class="item-card" style="' + (accent ? '--item-accent:' + accent : '') + '" role="button" tabindex="0" data-command="jira.openTask" data-url="' + escapeHtml(task.url) + '">' +
         '<span class="item-icon">🔷</span>' +
         '<div class="item-body">' +
         '<div class="item-title">' + escapeHtml(task.key) + ' — ' + escapeHtml(task.summary) + '</div>' +
-        '<div class="item-meta">' + escapeHtml(task.assignee || 'Unassigned') + '</div>' +
+        '<div class="item-meta">' + escapeHtml(task.assignee || 'Unassigned') + updatedMeta + '</div>' +
         '<div class="item-badges">' + badges + '</div>' +
         '</div></div>';
     }
@@ -604,7 +674,14 @@ export class DashboardPanel {
         ? '<div class="toolbar attention-action-row">' + prAction + '</div>'
         : '';
 
-      return '<div class="item-card"><span class="item-icon">' + (task ? '🔷' : '🐙') + '</span>' +
+      const priorityAccent = item.priority === 1
+        ? 'var(--vscode-charts-red, #f85149)'
+        : item.priority === 2
+        ? 'var(--vscode-charts-blue, #1f6feb)'
+        : item.priority === 3
+        ? 'var(--vscode-charts-orange, #d29922)'
+        : '';
+      return '<div class="item-card" style="' + (priorityAccent ? '--item-accent:' + priorityAccent : '') + '"><span class="item-icon">' + (task ? '🔷' : '🐙') + '</span>' +
         '<div class="item-body">' + title +
         '<div class="item-badges">' + reasonBadges + jiraCommentsBadge + prCommentsBadge +
         jiraCommentState + githubCommentStatus + '</div>' +
@@ -742,7 +819,7 @@ export class DashboardPanel {
         ? '<div class="section"><div class="empty-state">No saved JQL queries yet. Add one from the Configuration tab.</div></div>'
         : jiraGroups.map((group) =>
           '<details class="section" id="' + group.id + '"' + sectionOpenAttribute(group.id) + '>' +
-          '<summary class="section-header"><h2>🔷 ' + escapeHtml(group.label) + ' (' + group.tasks.length + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
+          '<summary class="section-header"><h2>🔷 ' + escapeHtml(group.label) + ' <span class="count-pill">' + group.tasks.length + '</span></h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
           '<div class="team-filter-row"><select class="team-filter" data-jira-group-filter="' + escapeHtml(group.label) + '" aria-label="Filter ' + escapeHtml(group.label) + ' by assignee"' + (!group.assignees.length ? ' disabled' : '') + '>' +
           renderTeammateOptions(group.assignees, group.filterValue, 'All assignees') + '</select></div>' +
           '<div class="item-list">' + renderList(group.tasks.map(renderJiraItem).join(''), 'No tasks matched this query.') + '</div>' +
@@ -760,17 +837,17 @@ export class DashboardPanel {
         failureBanner +
         '<div class="stat-grid">' + statTiles + '</div>' +
         '<details class="section" id="attentionSection"' + sectionOpenAttribute('attentionSection') + '>' +
-        '<summary class="section-header"><h2>🔔 Attention Inbox (' + (inboxItems ? inboxItems.length : 0) + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
+        '<summary class="section-header"><h2>🔔 Attention Inbox <span class="count-pill">' + (inboxItems ? inboxItems.length : 0) + '</span></h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
         '<div class="item-list">' + attentionHtml + '</div>' +
         '</details>' +
         '<div class="section-row">' + jiraGroupsHtml + '</div>' +
         '<div class="section-row">' +
         '<details class="section" id="myPrsSection"' + sectionOpenAttribute('myPrsSection') + '>' +
-        '<summary class="section-header"><h2>🐙 My PRs (' + myPrItems.length + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
+        '<summary class="section-header"><h2>🐙 My PRs <span class="count-pill">' + myPrItems.length + '</span></h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
         '<div class="item-list">' + myPrsHtml + '</div>' +
         '</details>' +
         '<details class="section" id="teamPrsSection"' + sectionOpenAttribute('teamPrsSection') + '>' +
-        '<summary class="section-header"><h2>👥 Team PRs (' + teamPrItems.length + ')</h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
+        '<summary class="section-header"><h2>👥 Team PRs <span class="count-pill">' + teamPrItems.length + '</span></h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
         '<div class="team-filter-row"><select class="team-filter" id="teamPrFilter" aria-label="Filter Team PRs by teammate"' + (!teamPrTeammates.length ? ' disabled' : '') + '>' +
         renderTeammateOptions(teamPrTeammates, teamPrFilter) + '</select></div>' +
         '<div class="item-list">' + teamPrsHtml + '</div>' +

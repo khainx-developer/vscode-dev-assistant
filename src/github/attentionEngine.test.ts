@@ -89,7 +89,7 @@ suite('AttentionEngine', () => {
 
   test('computeAttentionState_currentPR_waitingForReview_isActionable', () => {
     const result = AttentionEngine.computeAttentionState(
-      [makePr()],
+      [makePr({ updatedAt: AFTER })],
       new Map(),
       'me',
       [],
@@ -116,7 +116,7 @@ suite('AttentionEngine', () => {
   });
 
   test('computeAttentionState_teamPR_needsMyReview_isActionable', () => {
-    const pr = makePr({ author: 'teammate', requestedReviewers: ['me'] });
+    const pr = makePr({ author: 'teammate', requestedReviewers: ['me'], updatedAt: AFTER });
 
     const result = AttentionEngine.computeAttentionState(
       [pr],
@@ -131,7 +131,7 @@ suite('AttentionEngine', () => {
   });
 
   test('computeAttentionState_matchesMonitoredAuthorsAndReviewersCaseInsensitively', () => {
-    const pr = makePr({ author: 'Teammate', requestedReviewers: ['ME'] });
+    const pr = makePr({ author: 'Teammate', requestedReviewers: ['ME'], updatedAt: AFTER });
 
     const result = AttentionEngine.computeAttentionState(
       [pr],
@@ -145,8 +145,8 @@ suite('AttentionEngine', () => {
     assert.deepStrictEqual(result.teamPRs[0].reasons, ['pr-needs-my-review']);
   });
 
-  test('computeAttentionState_teamPR_withoutReviewRequest_isNotActionable', () => {
-    const pr = makePr({ author: 'teammate' });
+  test('computeAttentionState_teamPR_withoutReviewRequest_isActionable_waitingForReview', () => {
+    const pr = makePr({ author: 'teammate', updatedAt: AFTER });
 
     const result = AttentionEngine.computeAttentionState(
       [pr],
@@ -157,8 +157,8 @@ suite('AttentionEngine', () => {
       new Map(),
     );
 
-    assert.deepStrictEqual(result.teamPRs[0].reasons, []);
-    assert.deepStrictEqual(result.attentionInbox, []);
+    assert.deepStrictEqual(result.teamPRs[0].reasons, ['pr-waiting-review']);
+    assert.deepStrictEqual(result.attentionInbox[0].reasons, ['pr-waiting-review']);
   });
 
   test('computeAttentionState_teamPR_otherReasonIsExcluded', () => {
@@ -208,6 +208,15 @@ suite('AttentionEngine', () => {
     assert.strictEqual(result.myPRs[0].pr.draft, true);
   });
 
+  test('computeAttentionState_myDraftPRWithoutReviews_isNotWaitingForReview', () => {
+    const pr = makePr({ draft: true });
+
+    const result = AttentionEngine.computeAttentionState([pr], new Map(), 'me', [], NOW, new Map());
+
+    assert.deepStrictEqual(result.myPRs[0].reasons, []);
+    assert.deepStrictEqual(result.attentionInbox, []);
+  });
+
   test('computeAttentionState_teamDraftPRIsNotActive', () => {
     const pr = makePr({ author: 'teammate', draft: true, requestedReviewers: ['me'] });
 
@@ -237,5 +246,62 @@ suite('AttentionEngine', () => {
 
     assert.strictEqual(result.myPRs.length, 0);
     assert.strictEqual(result.teamPRs.length, 0);
+  });
+
+  test('computeAttentionState_myPRWithConflicts_isActionable', () => {
+    const pr = makePr({
+      mergeable: 'CONFLICTING',
+      updatedAt: AFTER,
+      reviews: [{ author: 'reviewer', state: 'APPROVED', submittedAt: AFTER }],
+    });
+
+    const result = AttentionEngine.computeAttentionState([pr], new Map(), 'me', [], NOW, new Map());
+
+    assert.deepStrictEqual(result.myPRs[0].reasons, ['pr-merge-conflict']);
+  });
+
+  test('computeAttentionState_teamPRWithConflicts_isActionable', () => {
+    const pr = makePr({
+      author: 'teammate',
+      mergeable: 'CONFLICTING',
+      updatedAt: AFTER,
+      reviews: [{ author: 'reviewer', state: 'APPROVED', submittedAt: AFTER }],
+    });
+
+    const result = AttentionEngine.computeAttentionState([pr], new Map(), 'me', ['teammate'], NOW, new Map());
+
+    assert.deepStrictEqual(result.teamPRs[0].reasons, ['pr-merge-conflict']);
+  });
+
+  test('computeAttentionState_myDraftPRWithConflicts_isStillFlagged', () => {
+    const pr = makePr({ draft: true, mergeable: 'CONFLICTING', updatedAt: AFTER });
+
+    const result = AttentionEngine.computeAttentionState([pr], new Map(), 'me', [], NOW, new Map());
+
+    assert.deepStrictEqual(result.myPRs[0].reasons, ['pr-merge-conflict']);
+  });
+
+  test('computeAttentionState_waitingReviewPastThreshold_becomesStale', () => {
+    const pr = makePr({ updatedAt: BEFORE });
+
+    const result = AttentionEngine.computeAttentionState([pr], new Map(), 'me', [], NOW, new Map());
+
+    assert.deepStrictEqual(result.myPRs[0].reasons, ['pr-waiting-review', 'pr-stale']);
+  });
+
+  test('computeAttentionState_waitingReviewUnderThreshold_isNotStale', () => {
+    const pr = makePr({ updatedAt: AFTER });
+
+    const result = AttentionEngine.computeAttentionState([pr], new Map(), 'me', [], NOW, new Map());
+
+    assert.deepStrictEqual(result.myPRs[0].reasons, ['pr-waiting-review']);
+  });
+
+  test('computeAttentionState_needsMyReviewPastThreshold_becomesStale', () => {
+    const pr = makePr({ author: 'teammate', requestedReviewers: ['me'], updatedAt: BEFORE });
+
+    const result = AttentionEngine.computeAttentionState([pr], new Map(), 'me', ['teammate'], NOW, new Map());
+
+    assert.deepStrictEqual(result.teamPRs[0].reasons, ['pr-needs-my-review', 'pr-stale']);
   });
 });

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.4
+
+- Attention Inbox: Fixed a bug where a monitored teammate's non-draft PR with no reviews yet was dropped from the inbox instead of showing as "Waiting for review".
+- Attention Inbox: Added merge-conflict detection — a PR (yours or a teammate's) with conflicts is now flagged and treated as urgent.
+- Attention Inbox: Added staleness detection — a PR or Jira ticket waiting 3+ days with no movement is now flagged "Stale" and escalated to top priority.
+- Fixed a bug where your own draft PRs could be incorrectly flagged "Waiting for review".
+- Dashboard: Visual refresh — priority/urgency color accents on item cards, hover elevation, pill-style section counts, and "updated X ago" shown on Jira items.
+
 ## 0.0.3
 
 - Jira: Added support for saving and displaying multiple JQL queries on the Daily Tasks dashboard.

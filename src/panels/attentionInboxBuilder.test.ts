@@ -13,6 +13,7 @@ import type { JiraTask, JiraViewState } from '../jira/types';
 const NOW = new Date(2026, 9, 2, 12).getTime();
 const ACTIVITY_OLDER = '2026-10-01T10:00:00.000Z';
 const ACTIVITY_NEWER = '2026-10-02T10:00:00.000Z';
+const ACTIVITY_STALE = '2026-09-25T10:00:00.000Z';
 
 function makePreview(sourceKey: string, createdAt = ACTIVITY_NEWER): ProviderCommentCandidate {
   return {
@@ -140,6 +141,17 @@ suite('buildAttentionInbox', () => {
 
     assert.deepStrictEqual(inbox.map((item) => item.reasons), [['jira-review']]);
     assert.strictEqual(inbox[0].priority, 3);
+  });
+
+  test('buildAttentionInbox_jiraReviewPastStaleThreshold_escalatesToStaleAndPriority1', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({ status: 'Review', updatedAt: ACTIVITY_STALE })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox.map((item) => item.reasons), [['jira-review', 'jira-stale']]);
+    assert.strictEqual(inbox[0].priority, 1);
   });
 
   test('buildAttentionInbox_excludesUnmonitoredJiraTickets', () => {
@@ -466,5 +478,19 @@ suite('buildAttentionInbox', () => {
     );
 
     assert.deepStrictEqual(inbox, []);
+  });
+
+  test('buildAttentionInbox_passesThroughMergeConflictAndStaleReasons_andEscalatesPriority', () => {
+    const pr = makePR({ repoKey: 'owner/repo', number: 20 });
+
+    const inbox = buildAttentionInbox(
+      makeJiraState([]),
+      makeGitHubState({ attentionInbox: [makeAttentionItem(pr, ['pr-merge-conflict', 'pr-stale'])] }),
+      NOW,
+    );
+
+    assert.strictEqual(inbox.length, 1);
+    assert.deepStrictEqual(inbox[0].reasons, ['pr-merge-conflict', 'pr-stale']);
+    assert.strictEqual(inbox[0].priority, 1);
   });
 });

@@ -73,7 +73,9 @@ export type AttentionReason =
   | 'pr-checks-failing'
   | 'pr-waiting-review'
   | 'pr-needs-my-review'
-  | 'pr-unread-comment';
+  | 'pr-unread-comment'
+  | 'pr-merge-conflict'
+  | 'pr-stale';
 
 export interface AttentionItem {
   pr: PullRequestSummary;

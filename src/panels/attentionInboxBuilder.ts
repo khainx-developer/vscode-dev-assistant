@@ -19,7 +19,10 @@ export type AttentionReason =
   | 'pr-checks-failing'
   | 'pr-waiting-review'
   | 'pr-needs-my-review'
-  | 'pr-unread-comment';
+  | 'pr-unread-comment'
+  | 'pr-merge-conflict'
+  | 'pr-stale'
+  | 'jira-stale';
 
 export interface AttentionInboxItem {
   key: string;
@@ -47,6 +50,14 @@ interface DueDateInfo {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const JIRA_STALE_WAITING_DAYS = 3;
+
+function isStale(updatedAt: string | undefined, now: number): boolean {
+  if (!updatedAt) return false;
+  const parsed = Date.parse(updatedAt);
+  if (!Number.isFinite(parsed)) return false;
+  return (now - parsed) / DAY_MS >= JIRA_STALE_WAITING_DAYS;
+}
 
 function getDueDateInfo(dueDate: string | null, now: number): DueDateInfo | null {
   if (!dueDate) return null;
@@ -112,6 +123,8 @@ function mapGitHubReason(reason: GitHubAttentionReason): AttentionReason | null 
     case 'pr-waiting-review':
     case 'pr-needs-my-review':
     case 'pr-unread-comment':
+    case 'pr-merge-conflict':
+    case 'pr-stale':
       return reason;
     case 'waiting_for_review':
       return 'pr-waiting-review';
@@ -136,7 +149,12 @@ function mapPRReasons(prReasons: GitHubAttentionReason[], hasUnreadComments: boo
 
 function getPriority(reasons: AttentionReason[]): AttentionInboxItem['priority'] {
   if (reasons.some((reason) =>
-    reason === 'jira-overdue' || reason === 'pr-changes-requested' || reason === 'pr-checks-failing')) {
+    reason === 'jira-overdue'
+    || reason === 'pr-changes-requested'
+    || reason === 'pr-checks-failing'
+    || reason === 'pr-merge-conflict'
+    || reason === 'pr-stale'
+    || reason === 'jira-stale')) {
     return 1;
   }
   if (reasons.some((reason) => reason === 'jira-unread-comment' || reason === 'pr-unread-comment')) {
@@ -234,6 +252,9 @@ export function buildAttentionInbox(
     if (task.status === 'Review') jiraReasons.push('jira-review');
     if ((task.commentAttention?.unreadCount ?? 0) > 0) jiraReasons.push('jira-unread-comment');
     if (dueInfo) jiraReasons.push(dueInfo.reason);
+    if (jiraReasons.includes('jira-review') && isStale(task.updatedAt, now)) {
+      jiraReasons.push('jira-stale');
+    }
 
     const relatedPullRequests = findPullRequestsForIssue(task.key, [...monitoredPRsByKey.values()]);
     const cachedLinkedPR = task.prLink.kind === 'linked'
