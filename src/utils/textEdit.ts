@@ -33,7 +33,7 @@ export async function insertAtCursor(editor: vscode.TextEditor, text: string): P
 export function getActiveEditorOrWarn(): vscode.TextEditor | undefined {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
-    vscode.window.showWarningMessage('Dev Utilities: No active editor.');
+    vscode.window.showWarningMessage('DevMate Kit: No active editor.');
   }
   return editor;
 }

@@ -1,10 +1,28 @@
 {
-  "name": "dev-utilities",
-  "displayName": "Dev Utilities",
-  "description": "A collection of handy developer utilities for VS Code (private/internal use).",
-  "version": "0.0.1",
-  "publisher": "internal",
-  "private": true,
+  "name": "devmate-kit",
+  "displayName": "DevMate Kit",
+  "description": "A collection of handy developer utilities for VS Code: GitHub PR & Jira task tracking, Base64/URL/JSON tools, UUIDs, timestamps, and case conversions.",
+  "version": "0.0.4",
+  "publisher": "khainx-developer",
+  "license": "MIT",
+  "icon": "media/dev-assistant-activity-icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/khainx-developer/vscode-dev-assistant.git"
+  },
+  "bugs": {
+    "url": "https://github.com/khainx-developer/vscode-dev-assistant/issues"
+  },
+  "homepage": "https://github.com/khainx-developer/vscode-dev-assistant#readme",
+  "keywords": [
+    "github",
+    "jira",
+    "base64",
+    "uuid",
+    "json",
+    "productivity",
+    "utilities"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -14,138 +32,229 @@
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "DevMate Kit",
+      "properties": {
+        "devMateKit.ai.provider": {
+          "type": "string",
+          "enum": [
+            "none",
+            "githubCopilot"
+          ],
+          "enumDescriptions": [
+            "Do not use an AI provider.",
+            "Use GitHub Copilot as the AI runtime."
+          ],
+          "default": "none",
+          "description": "AI runtime used by DevMate Kit."
+        },
+        "devMateKit.ai.model": {
+          "type": "string",
+          "default": "GPT-6 Luna",
+          "description": "GitHub Copilot model ID used by the AI runtime. The available model list is provided by VS Code."
+        },
+        "devMateKit.github.monitoredRepos": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "GitHub repositories to monitor, as \"owner/repo\"."
+        },
+        "devMateKit.github.monitoredAuthors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "GitHub usernames whose pull requests are tracked as Team PRs."
+        },
+        "devMateKit.jira.siteUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Jira Cloud site URL, e.g. https://yoursite.atlassian.net."
+        },
+        "devMateKit.jira.siteId": {
+          "type": "string",
+          "default": "",
+          "description": "Internal: the Jira site's Atlassian cloud ID, set automatically after connecting."
+        },
+        "devMateKit.jira.currentUser": {
+          "type": "string",
+          "default": "",
+          "description": "Your Jira display name, exactly as it appears on your issues (e.g. the \"assignee\" name). Used to filter \"My Jira Tasks\" on the Daily Tasks dashboard."
+        },
+        "devMateKit.jira.teamMembers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Jira display names of teammates to include in team task monitoring."
+        },
+        "devMateKit.jira.savedQueries": {
+          "type": "array",
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "jql": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "jql"
+            ]
+          },
+          "default": [],
+          "description": "Saved JQL queries used to fetch Jira tasks."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "devUtilitiesContainer",
-          "title": "Dev Utilities",
-          "icon": "media/activity-icon.svg"
+          "id": "devMateKitContainer",
+          "title": "DevMate Kit",
+          "icon": "media/dev-assistant-activity-icon.png"
         }
       ]
     },
     "views": {
-      "devUtilitiesContainer": [
+      "devMateKitContainer": [
         {
-          "id": "devUtilities.sidebar",
-          "name": "Tools",
+          "id": "devMateKit.sidebar",
+          "name": "",
           "type": "webview"
         }
       ]
     },
     "commands": [
       {
-        "command": "devUtilities.base64Encode",
-        "title": "Dev Utilities: Base64 Encode Selection"
+        "command": "devMateKit.githubSignIn",
+        "title": "DevMate Kit: Sign in to GitHub"
       },
       {
-        "command": "devUtilities.base64Decode",
-        "title": "Dev Utilities: Base64 Decode Selection"
+        "command": "devMateKit.openDashboard",
+        "title": "DevMate Kit: Open Daily Tasks Dashboard"
       },
       {
-        "command": "devUtilities.generateUuid",
-        "title": "Dev Utilities: Insert UUID"
+        "command": "devMateKit.base64Encode",
+        "title": "DevMate Kit: Base64 Encode Selection"
       },
       {
-        "command": "devUtilities.formatJson",
-        "title": "Dev Utilities: Format JSON Selection"
+        "command": "devMateKit.base64Decode",
+        "title": "DevMate Kit: Base64 Decode Selection"
       },
       {
-        "command": "devUtilities.toJsonEscapedString",
-        "title": "Dev Utilities: Escape Selection as JSON String"
+        "command": "devMateKit.generateUuid",
+        "title": "DevMate Kit: Insert UUID"
       },
       {
-        "command": "devUtilities.unixTimestampToDate",
-        "title": "Dev Utilities: Convert Unix Timestamp to Date"
+        "command": "devMateKit.formatJson",
+        "title": "DevMate Kit: Format JSON Selection"
       },
       {
-        "command": "devUtilities.dateToUnixTimestamp",
-        "title": "Dev Utilities: Insert Current Unix Timestamp"
+        "command": "devMateKit.toJsonEscapedString",
+        "title": "DevMate Kit: Escape Selection as JSON String"
       },
       {
-        "command": "devUtilities.toUpperCase",
-        "title": "Dev Utilities: Transform to UPPERCASE"
+        "command": "devMateKit.unixTimestampToDate",
+        "title": "DevMate Kit: Convert Unix Timestamp to Date"
       },
       {
-        "command": "devUtilities.toLowerCase",
-        "title": "Dev Utilities: Transform to lowercase"
+        "command": "devMateKit.dateToUnixTimestamp",
+        "title": "DevMate Kit: Insert Current Unix Timestamp"
       },
       {
-        "command": "devUtilities.toCamelCase",
-        "title": "Dev Utilities: Transform to camelCase"
+        "command": "devMateKit.toUpperCase",
+        "title": "DevMate Kit: Transform to UPPERCASE"
       },
       {
-        "command": "devUtilities.toSnakeCase",
-        "title": "Dev Utilities: Transform to snake_case"
+        "command": "devMateKit.toLowerCase",
+        "title": "DevMate Kit: Transform to lowercase"
       },
       {
-        "command": "devUtilities.toKebabCase",
-        "title": "Dev Utilities: Transform to kebab-case"
+        "command": "devMateKit.toCamelCase",
+        "title": "DevMate Kit: Transform to camelCase"
       },
       {
-        "command": "devUtilities.urlEncode",
-        "title": "Dev Utilities: URL Encode Selection"
+        "command": "devMateKit.toSnakeCase",
+        "title": "DevMate Kit: Transform to snake_case"
       },
       {
-        "command": "devUtilities.urlDecode",
-        "title": "Dev Utilities: URL Decode Selection"
+        "command": "devMateKit.toKebabCase",
+        "title": "DevMate Kit: Transform to kebab-case"
+      },
+      {
+        "command": "devMateKit.urlEncode",
+        "title": "DevMate Kit: URL Encode Selection"
+      },
+      {
+        "command": "devMateKit.urlDecode",
+        "title": "DevMate Kit: URL Decode Selection"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "submenu": "devUtilities.submenu",
+          "submenu": "devMateKit.submenu",
           "group": "9_dev_utilities"
         }
       ],
-      "devUtilities.submenu": [
+      "devMateKit.submenu": [
         {
-          "command": "devUtilities.base64Encode"
+          "command": "devMateKit.base64Encode"
         },
         {
-          "command": "devUtilities.base64Decode"
+          "command": "devMateKit.base64Decode"
         },
         {
-          "command": "devUtilities.generateUuid"
+          "command": "devMateKit.generateUuid"
         },
         {
-          "command": "devUtilities.formatJson"
+          "command": "devMateKit.formatJson"
         },
         {
-          "command": "devUtilities.toJsonEscapedString"
+          "command": "devMateKit.toJsonEscapedString"
         },
         {
-          "command": "devUtilities.unixTimestampToDate"
+          "command": "devMateKit.unixTimestampToDate"
         },
         {
-          "command": "devUtilities.dateToUnixTimestamp"
+          "command": "devMateKit.dateToUnixTimestamp"
         },
         {
-          "command": "devUtilities.toUpperCase"
+          "command": "devMateKit.toUpperCase"
         },
         {
-          "command": "devUtilities.toLowerCase"
+          "command": "devMateKit.toLowerCase"
         },
         {
-          "command": "devUtilities.toCamelCase"
+          "command": "devMateKit.toCamelCase"
         },
         {
-          "command": "devUtilities.toSnakeCase"
+          "command": "devMateKit.toSnakeCase"
         },
         {
-          "command": "devUtilities.toKebabCase"
+          "command": "devMateKit.toKebabCase"
         },
         {
-          "command": "devUtilities.urlEncode"
+          "command": "devMateKit.urlEncode"
         },
         {
-          "command": "devUtilities.urlDecode"
+          "command": "devMateKit.urlDecode"
         }
       ]
     },
     "submenus": [
       {
-        "id": "devUtilities.submenu",
-        "label": "Dev Utilities"
+        "id": "devMateKit.submenu",
+        "label": "DevMate Kit"
       }
     ]
   },
@@ -158,7 +267,11 @@
     "package": "npm run build && vsce package",
     "test": "vscode-test"
   },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2"
+  },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.90.0",
     "@typescript-eslint/eslint-plugin": "^7.14.1",

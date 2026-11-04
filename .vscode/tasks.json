@@ -2,8 +2,15 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "type": "npm",
-      "script": "watch",
+      "type": "shell",
+      "command": "C:\\Program Files\\Git\\bin\\bash.exe",
+      "args": [
+        "-c",
+        "npm run watch"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "isBackground": true,
       "group": {
         "kind": "build",
@@ -13,11 +20,22 @@
         "base": "$tsc-watch",
         "background": {
           "activeOnStart": true,
-          "beginsPattern": "\\[watch\\]",
-          "endsPattern": "\\[watch\\]"
+          "beginsPattern": "\\[watch\\] build started",
+          "endsPattern": "\\[watch\\] build finished"
         }
       },
-      "label": "npm: watch"
+      "label": "npm: watch (Git Bash)"
+    },
+    {
+      "label": "npm test (Git Bash)",
+      "type": "shell",
+      "command": "C:\\Program Files\\Git\\bin\\bash.exe",
+      "args": [
+        "-lc",
+        "cd /d/my/vscode-dev-assistant; npx tsc -p ./; if [ $? -ne 0 ]; then exit 1; fi; npm test"
+      ],
+      "isBackground": false,
+      "problemMatcher": []
     }
   ]
 }

@@ -3,6 +3,15 @@ import { allCommands } from './commands';
 import { getActiveEditorOrWarn } from './utils/textEdit';
 import { SidebarProvider } from './views/SidebarProvider';
 import { ToolPanel } from './panels/ToolPanel';
+import { DashboardPanel } from './panels/DashboardPanel';
+import { GitHubAuthService } from './github/auth';
+import { GitHubConfigStore } from './github/configStore';
+import { LastSeenStore } from './github/lastSeenStore';
+import { PullRequestCache } from './github/pullRequestCache';
+import { McpConnectionService } from './mcp/connectionService';
+import { JiraConfigStore } from './jira/configStore';
+import { JiraConnectionStore } from './jira/connectionStore';
+import { CommentReadStateStore } from './attention/commentReadStateStore';
 
 export function activate(context: vscode.ExtensionContext): void {
   for (const command of allCommands) {
@@ -14,22 +23,68 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         await command.handler(editor, context);
       } catch (err) {
-        vscode.window.showErrorMessage(`Dev Utilities: ${(err as Error).message}`);
+        vscode.window.showErrorMessage(`DevMate Kit: ${(err as Error).message}`);
       }
     });
     context.subscriptions.push(disposable);
   }
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('devUtilities.openTool', (toolId: string) => {
+    vscode.commands.registerCommand('devMateKit.openTool', (toolId: string) => {
       ToolPanel.createOrShow(context.extensionUri, toolId);
     })
   );
 
-  const sidebarProvider = new SidebarProvider(context.extensionUri);
+  const authService = new GitHubAuthService();
+  const lastSeenStore = new LastSeenStore(context);
+  const pullRequestCache = new PullRequestCache();
+  const connectionService = new McpConnectionService(context);
+  const configStore = new GitHubConfigStore(authService, connectionService);
+  const jiraConnectionStore = new JiraConnectionStore(context, connectionService);
+  const jiraConfigStore = new JiraConfigStore(jiraConnectionStore, connectionService);
+  const commentReadStateStore = new CommentReadStateStore(context);
+  const jiraOutputChannel = vscode.window.createOutputChannel('DevMate Kit');
+  context.subscriptions.push(jiraOutputChannel);
+  const jiraServices = {
+    connectionStore: jiraConnectionStore,
+    configStore: jiraConfigStore,
+    connectionService,
+    commentReadStateStore,
+    pullRequestCache,
+    outputChannel: jiraOutputChannel,
+  };
+
+  context.subscriptions.push({ dispose: () => void connectionService.dispose() });
+
+  const sidebarProvider = new SidebarProvider(context.extensionUri, context, {
+    authService,
+    configStore,
+    connectionService,
+    lastSeenStore,
+    pullRequestCache,
+  }, jiraServices);
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('devUtilities.sidebar', sidebarProvider)
+    vscode.window.registerWebviewViewProvider('devMateKit.sidebar', sidebarProvider)
   );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('devMateKit.githubSignIn', () => {
+      void authService.getSession(true);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('devMateKit.openDashboard', () => {
+      DashboardPanel.createOrShow(context.extensionUri, context, {
+        authService,
+        configStore,
+        connectionService,
+        lastSeenStore,
+        pullRequestCache,
+      }, jiraServices);
+    })
+  );
+
 }
 
 export function deactivate(): void {}

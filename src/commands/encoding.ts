@@ -6,38 +6,38 @@ import { urlEncode, urlDecode } from '../core/url';
 
 export const encodingCommands: DevUtilityCommand[] = [
   {
-    id: 'devUtilities.base64Encode',
+    id: 'devMateKit.base64Encode',
     handler: async (editor) => {
       await transformSelections(editor, base64Encode);
     },
   },
   {
-    id: 'devUtilities.base64Decode',
+    id: 'devMateKit.base64Decode',
     handler: async (editor) => {
       await transformSelections(editor, (text) => {
         try {
           return base64Decode(text);
         } catch {
-          vscode.window.showErrorMessage('Dev Utilities: Selection is not valid Base64.');
+          vscode.window.showErrorMessage('DevMate Kit: Selection is not valid Base64.');
           return text;
         }
       });
     },
   },
   {
-    id: 'devUtilities.urlEncode',
+    id: 'devMateKit.urlEncode',
     handler: async (editor) => {
       await transformSelections(editor, urlEncode);
     },
   },
   {
-    id: 'devUtilities.urlDecode',
+    id: 'devMateKit.urlDecode',
     handler: async (editor) => {
       await transformSelections(editor, (text) => {
         try {
           return urlDecode(text);
         } catch {
-          vscode.window.showErrorMessage('Dev Utilities: Selection is not valid URL-encoded text.');
+          vscode.window.showErrorMessage('DevMate Kit: Selection is not valid URL-encoded text.');
           return text;
         }
       });

@@ -16,7 +16,7 @@ export class ToolPanel {
   static createOrShow(extensionUri: vscode.Uri, toolId: string): void {
     const tool = getToolById(toolId);
     if (!tool) {
-      vscode.window.showErrorMessage(`Dev Utilities: Unknown tool "${toolId}".`);
+      vscode.window.showErrorMessage(`DevMate Kit: Unknown tool "${toolId}".`);
       return;
     }
 
@@ -26,7 +26,7 @@ export class ToolPanel {
       return;
     }
 
-    const panel = vscode.window.createWebviewPanel('devUtilities.tool', tool.title, vscode.ViewColumn.Active, {
+    const panel = vscode.window.createWebviewPanel('devMateKit.tool', tool.title, vscode.ViewColumn.Active, {
       enableScripts: true,
       retainContextWhenHidden: true,
       localResourceRoots: [extensionUri],
@@ -52,7 +52,7 @@ export class ToolPanel {
   private handleMessage(tool: ToolDefinition, message: IncomingMessage): void {
     if (message.command === 'copy') {
       void vscode.env.clipboard.writeText(message.text);
-      void vscode.window.setStatusBarMessage('Dev Utilities: Copied to clipboard', 2000);
+      void vscode.window.setStatusBarMessage('DevMate Kit: Copied to clipboard', 2000);
       return;
     }
 
@@ -97,6 +97,7 @@ export class ToolPanel {
   <style>
     body {
       font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
       color: var(--vscode-foreground);
       background-color: var(--vscode-editor-background);
       padding: 16px 20px 24px;
@@ -125,7 +126,7 @@ export class ToolPanel {
       border-radius: 4px;
       padding: 6px 14px;
       cursor: pointer;
-      font-size: 0.9em;
+      font-size: 1em;
     }
     button:hover { background-color: var(--vscode-button-hoverBackground); }
     button.secondary {
