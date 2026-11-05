@@ -14,7 +14,7 @@ function get(url: string): Promise<{ status: number }> {
 
 function assertConnectionRefused(url: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const req = http.get(url, () => {
+    const req = http.get(url, { agent: false }, () => {
       req.destroy();
       reject(new Error('expected connection to fail, but it succeeded'));
     });
@@ -35,19 +35,44 @@ suite('LoopbackRedirectServer', () => {
   test('start_stateMismatch_rejectsInvalidEntry', async () => {
     const server = new LoopbackRedirectServer();
     const { redirectUri, result } = await server.start('expected-state');
+    const rejection = assert.rejects(result, { category: 'invalid-entry', detail: 'OAuth state mismatch' });
 
     await get(`${redirectUri}?code=abc123&state=wrong-state`);
 
-    await assert.rejects(result, { category: 'invalid-entry', detail: 'OAuth state mismatch' });
+    await rejection;
   });
 
   test('start_errorQueryParam_rejectsAuthExpired', async () => {
     const server = new LoopbackRedirectServer();
     const { redirectUri, result } = await server.start('expected-state');
+    const rejection = assert.rejects(result, { category: 'auth-expired', detail: 'User denied access' });
 
-    await get(`${redirectUri}?error=access_denied&error_description=User+denied+access`);
+    await get(`${redirectUri}?error=access_denied&error_description=User+denied+access&state=expected-state`);
 
-    await assert.rejects(result, { category: 'auth-expired', detail: 'User denied access' });
+    await rejection;
+  });
+
+  test('start_errorCallback_stateMismatch_rejectsInvalidEntry', async () => {
+    const server = new LoopbackRedirectServer();
+    const { redirectUri, result } = await server.start('expected-state');
+    const rejection = assert.rejects(result, { category: 'invalid-entry', detail: 'OAuth state mismatch' });
+
+    await get(`${redirectUri}?error=access_denied&state=wrong-state`);
+
+    await rejection;
+  });
+
+  test('start_callbackWithoutCode_rejectsInvalidEntry', async () => {
+    const server = new LoopbackRedirectServer();
+    const { redirectUri, result } = await server.start('expected-state');
+    const rejection = assert.rejects(result, {
+      category: 'invalid-entry',
+      detail: 'OAuth callback did not include an authorization code',
+    });
+
+    await get(`${redirectUri}?state=expected-state`);
+
+    await rejection;
   });
 
   test('start_timeout_rejectsNetwork', async () => {

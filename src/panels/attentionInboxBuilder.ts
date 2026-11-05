@@ -15,6 +15,7 @@ export type AttentionReason =
   | 'jira-due-today'
   | 'jira-due-tomorrow'
   | 'jira-unread-comment'
+  | 'pr-linked'
   | 'pr-changes-requested'
   | 'pr-checks-failing'
   | 'pr-waiting-review'
@@ -234,12 +235,14 @@ export function buildAttentionInbox(
   const githubItemsByKey = new Map(
     githubState.attention.attentionInbox.map((item) => [prKey(item.pr.repoKey, item.pr.number), item]),
   );
+  const myPRs = githubState.attention.myPRs
+    .map((item) => item.pr)
+    .filter((pr) => pr.state === 'OPEN');
+  const readyTeamPRs = githubState.attention.teamPRs
+    .map((item) => item.pr)
+    .filter((pr) => pr.state === 'OPEN' && !pr.draft);
   const monitoredPRsByKey = new Map(
-    [
-      ...githubState.attention.myPRs,
-      ...githubState.attention.teamPRs,
-      ...githubState.attention.attentionInbox,
-    ].map((item) => [prKey(item.pr.repoKey, item.pr.number), item.pr]),
+    [...myPRs, ...readyTeamPRs].map((pr) => [prKey(pr.repoKey, pr.number), pr]),
   );
   const consumedPRs = new Set<string>();
   const items: AttentionInboxItem[] = [];
@@ -281,6 +284,7 @@ export function buildAttentionInbox(
       ...jiraReasons,
       ...relatedPRs.flatMap((relatedPR) => relatedPR.reasons),
     ])];
+    if (reasons.length === 0 && relatedPRs.length > 0) reasons.push('pr-linked');
     if (reasons.length > 0) {
       items.push(createInboxItem(task, undefined, reasons, githubState, relatedPRs));
       for (const relatedPR of relatedPRs) {

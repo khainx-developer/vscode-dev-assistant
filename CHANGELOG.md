@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.5
+
+- Attention Inbox: Include Jira tickets linked to your open PRs (ready or draft) and teammates' ready PRs, even without another attention condition.
+- Dashboard: Show Linked PR and Draft badges for linked pull requests in the Attention Inbox.
+- OAuth: Validate callback state before processing errors and reject callbacks without an authorization code.
+
 ## 0.0.4
 
 - Attention Inbox: Fixed a bug where a monitored teammate's non-draft PR with no reviews yet was dropped from the inbox instead of showing as "Waiting for review".

@@ -395,6 +395,7 @@ export class DashboardPanel {
       'pr-waiting-review': { label: 'Waiting for review', cls: 'badge-orange' },
       'pr-needs-my-review': { label: 'Needs your review', cls: 'badge-red' },
       'pr-unread-comment': { label: 'Unread comment', cls: 'badge-blue' },
+      'pr-linked': { label: 'Linked PR', cls: 'badge-neutral' },
       'jira-review': { label: 'Jira review', cls: 'badge-orange' },
       'jira-overdue': { label: 'Overdue', cls: 'badge-red' },
       'jira-due-today': { label: 'Due today', cls: 'badge-orange' },
@@ -416,6 +417,9 @@ export class DashboardPanel {
 
     function statusBadges(pr) {
       let html = '';
+      if (pr.draft) {
+        html += '<span class="item-badge badge-neutral">Draft</span>';
+      }
       if (pr.checkStatus) {
         const cls = pr.checkStatus === 'SUCCESS' ? 'badge-green' : (pr.checkStatus === 'FAILURE' || pr.checkStatus === 'ERROR') ? 'badge-red' : 'badge-orange';
         html += '<span class="item-badge ' + cls + '">' + escapeHtml(CHECK_STATUS_LABELS[pr.checkStatus] || pr.checkStatus) + '</span>';

@@ -236,13 +236,43 @@ suite('buildAttentionInbox', () => {
     assert.deepStrictEqual(inbox, []);
   });
 
-  test('buildAttentionInbox_doesNotShowLinkedJiraTicketWithoutActionableReason', () => {
-    const pr = makePR({ number: 17 });
-    const task = makeTask({ prLink: { kind: 'linked', pr } });
+  test('buildAttentionInbox_includesMyReadyAndDraftPRsAndOnlyReadyTeamPRs', () => {
+    const myReadyPR = makePR({ number: 20, title: 'APP-20 Ready PR', draft: false });
+    const myDraftPR = makePR({ number: 21, title: 'APP-21 Draft PR', draft: true });
+    const teamReadyPR = makePR({
+      number: 22,
+      author: 'teammate',
+      title: 'APP-22 Team ready PR',
+      draft: false,
+    });
+    const teamDraftPR = makePR({
+      number: 23,
+      author: 'teammate',
+      title: 'APP-23 Team draft PR',
+      draft: true,
+    });
+    const tasks = [20, 21, 22, 23].map((number) =>
+      makeTask({ key: `APP-${number}` }),
+    );
 
-    const inbox = buildAttentionInbox(makeJiraState([task]), makeGitHubState(), NOW);
+    const inbox = buildAttentionInbox(
+      makeJiraState(tasks),
+      makeGitHubState({
+        myPRs: [makeAttentionItem(myReadyPR, []), makeAttentionItem(myDraftPR, [])],
+        teamPRs: [makeAttentionItem(teamReadyPR, []), makeAttentionItem(teamDraftPR, [])],
+      }),
+      NOW,
+    );
 
-    assert.deepStrictEqual(inbox, []);
+    assert.deepStrictEqual(
+      inbox.map((item) => item.jiraTask?.key).sort(),
+      ['APP-20', 'APP-21', 'APP-22'],
+    );
+    assert.deepStrictEqual(inbox.map((item) => item.reasons), [
+      ['pr-linked'],
+      ['pr-linked'],
+      ['pr-linked'],
+    ]);
   });
 
   test('buildAttentionInbox_excludesReadStandalonePRComments', () => {
@@ -278,6 +308,7 @@ suite('buildAttentionInbox', () => {
     const inbox = buildAttentionInbox(
       makeJiraState([task]),
       makeGitHubState({
+        myPRs: [makeAttentionItem(pr, ['pr-changes-requested'])],
         attentionInbox: [makeAttentionItem(pr, ['pr-changes-requested'])],
         commentAttentionBySource: {
           [githubSourceKey]: makeCommentAttention(githubSourceKey, 1),
@@ -311,6 +342,7 @@ suite('buildAttentionInbox', () => {
     const inbox = buildAttentionInbox(
       makeJiraState([task], ['Alex Smith']),
       makeGitHubState({
+        teamPRs: [makeAttentionItem(pr, ['pr-unread-comment'])],
         attentionInbox: [makeAttentionItem(pr, ['pr-unread-comment'])],
         commentAttentionBySource: {
           [githubSourceKey]: makeCommentAttention(githubSourceKey, 1),

@@ -43,6 +43,13 @@ export class LoopbackRedirectServer {
       }
 
       const params = url.searchParams;
+      if (params.get('state') !== expectedState) {
+        res.writeHead(400, { 'Content-Type': 'text/html' });
+        res.end('Invalid state. You can close this window and return to VS Code.');
+        settleWith(() => reject({ category: 'invalid-entry', detail: 'OAuth state mismatch' }));
+        return;
+      }
+
       const error = params.get('error');
       if (error) {
         const detail = params.get('error_description') ?? error;
@@ -52,14 +59,14 @@ export class LoopbackRedirectServer {
         return;
       }
 
-      if (params.get('state') !== expectedState) {
+      const code = params.get('code');
+      if (!code) {
         res.writeHead(400, { 'Content-Type': 'text/html' });
-        res.end('Invalid state. You can close this window and return to VS Code.');
-        settleWith(() => reject({ category: 'invalid-entry', detail: 'OAuth state mismatch' }));
+        res.end('Missing authorization code. You can close this window and return to VS Code.');
+        settleWith(() => reject({ category: 'invalid-entry', detail: 'OAuth callback did not include an authorization code' }));
         return;
       }
 
-      const code = params.get('code') ?? '';
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end('You can close this window and return to VS Code.');
       settleWith(() => resolve({ code }));
