@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.6
+
+- Jira: Dashboard tickets now show a "N subtasks" / "No subtasks" badge.
+- Dashboard: Jira tickets can be expanded in place (without leaving the dashboard) to show the linked pull request's details, the full comment thread, and the subtask list.
+- Internal: Reorganized the extension's source code by layer (`ui/`, `services/`, `infrastructure/`, `shared/`) to make the codebase easier to review; no functional changes.
+
 ## 0.0.5
 
 - Attention Inbox: Include Jira tickets linked to your open PRs (ready or draft) and teammates' ready PRs, even without another attention condition.
