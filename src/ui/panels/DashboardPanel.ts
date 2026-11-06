@@ -299,6 +299,9 @@ export class DashboardPanel {
     }
     .team-filter-row { display: flex; justify-content: flex-end; margin-bottom: 8px; }
     .section-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+    .attention-filter-row { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+    .attention-filter-label { display: flex; align-items: center; gap: 6px; color: var(--vscode-descriptionForeground); font-size: 0.85em; cursor: pointer; }
+    .attention-filter-label input { accent-color: var(--vscode-focusBorder); margin: 0; }
     @media (max-width: 700px) {
       .team-filter-row { justify-content: stretch; }
       .team-filter { max-width: none; width: 100%; }
@@ -408,6 +411,7 @@ export class DashboardPanel {
     let githubState = null;
     let jiraState = null;
     let attentionInbox = null;
+    let attentionMineOnly = false;
     let jiraGroupFilters = {};
     let teamPrFilter = '';
     const expandedSections = {};
@@ -540,8 +544,31 @@ export class DashboardPanel {
       return null;
     }
 
+    function jiraCommentPreviewText(value) {
+      const parsed = new DOMParser().parseFromString(String(value ?? ''), 'text/html');
+      const blockTags = new Set(['ADDRESS', 'ARTICLE', 'BLOCKQUOTE', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'OL', 'P', 'PRE', 'UL']);
+      function readNode(node) {
+        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue || '';
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+        const element = node;
+        if (element.tagName === 'SCRIPT' || element.tagName === 'STYLE') return '';
+        if (element.tagName === 'BR') return '\\n';
+        const content = Array.from(element.childNodes, readNode).join('');
+        return blockTags.has(element.tagName) ? '\\n' + content + '\\n' : content;
+      }
+      return Array.from(parsed.body.childNodes, readNode).join('')
+        .replace(/\\u00a0/g, ' ')
+        .replace(/[ \\t]*\\n[ \\t]*/g, '\\n')
+        .replace(/\\n{3,}/g, '\\n\\n')
+        .trim();
+    }
+
+    function isAutomationJiraComment(comment) {
+      return String(comment.author ?? '').trim().toLowerCase() === 'automation for jira';
+    }
+
     function jiraCommentPreviewHtml(comment) {
-      const body = String(comment.body ?? '');
+      const body = jiraCommentPreviewText(comment.body);
       const snippet = body.length > 300 ? body.slice(0, 300) + '…' : body;
       return '<div class="expanded-comment">' +
         '<div class="expanded-comment-meta">' + escapeHtml(comment.author) + ' &middot; ' + escapeHtml(relativeTime(comment.createdAt)) + '</div>' +
@@ -552,6 +579,7 @@ export class DashboardPanel {
     function renderJiraExpandedPanel(task) {
       const subtasks = task.subtasks || [];
       const comments = (task.comments || [])
+        .filter((comment) => !isAutomationJiraComment(comment))
         .slice()
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
 
@@ -593,11 +621,13 @@ export class DashboardPanel {
         ? '<span class="item-badge badge-neutral">No PR</span>'
         : '<span class="item-badge badge-neutral">PR status unavailable</span>';
       const subtaskCount = (task.subtasks || []).length;
+      const commentCount = (task.comments || []).filter((comment) => !isAutomationJiraComment(comment)).length;
       const subtaskBadge = subtaskCount > 0
         ? '<span class="item-badge badge-neutral">' + subtaskCount + ' subtask' + (subtaskCount === 1 ? '' : 's') + '</span>'
         : '<span class="item-badge badge-neutral">No subtasks</span>';
       const badges = '<span class="item-badge badge-neutral">' + escapeHtml(task.status) + '</span>' +
         (task.dueDate ? '<span class="item-badge badge-neutral">Due ' + escapeHtml(task.dueDate) + '</span>' : '') +
+        '<span class="item-badge badge-neutral">' + (commentCount > 0 ? commentCount + ' comment' + (commentCount === 1 ? '' : 's') : 'No comments') + '</span>' +
         ((task.commentAttention && task.commentAttention.unreadCount > 0)
           ? '<span class="item-badge badge-blue">' + task.commentAttention.unreadCount + ' unread comments</span>'
           : '') +
@@ -806,6 +836,17 @@ export class DashboardPanel {
       return html || '<div class="empty-state">' + escapeHtml(emptyText) + '</div>';
     }
 
+    function attentionItemIsMine(item) {
+      const currentJiraUser = String((jiraState && jiraState.currentUser) || '').trim().toLowerCase();
+      const assignee = String((item.jiraTask && item.jiraTask.assignee) || '').trim().toLowerCase();
+      if (currentJiraUser && assignee === currentJiraUser) return true;
+
+      const currentGitHubUser = String((githubState && githubState.me) || '').trim().toLowerCase();
+      if (!currentGitHubUser) return false;
+      const pullRequests = [item.pr, ...(item.relatedPRs || []).map((related) => related.pr)].filter(Boolean);
+      return pullRequests.some((pr) => String(pr.author || '').trim().toLowerCase() === currentGitHubUser);
+    }
+
     function sectionOpenAttribute(sectionId) {
       return expandedSections[sectionId] === false ? '' : ' open';
     }
@@ -872,6 +913,9 @@ export class DashboardPanel {
         : [];
       const jiraGroups = getJiraGroups();
       const inboxItems = attentionInbox;
+      const visibleInboxItems = inboxItems === null
+        ? null
+        : attentionMineOnly ? inboxItems.filter(attentionItemIsMine) : inboxItems;
       const refreshing = !!(githubState && githubState.isRefreshing)
         || !!(jiraState && jiraState.isRefreshing);
       const signInCard = githubReady && !githubState.authenticated
@@ -919,9 +963,9 @@ export class DashboardPanel {
         ? 'Last refreshed ' + new Date(Math.max(...lastRefreshTimes)).toLocaleTimeString()
         : '';
 
-      const attentionHtml = inboxItems === null
+      const attentionHtml = visibleInboxItems === null
         ? '<div class="empty-state">Loading provider attention…</div>'
-        : renderList(inboxItems.map(renderAttentionItem).join(''), 'Nothing here. You\\'re all caught up.');
+        : renderList(visibleInboxItems.map(renderAttentionItem).join(''), 'Nothing here. You\\'re all caught up.');
       const myPrsHtml = renderList(myPrItems.map(renderPrItem).join(''), 'No open PRs of yours.');
       const teamPrsHtml = renderList(teamPrItems.map(renderPrItem).join(''), 'No team PRs to show.');
       const jiraGroupsHtml = !jiraReady
@@ -950,7 +994,9 @@ export class DashboardPanel {
         failureBanner +
         '<div class="stat-grid">' + statTiles + '</div>' +
         '<details class="section" id="attentionSection"' + sectionOpenAttribute('attentionSection') + '>' +
-        '<summary class="section-header"><h2>🔔 Attention Inbox <span class="count-pill">' + (inboxItems ? inboxItems.length : 0) + '</span></h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
+        '<summary class="section-header"><h2>🔔 Attention Inbox <span class="count-pill">' + (visibleInboxItems ? visibleInboxItems.length : 0) + '</span></h2><span class="section-chevron" aria-hidden="true"></span></summary>' +
+        '<div class="attention-filter-row"><label class="attention-filter-label"><input type="checkbox" id="attentionMineOnly"' +
+        (attentionMineOnly ? ' checked' : '') + '> Show mine only</label></div>' +
         '<div class="item-list">' + attentionHtml + '</div>' +
         '</details>' +
         '<div class="section-row">' + jiraGroupsHtml + '</div>' +
@@ -980,6 +1026,14 @@ export class DashboardPanel {
           expandedSections[section.id] = section.open;
         });
       });
+
+      const attentionMineFilter = root.querySelector('#attentionMineOnly');
+      if (attentionMineFilter) {
+        attentionMineFilter.addEventListener('change', () => {
+          attentionMineOnly = attentionMineFilter.checked;
+          render();
+        });
+      }
 
       root.querySelectorAll('[data-jira-group-filter]').forEach((select) => {
         select.addEventListener('change', () => {
