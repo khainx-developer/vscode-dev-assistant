@@ -25,7 +25,7 @@ import type {
 type OperationResult = { ok: true } | { ok: false; reason: string };
 
 export interface GitHubViewHost {
-  readonly webview: vscode.Webview;
+  readonly webview: Pick<vscode.Webview, 'postMessage'>;
 }
 
 export class GitHubViewController {

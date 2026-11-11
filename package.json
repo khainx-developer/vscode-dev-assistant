@@ -1,8 +1,8 @@
 {
   "name": "devmate-kit",
   "displayName": "DevMate Kit",
-  "description": "A collection of handy developer utilities for VS Code: GitHub PR & Jira task tracking, Base64/URL/JSON tools, UUIDs, timestamps, and case conversions.",
-  "version": "0.0.6",
+  "description": "Your daily work radar: GitHub pull requests and Jira tickets that need your attention, right inside VS Code — with optional AI summaries and handy text utilities.",
+  "version": "0.1.0",
   "publisher": "khainx-developer",
   "license": "MIT",
   "icon": "media/dev-assistant-activity-icon.png",
@@ -16,20 +16,30 @@
   "homepage": "https://github.com/khainx-developer/vscode-dev-assistant#readme",
   "keywords": [
     "github",
+    "pull requests",
     "jira",
-    "base64",
-    "uuid",
-    "json",
+    "attention",
+    "inbox",
+    "dashboard",
+    "standup",
+    "copilot",
+    "ai",
     "productivity",
-    "utilities"
+    "base64",
+    "json",
+    "uuid"
   ],
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization",
+    "AI"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "configuration": {
@@ -39,19 +49,21 @@
           "type": "string",
           "enum": [
             "none",
+            "vscodeLm",
             "githubCopilot"
           ],
           "enumDescriptions": [
-            "Do not use an AI provider.",
-            "Use GitHub Copilot as the AI runtime."
+            "AI features are off.",
+            "Use language models available in this editor through the VS Code Language Model API (GitHub Copilot, Claude via Copilot or another provider, …).",
+            "Deprecated: same as vscodeLm. Kept so existing settings keep working."
           ],
           "default": "none",
-          "description": "AI runtime used by DevMate Kit."
+          "markdownDescription": "AI runtime for DevMate Kit. `vscodeLm` uses whatever chat models this editor provides — DevMate never stores its own API keys."
         },
         "devMateKit.ai.model": {
           "type": "string",
-          "default": "GPT-6 Luna",
-          "description": "GitHub Copilot model ID used by the AI runtime. The available model list is provided by VS Code."
+          "default": "",
+          "markdownDescription": "ID of the language model to use. Leave empty to use the first GitHub Copilot model (or the first available model). Pick from the live list with **DevMate Kit: Select AI Model**."
         },
         "devMateKit.github.monitoredRepos": {
           "type": "array",
@@ -94,7 +106,6 @@
         },
         "devMateKit.jira.savedQueries": {
           "type": "array",
-          "maxItems": 1,
           "items": {
             "type": "object",
             "properties": {
@@ -112,6 +123,21 @@
           },
           "default": [],
           "description": "Saved JQL queries used to fetch Jira tasks."
+        },
+        "devMateKit.notifications.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a notification when a background refresh finds new items that need your attention."
+        },
+        "devMateKit.refresh.background": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep refreshing GitHub and Jira every 10 minutes even when no DevMate view is open (powers the status bar count and notifications)."
+        },
+        "devMateKit.statusBar.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the attention count in the status bar."
         }
       }
     },
@@ -128,19 +154,54 @@
       "devMateKitContainer": [
         {
           "id": "devMateKit.sidebar",
-          "name": "",
-          "type": "webview"
+          "name": "DevMate Kit",
+          "type": "webview",
+          "contextualTitle": "DevMate Kit"
         }
       ]
     },
     "commands": [
       {
+        "command": "devMateKit.openDashboard",
+        "title": "DevMate Kit: Open Daily Tasks Dashboard",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "devMateKit.refresh",
+        "title": "DevMate Kit: Refresh Attention Inbox",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "devMateKit.openSetup",
+        "title": "DevMate Kit: Open Setup",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "devMateKit.openTools",
+        "title": "DevMate Kit: Open Text Tools",
+        "icon": "$(tools)"
+      },
+      {
         "command": "devMateKit.githubSignIn",
         "title": "DevMate Kit: Sign in to GitHub"
       },
       {
-        "command": "devMateKit.openDashboard",
-        "title": "DevMate Kit: Open Daily Tasks Dashboard"
+        "command": "devMateKit.ai.whatNext",
+        "title": "DevMate Kit: Ask AI — What should I do next?",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "devMateKit.ai.standup",
+        "title": "DevMate Kit: Generate Standup Summary",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "devMateKit.ai.selectModel",
+        "title": "DevMate Kit: Select AI Model"
+      },
+      {
+        "command": "devMateKit.openTool",
+        "title": "DevMate Kit: Open Tool"
       },
       {
         "command": "devMateKit.base64Encode",
@@ -249,12 +310,114 @@
         {
           "command": "devMateKit.urlDecode"
         }
+      ],
+      "view/title": [
+        {
+          "command": "devMateKit.refresh",
+          "when": "view == devMateKit.sidebar",
+          "group": "navigation@1"
+        },
+        {
+          "command": "devMateKit.openDashboard",
+          "when": "view == devMateKit.sidebar",
+          "group": "navigation@2"
+        },
+        {
+          "command": "devMateKit.ai.whatNext",
+          "when": "view == devMateKit.sidebar",
+          "group": "navigation@3"
+        },
+        {
+          "command": "devMateKit.openSetup",
+          "when": "view == devMateKit.sidebar",
+          "group": "1_setup@1"
+        },
+        {
+          "command": "devMateKit.ai.standup",
+          "when": "view == devMateKit.sidebar",
+          "group": "2_ai@1"
+        },
+        {
+          "command": "devMateKit.ai.selectModel",
+          "when": "view == devMateKit.sidebar",
+          "group": "2_ai@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "devMateKit.openTool",
+          "when": "false"
+        }
       ]
     },
     "submenus": [
       {
         "id": "devMateKit.submenu",
         "label": "DevMate Kit"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "devMateKit.gettingStarted",
+        "title": "Get started with DevMate Kit",
+        "description": "See the pull requests and Jira tickets that need you — without leaving VS Code.",
+        "steps": [
+          {
+            "id": "signInGitHub",
+            "title": "Sign in to GitHub",
+            "description": "DevMate uses your VS Code GitHub account to read pull requests.\n[Sign in to GitHub](command:devMateKit.githubSignIn)",
+            "media": {
+              "markdown": "media/walkthrough/github.md"
+            },
+            "completionEvents": [
+              "onCommand:devMateKit.githubSignIn"
+            ]
+          },
+          {
+            "id": "chooseRepos",
+            "title": "Choose repositories and teammates",
+            "description": "Tell DevMate which repositories and teammates to watch.\n[Open Setup](command:devMateKit.openSetup)",
+            "media": {
+              "markdown": "media/walkthrough/monitoring.md"
+            },
+            "completionEvents": [
+              "onSettingChanged:devMateKit.github.monitoredRepos"
+            ]
+          },
+          {
+            "id": "connectJira",
+            "title": "Connect Jira (optional)",
+            "description": "Add your Jira tickets and due dates to the inbox.\n[Connect Jira](command:devMateKit.openSetup)",
+            "media": {
+              "markdown": "media/walkthrough/jira.md"
+            },
+            "completionEvents": [
+              "onSettingChanged:devMateKit.jira.siteUrl"
+            ]
+          },
+          {
+            "id": "turnOnAi",
+            "title": "Ask AI what to do next (optional)",
+            "description": "Use the language models already in your editor, such as GitHub Copilot.\n[Select a model](command:devMateKit.ai.selectModel)",
+            "media": {
+              "markdown": "media/walkthrough/ai.md"
+            },
+            "completionEvents": [
+              "onSettingChanged:devMateKit.ai.provider"
+            ]
+          },
+          {
+            "id": "openDashboard",
+            "title": "Open Daily Tasks",
+            "description": "Your Attention Inbox, sorted by priority.\n[Open Daily Tasks](command:devMateKit.openDashboard)",
+            "media": {
+              "markdown": "media/walkthrough/dashboard.md"
+            },
+            "completionEvents": [
+              "onCommand:devMateKit.openDashboard"
+            ]
+          }
+        ]
       }
     ]
   },

@@ -9,6 +9,7 @@ export interface ToolDefinition {
   id: string;
   title: string;
   description: string;
+  /** Glyph id from the webview icon set (`src/ui/webview/shared/icons.js`). */
   icon: string;
   category: ToolCategory;
   tags: string[];

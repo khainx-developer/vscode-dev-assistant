@@ -23,7 +23,7 @@ import type { JiraConnectionStore } from '../../infrastructure/jira/connectionSt
 import type { McpConnectionService } from '../../infrastructure/mcp/connectionService';
 import type { PullRequestCache } from '../../infrastructure/github/pullRequestCache';
 
-type JiraViewHost = { webview: vscode.Webview };
+export type JiraViewHost = { webview: Pick<vscode.Webview, 'postMessage'> };
 type QueryResult =
   | { query: JiraSavedQuery; status: 'fulfilled'; tasks: JiraTask[] }
   | { query: JiraSavedQuery; status: 'rejected'; failure: JiraFailure };

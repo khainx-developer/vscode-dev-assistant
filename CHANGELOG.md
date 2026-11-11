@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.1.0 — First professional release
+
+DevMate Kit is now an attention-first daily work radar.
+
+### New
+- **Redesigned sidebar** with three tabs: **Home** (attention summary, top items, connection status), **Tools** (text utilities) and **Setup** (a guided checklist for GitHub, repositories & teammates, Jira and AI, with plain-language status for every step).
+- **Dashboard opens on the Attention Inbox.** Stat tiles (Needs attention / My PRs / Team PRs / My Jira) act as filters; the other lists sit under "Everything else". A banner reports a provider that failed to refresh while the rest of the dashboard keeps working.
+- **Empty and first-run states** always offer the next step (sign in, add repositories, connect Jira).
+- **Snooze** any inbox item for 1 hour, until later today, or until tomorrow morning. Snoozed items are listed separately and return automatically.
+- **Status bar count** and **activity bar badge** for items that need your attention.
+- **Notifications** when a background refresh finds new items, batched when several arrive at once. Turn off in Setup or with `devMateKit.notifications.enabled`.
+- **AI assistant** using the language models available in your editor (VS Code Language Model API):
+  - *Ask AI — What should I do next?* (dashboard button and command)
+  - *Generate Standup Summary* (Yesterday / Today / Blockers in a new Markdown editor, with Copy)
+  - *Explain* on every inbox item
+- **Select AI Model** command and live model picker in Setup.
+- Getting-started **walkthrough**.
+
+### Changed
+- `devMateKit.ai.provider` now takes `none` or `vscodeLm`. The old `githubCopilot` value still works and is treated as `vscodeLm`.
+- `devMateKit.ai.model` defaults to empty, which picks the first available GitHub Copilot model (or the first model at all).
+- New settings: `devMateKit.notifications.enabled`, `devMateKit.refresh.background`, `devMateKit.statusBar.enabled`.
+- The extension now activates after startup so the status bar count and notifications work without opening the sidebar first.
+- Calmer visuals: theme-native colors, no emoji decoration, consistent icons, keyboard focus rings, light and dark theme support.
+
+### Internal
+- New `app/` layer: `container.ts` builds services once; a single shared `DashboardSession` owns the GitHub and Jira controllers, the inbox and refresh scheduling for both the sidebar and the dashboard.
+- Typed connection state for GitHub and Jira plus a derived dashboard status (`needsSetup | loading | ready | partialFailure`).
+- Webview HTML/CSS/JS moved out of TypeScript strings into `src/ui/webview/**`, bundled by esbuild into `dist/webview`, with a strict CSP.
+- Webview ↔ host messages formalized in `src/shared/messages.ts`.
+- GitHub and Jira authentication (MCP OAuth) is unchanged.
+
 ## 0.0.6
 
 - Jira: Dashboard tickets now show a "N subtasks" / "No subtasks" badge.

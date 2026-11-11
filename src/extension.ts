@@ -1,21 +1,52 @@
 import * as vscode from 'vscode';
+import { createContainer } from './app/container';
 import { allCommands } from './ui/commands/index';
 import { getActiveEditorOrWarn } from './ui/textEdit';
-import { SidebarProvider } from './ui/views/SidebarProvider';
+import { SIDEBAR_VIEW_ID, SidebarProvider } from './ui/views/SidebarProvider';
 import { ToolPanel } from './ui/panels/ToolPanel';
 import { DashboardPanel } from './ui/panels/DashboardPanel';
-import { GitHubAuthService } from './infrastructure/github/auth';
-import { GitHubConfigStore } from './infrastructure/github/configStore';
-import { LastSeenStore } from './infrastructure/github/lastSeenStore';
-import { PullRequestCache } from './infrastructure/github/pullRequestCache';
-import { McpConnectionService } from './infrastructure/mcp/connectionService';
-import { JiraConfigStore } from './infrastructure/jira/configStore';
-import { JiraConnectionStore } from './infrastructure/jira/connectionStore';
-import { CommentReadStateStore } from './infrastructure/attention/commentReadStateStore';
+import { AttentionStatusBar } from './ui/statusBar';
+import { AttentionNotifier } from './ui/notifications';
+import type { SetupStepId } from './services/session/setupStatus';
 
 export function activate(context: vscode.ExtensionContext): void {
+  registerTextCommands(context);
+
+  // The AI coordinator needs to reveal UI that is built from the session it receives, so the
+  // hooks resolve the surfaces lazily.
+  const surfaces: { sidebar?: SidebarProvider } = {};
+  const { session, ai } = createContainer(context, {
+    revealDashboard: () => DashboardPanel.createOrShow(context.extensionUri, session),
+    revealSetup: () => void surfaces.sidebar?.showTab('setup', 'ai'),
+  });
+
+  const sidebar = new SidebarProvider(context.extensionUri, session);
+  surfaces.sidebar = sidebar;
+  context.subscriptions.push(
+    sidebar,
+    vscode.window.registerWebviewViewProvider(SIDEBAR_VIEW_ID, sidebar, { webviewOptions: { retainContextWhenHidden: true } }),
+    new AttentionStatusBar(session),
+    new AttentionNotifier(session, () => DashboardPanel.isFocused()),
+  );
+
+  const register = (id: string, handler: (...args: never[]) => unknown): void => {
+    context.subscriptions.push(vscode.commands.registerCommand(id, handler));
+  };
+
+  register('devMateKit.openDashboard', () => DashboardPanel.createOrShow(context.extensionUri, session));
+  register('devMateKit.openSetup', (step?: SetupStepId) => sidebar.showTab('setup', step));
+  register('devMateKit.openTools', () => sidebar.showTab('tools'));
+  register('devMateKit.openTool', (toolId: string) => ToolPanel.createOrShow(context.extensionUri, toolId));
+  register('devMateKit.refresh', () => session.refreshAll({ notify: false }));
+  register('devMateKit.githubSignIn', () => session.handleCommand({ command: 'github.signIn' }));
+  register('devMateKit.ai.whatNext', () => ai.whatShouldIDoNext());
+  register('devMateKit.ai.standup', () => ai.standup());
+  register('devMateKit.ai.selectModel', () => ai.pickModel());
+}
+
+function registerTextCommands(context: vscode.ExtensionContext): void {
   for (const command of allCommands) {
-    const disposable = vscode.commands.registerCommand(command.id, async () => {
+    context.subscriptions.push(vscode.commands.registerCommand(command.id, async () => {
       const editor = getActiveEditorOrWarn();
       if (!editor) {
         return;
@@ -25,66 +56,8 @@ export function activate(context: vscode.ExtensionContext): void {
       } catch (err) {
         vscode.window.showErrorMessage(`DevMate Kit: ${(err as Error).message}`);
       }
-    });
-    context.subscriptions.push(disposable);
+    }));
   }
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('devMateKit.openTool', (toolId: string) => {
-      ToolPanel.createOrShow(context.extensionUri, toolId);
-    })
-  );
-
-  const authService = new GitHubAuthService();
-  const lastSeenStore = new LastSeenStore(context);
-  const pullRequestCache = new PullRequestCache();
-  const connectionService = new McpConnectionService(context);
-  const configStore = new GitHubConfigStore(authService, connectionService);
-  const jiraConnectionStore = new JiraConnectionStore(context, connectionService);
-  const jiraConfigStore = new JiraConfigStore(jiraConnectionStore, connectionService);
-  const commentReadStateStore = new CommentReadStateStore(context);
-  const jiraOutputChannel = vscode.window.createOutputChannel('DevMate Kit');
-  context.subscriptions.push(jiraOutputChannel);
-  const jiraServices = {
-    connectionStore: jiraConnectionStore,
-    configStore: jiraConfigStore,
-    connectionService,
-    commentReadStateStore,
-    pullRequestCache,
-    outputChannel: jiraOutputChannel,
-  };
-
-  context.subscriptions.push({ dispose: () => void connectionService.dispose() });
-
-  const sidebarProvider = new SidebarProvider(context.extensionUri, context, {
-    authService,
-    configStore,
-    connectionService,
-    lastSeenStore,
-    pullRequestCache,
-  }, jiraServices);
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('devMateKit.sidebar', sidebarProvider)
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('devMateKit.githubSignIn', () => {
-      void authService.getSession(true);
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('devMateKit.openDashboard', () => {
-      DashboardPanel.createOrShow(context.extensionUri, context, {
-        authService,
-        configStore,
-        connectionService,
-        lastSeenStore,
-        pullRequestCache,
-      }, jiraServices);
-    })
-  );
-
 }
 
 export function deactivate(): void {}
