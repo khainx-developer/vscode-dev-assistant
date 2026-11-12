@@ -22,7 +22,7 @@ Everything that needs you, highest priority first:
 | **New activity** (blue) | Comments on your PRs or tickets you haven't opened yet |
 | **Waiting on you** (orange) | Reviews requested from you, teammates' PRs waiting for review, tickets in Review or due today/tomorrow |
 
-Jira tickets are grouped with the pull requests that reference them, so a ticket and its PR show up as one item. Every item has one-click **Open PR**, **Open in Jira** and **Open comment** actions, expandable details (comments, subtasks, linked PR), and **Snooze** (1 hour, later today, or tomorrow morning) for things you can't act on yet.
+Jira tickets are grouped with the pull requests that reference them (ticket key in the PR **title** or **branch name**), so a ticket and its PR show up as one item. Every item has one-click **Open PR**, **Open in Jira** and **Open comment** actions, expandable details (comments, subtasks, linked PR), and **Snooze** (1 hour, later today, or tomorrow morning) for things you can't act on yet.
 
 ### Daily Tasks dashboard
 
@@ -33,6 +33,7 @@ The full dashboard opens on the Attention Inbox. Stat tiles — *Needs attention
 - **Status bar** — `🔔 3` shows how many items need you; click to open the dashboard.
 - **Activity bar badge** on the DevMate Kit icon.
 - **Notifications** when a background refresh finds something new. Several new items are batched into one message, and VS Code's Do Not Disturb mode silences them.
+- **Pause monitoring** — turn off at night or when you are away. DevMate stops refreshing and connecting to GitHub/Jira; your sign-in is kept. Resume from Setup, the dashboard banner, or the Command Palette.
 
 ### AI assistant (optional)
 
@@ -89,6 +90,7 @@ There's also a guided walkthrough: **Help → Welcome → Get started with DevMa
 | `devMateKit.jira.savedQueries` | `[]` | JQL queries that choose which tickets to fetch |
 | `devMateKit.ai.provider` | `none` | `vscodeLm` to use this editor's language models |
 | `devMateKit.ai.model` | `""` | Model id; empty picks the first Copilot model |
+| `devMateKit.monitoring.enabled` | `true` | Keep watching GitHub and Jira; turn off to pause all monitoring network activity |
 | `devMateKit.notifications.enabled` | `true` | Notify when new items need attention |
 | `devMateKit.refresh.background` | `true` | Refresh every 10 minutes even when no DevMate view is open |
 | `devMateKit.statusBar.enabled` | `true` | Show the attention count in the status bar |

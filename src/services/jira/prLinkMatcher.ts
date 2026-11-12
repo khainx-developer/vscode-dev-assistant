@@ -1,5 +1,6 @@
 import type { PullRequestSummary } from '../../shared/githubTypes';
 
+/** Match a Jira issue key in a PR title or head branch name (e.g. `feature/PROJ-123-fix`). */
 export function findPullRequestsForIssue(
   issueKey: string,
   prs: PullRequestSummary[],

@@ -54,6 +54,16 @@ suite('matchPullRequestForIssue', () => {
     assert.strictEqual(matchPullRequestForIssue('PROJ-123', [match]), match);
   });
 
+  test('matchPullRequestForIssue_matchesIssueKeyInTitleOrBranch_independently', () => {
+    const titleOnly = createPullRequest('PROJ-55 title only', '2026-01-02T00:00:00Z');
+    titleOnly.headRef = 'feature/unrelated';
+    const branchOnly = createPullRequest('No key in title', '2026-01-03T00:00:00Z');
+    branchOnly.headRef = 'bugfix/PROJ-55-fix-login';
+
+    assert.strictEqual(matchPullRequestForIssue('PROJ-55', [titleOnly]), titleOnly);
+    assert.strictEqual(matchPullRequestForIssue('PROJ-55', [branchOnly]), branchOnly);
+  });
+
   test('matchPullRequestForIssue_doesNotMatchPartialIssueKey', () => {
     const prs = [
       createPullRequest('Fix APROJ-123 issue', '2026-01-02T00:00:00Z'),

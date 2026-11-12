@@ -37,7 +37,10 @@ export function activate(context: vscode.ExtensionContext): void {
   register('devMateKit.openSetup', (step?: SetupStepId) => sidebar.showTab('setup', step));
   register('devMateKit.openTools', () => sidebar.showTab('tools'));
   register('devMateKit.openTool', (toolId: string) => ToolPanel.createOrShow(context.extensionUri, toolId));
-  register('devMateKit.refresh', () => session.refreshAll({ notify: false }));
+  register('devMateKit.refresh', () => session.handleCommand({ command: 'session.refreshAll' }));
+  register('devMateKit.pauseMonitoring', () => void session.setMonitoringEnabled(false));
+  register('devMateKit.resumeMonitoring', () => void session.setMonitoringEnabled(true));
+  register('devMateKit.toggleMonitoring', () => void session.setMonitoringEnabled(!session.isMonitoringEnabled()));
   register('devMateKit.githubSignIn', () => session.handleCommand({ command: 'github.signIn' }));
   register('devMateKit.ai.whatNext', () => ai.whatShouldIDoNext());
   register('devMateKit.ai.standup', () => ai.standup());

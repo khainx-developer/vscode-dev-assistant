@@ -178,6 +178,44 @@ suite('GithubMcpAdapter', () => {
     assert.strictEqual(result[1].draft, true);
   });
 
+  test('fetchOpenPullRequests_fillsHeadRefFromDetail_whenListOmitsHead', async () => {
+    const { service } = makeConnectionService({
+      callTool: async (_serverId, name, args) => {
+        const typedArgs = args as Record<string, unknown>;
+        if (name === 'list_pull_requests') {
+          return toolResult([{
+            number: 7,
+            title: 'Implement feature',
+            html_url: 'https://github.com/acme/widgets/pull/7',
+            user: { login: 'alice' },
+            state: 'open',
+            draft: false,
+            merged_at: null,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-02T00:00:00Z',
+            labels: [],
+            requested_reviewers: [],
+          }]);
+        }
+        if (name === 'pull_request_read') {
+          if (typedArgs.method === 'get') {
+            return toolResult({ mergeable: true, head: { ref: 'feature/PROJ-99-from-detail' } });
+          }
+          if (typedArgs.method === 'get_check_runs') {
+            return toolResult({ total_count: 0, check_runs: [] });
+          }
+          return toolResult([]);
+        }
+        throw new Error(`unexpected tool call: ${name}`);
+      },
+    });
+
+    const result = await GithubMcpAdapter.fetchOpenPullRequests(service, REPO, SESSION);
+
+    assert.strictEqual(result.length, 1);
+    assert.strictEqual(result[0].headRef, 'feature/PROJ-99-from-detail');
+  });
+
   test('fetchOpenPullRequests_getComments_pagesFromOneUntilShortPage', async () => {
     const repo = { owner: 'comment-pages', repo: 'short-page' };
     const pageOne = Array.from({ length: 100 }, (_, index) => makePullRequestComment(index + 1));

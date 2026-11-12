@@ -2,7 +2,7 @@
   "name": "devmate-kit",
   "displayName": "DevMate Kit",
   "description": "Your daily work radar: GitHub pull requests and Jira tickets that need your attention, right inside VS Code — with optional AI summaries and handy text utilities.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "khainx-developer",
   "license": "MIT",
   "icon": "media/dev-assistant-activity-icon.png",
@@ -124,6 +124,11 @@
           "default": [],
           "description": "Saved JQL queries used to fetch Jira tasks."
         },
+        "devMateKit.monitoring.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep watching GitHub and Jira. Turn off to pause all monitoring network activity (no refresh, no connections) while keeping your sign-in."
+        },
         "devMateKit.notifications.enabled": {
           "type": "boolean",
           "default": true,
@@ -170,6 +175,18 @@
         "command": "devMateKit.refresh",
         "title": "DevMate Kit: Refresh Attention Inbox",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "devMateKit.pauseMonitoring",
+        "title": "DevMate Kit: Pause Monitoring"
+      },
+      {
+        "command": "devMateKit.resumeMonitoring",
+        "title": "DevMate Kit: Resume Monitoring"
+      },
+      {
+        "command": "devMateKit.toggleMonitoring",
+        "title": "DevMate Kit: Toggle Monitoring"
       },
       {
         "command": "devMateKit.openSetup",

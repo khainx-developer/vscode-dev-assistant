@@ -10,10 +10,12 @@ import type {
 
 type RestUser = { login: string } | null;
 
+type HeadRefSource = { head?: { ref?: string | null } | string | null } | null | undefined;
+
 type ListedPullRequest = {
   number: number;
   title: string;
-  head?: { ref?: string | null } | null;
+  head?: { ref?: string | null } | string | null;
   html_url: string;
   user: RestUser;
   state: 'open' | 'closed';
@@ -25,7 +27,24 @@ type ListedPullRequest = {
   requested_reviewers?: RestUser[];
 };
 
-type PullRequestDetail = { mergeable: boolean | null };
+/** `pull_request_read`/`get` returns the full PR; we need mergeable and head.ref for Jira linking. */
+type PullRequestDetail = {
+  mergeable: boolean | null;
+  head?: { ref?: string | null } | string | null;
+};
+
+function extractHeadRef(source: HeadRefSource): string | undefined {
+  const head = source?.head;
+  if (typeof head === 'string') {
+    const trimmed = head.trim();
+    return trimmed || undefined;
+  }
+  if (head && typeof head.ref === 'string') {
+    const trimmed = head.ref.trim();
+    return trimmed || undefined;
+  }
+  return undefined;
+}
 type PullRequestReview = { user: RestUser; state: string; submitted_at: string };
 type PullRequestComment = { id: number | string; user: RestUser; body: string; created_at: string; html_url: string };
 type CachedPullRequestDetails = {
@@ -231,7 +250,8 @@ function mapPullRequest(
     repoKey,
     number: entry.number,
     title: entry.title,
-    headRef: entry.head?.ref ?? undefined,
+    // Prefer list payload; fall back to pull_request_read/get — some MCP list shapes omit head.ref.
+    headRef: extractHeadRef(entry) ?? extractHeadRef(detail),
     url: entry.html_url,
     author: entry.user?.login ?? '',
     state: entry.state === 'open' ? 'OPEN' : entry.merged_at ? 'MERGED' : 'CLOSED',

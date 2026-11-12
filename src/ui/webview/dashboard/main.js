@@ -76,31 +76,50 @@ function jiraGroups() {
 
 // ── Pieces ────────────────────────────────────────────────────────────────
 
+function monitoringPaused() {
+  return status?.monitoringEnabled === false;
+}
+
 function header(showAi = true) {
   const refreshing = !!status?.isRefreshing;
-  const subtitle = [
-    githubSignedIn() && github?.me ? `GitHub: ${github.me}` : null,
-    jiraConnected() && jira?.currentUser ? `Jira: ${jira.currentUser}` : null,
-  ].filter(Boolean).join(' · ');
+  const paused = monitoringPaused();
+  const subtitle = paused
+    ? 'Monitoring paused — GitHub and Jira are not connecting.'
+    : [
+      githubSignedIn() && github?.me ? `GitHub: ${github.me}` : null,
+      jiraConnected() && jira?.currentUser ? `Jira: ${jira.currentUser}` : null,
+    ].filter(Boolean).join(' · ');
   const last = status?.lastRefreshAt ? `Updated ${clockTime(status.lastRefreshAt)}` : '';
+  const actionsEnabled = !paused && !refreshing;
   return `<header class="page-header">
     <div class="title-block">
       <h1>Daily Tasks</h1>
       <p class="muted">${esc(subtitle || 'Pull requests and Jira tickets that need your attention.')}</p>
     </div>
     <div class="header-actions">
-      <span class="muted small" title="Refreshes automatically every 10 minutes">${refreshing ? 'Refreshing…' : esc(last)}</span>
-      <button type="button" class="secondary icon-only" data-action="refresh"${refreshing ? ' disabled' : ''} title="Refresh now" aria-label="Refresh now">
+      <span class="muted small" title="${paused ? 'Monitoring is paused' : 'Refreshes automatically every 10 minutes'}">${paused ? 'Paused' : refreshing ? 'Refreshing…' : esc(last)}</span>
+      <button type="button" class="secondary icon-only" data-action="refresh"${actionsEnabled ? '' : ' disabled'} title="${paused ? 'Monitoring is paused' : 'Refresh now'}" aria-label="Refresh now">
         <span class="${refreshing ? 'spin' : ''}">${icon('refresh', 'sm')}</span>
       </button>
-      ${showAi ? `<button type="button" class="secondary" data-action="aiStandup" title="Generate a Yesterday / Today / Blockers summary">${icon('list', 'sm')}Standup</button>
+      ${showAi && !paused ? `<button type="button" class="secondary" data-action="aiStandup" title="Generate a Yesterday / Today / Blockers summary">${icon('list', 'sm')}Standup</button>
       <button type="button" data-action="aiWhatNext"${ai?.run?.status === 'running' ? ' disabled' : ''}>${icon('sparkle', 'sm')}Ask AI: What should I do?</button>` : ''}
     </div>
   </header>`;
 }
 
+function pausedBanner() {
+  if (!monitoringPaused()) return '';
+  return `<div class="banner" role="status">
+    ${icon('info')}
+    <div class="banner-body">
+      <strong>Monitoring paused.</strong> DevMate is not refreshing or connecting to GitHub or Jira. Your sign-in is kept.
+    </div>
+    <button type="button" data-action="resumeMonitoring">Resume</button>
+  </div>`;
+}
+
 function failureBanner() {
-  if (status?.dashboard?.kind !== 'partialFailure') return '';
+  if (monitoringPaused() || status?.dashboard?.kind !== 'partialFailure') return '';
   const messages = status.dashboard.messages || [];
   return `<div class="banner" role="status">
     ${icon('alert')}
@@ -363,8 +382,8 @@ function render() {
   }
   const needsSetup = status.dashboard.kind === 'needsSetup';
   const html = needsSetup
-    ? `${header(false)}${aiCard()}${welcome()}`
-    : `${header()}${failureBanner()}${setupCallouts()}${aiCard()}${tiles()}${heroSection()}${everythingElse()}`;
+    ? `${header(false)}${pausedBanner()}${aiCard()}${welcome()}`
+    : `${header()}${pausedBanner()}${failureBanner()}${setupCallouts()}${aiCard()}${tiles()}${heroSection()}${everythingElse()}`;
   renderPreserving(app, html);
 }
 
@@ -372,6 +391,7 @@ function render() {
 
 delegate(app, {
   refresh: () => post({ command: 'session.refreshAll' }),
+  resumeMonitoring: () => post({ command: 'settings.setMonitoring', enabled: true }),
   githubSignIn: () => post({ command: 'github.signIn' }),
   openSetup: (el) => post({ command: 'nav.openSetup', step: el.getAttribute('data-step') || undefined }),
   view: (el) => {

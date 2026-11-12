@@ -38,6 +38,19 @@ export interface AiCommandHandler {
 const STALE_AFTER_MS = 60 * 1000;
 const NOTIFICATIONS_SETTING = 'devMateKit.notifications.enabled';
 const BACKGROUND_SETTING = 'devMateKit.refresh.background';
+const MONITORING_SETTING = 'devMateKit.monitoring.enabled';
+const PAUSED_MESSAGE = 'DevMate: Monitoring is paused. Resume to connect again.';
+
+/** Commands that open a browser / update local prefs only — allowed while monitoring is paused. */
+const PAUSED_ALLOWED_COMMANDS = new Set([
+  'github.openPr',
+  'github.openComment',
+  'github.markRead',
+  'jira.openTask',
+  'jira.setCurrentUser',
+  'jira.addTeamMember',
+  'jira.removeTeamMember',
+]);
 
 /**
  * Single shared session for GitHub + Jira + the Attention Inbox, used by both the sidebar and
@@ -99,12 +112,40 @@ export class DashboardSession implements vscode.Disposable {
 
     this.disposables.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration(BACKGROUND_SETTING)) this.fireVisibilityIfChanged();
+        if (event.affectsConfiguration(BACKGROUND_SETTING) || event.affectsConfiguration(MONITORING_SETTING)) {
+          const wasVisible = this.lastCompositeVisible;
+          this.fireVisibilityIfChanged();
+          this.publishStatus();
+          // Resuming (or turning background back on) should kick a refresh once the timer restarts.
+          if (!wasVisible && this.lastCompositeVisible) void this.refreshAll({ notify: false });
+        }
         if (event.affectsConfiguration('devMateKit.ai') || event.affectsConfiguration(NOTIFICATIONS_SETTING)) {
           this.publishStatus();
         }
       }),
     );
+  }
+
+  isMonitoringEnabled(): boolean {
+    return vscode.workspace.getConfiguration().get<boolean>(MONITORING_SETTING, true);
+  }
+
+  async setMonitoringEnabled(enabled: boolean): Promise<void> {
+    if (this.isMonitoringEnabled() === enabled) {
+      this.publishStatus();
+      return;
+    }
+    await vscode.workspace.getConfiguration('devMateKit.monitoring')
+      .update('enabled', enabled, vscode.ConfigurationTarget.Global);
+    // onDidChangeConfiguration handles scheduler + status; ensure a refresh on resume even if
+    // the event races after we already flipped lastCompositeVisible.
+    if (enabled) void this.refreshAll({ notify: false });
+  }
+
+  notifyPaused(): void {
+    void vscode.window.showInformationMessage(PAUSED_MESSAGE, 'Resume').then((choice) => {
+      if (choice === 'Resume') void this.setMonitoringEnabled(true);
+    });
   }
 
   setAiHandler(handler: AiCommandHandler): void {
@@ -179,6 +220,20 @@ export class DashboardSession implements vscode.Disposable {
   async handleCommand(message: SessionCommand): Promise<void> {
     const command = message.command;
     if (command === 'session.ready') return;
+    if (command === 'settings.setMonitoring') {
+      await this.setMonitoringEnabled(!!message.enabled);
+      return;
+    }
+    if (command === 'settings.setNotifications') {
+      await vscode.workspace.getConfiguration('devMateKit.notifications')
+        .update('enabled', !!message.enabled, vscode.ConfigurationTarget.Global);
+      this.publishStatus();
+      return;
+    }
+    if (this.blocksWhilePaused(command)) {
+      this.notifyPaused();
+      return;
+    }
     if (command === 'session.refreshAll') return this.refreshAll({ notify: false });
     if (command === 'attention.snooze') {
       if (!isSnoozeOption(message.option)) return;
@@ -190,12 +245,6 @@ export class DashboardSession implements vscode.Disposable {
     if (command === 'attention.unsnooze') {
       await this.services.attentionPrefs.unsnooze(message.key, Date.now());
       this.recompute();
-      return;
-    }
-    if (command === 'settings.setNotifications') {
-      await vscode.workspace.getConfiguration('devMateKit.notifications')
-        .update('enabled', !!message.enabled, vscode.ConfigurationTarget.Global);
-      this.publishStatus();
       return;
     }
     if (command.startsWith('ai.') || command.startsWith('settings.')) {
@@ -217,6 +266,7 @@ export class DashboardSession implements vscode.Disposable {
 
   /** Refresh both providers in parallel; concurrent callers share one in-flight refresh. */
   refreshAll(options: { notify: boolean }): Promise<void> {
+    if (!this.isMonitoringEnabled()) return Promise.resolve();
     if (this.refreshInFlight) return this.refreshInFlight;
     this.refreshInFlight = (async () => {
       this.publishStatus();
@@ -234,6 +284,7 @@ export class DashboardSession implements vscode.Disposable {
   }
 
   refreshIfStale(): void {
+    if (!this.isMonitoringEnabled()) return;
     if (Date.now() - this.lastFullRefreshAt > STALE_AFTER_MS) void this.refreshAll({ notify: false });
   }
 
@@ -294,6 +345,7 @@ export class DashboardSession implements vscode.Disposable {
       lastRefreshAt: refreshTimes.length ? new Date(Math.max(...refreshTimes)).toISOString() : null,
       isRefreshing: this.refreshInFlight !== null || this.anyControllerRefreshing(),
       notificationsEnabled: vscode.workspace.getConfiguration().get<boolean>(NOTIFICATIONS_SETTING, true),
+      monitoringEnabled: this.isMonitoringEnabled(),
     };
   }
 
@@ -317,11 +369,22 @@ export class DashboardSession implements vscode.Disposable {
     if (notify && plan.newItems.length > 0) this.newItemsEmitter.fire(plan.newItems);
   }
 
+  private blocksWhilePaused(command: string): boolean {
+    if (this.isMonitoringEnabled()) return false;
+    if (command === 'session.refreshAll') return true;
+    if (command === 'ai.whatNext' || command === 'ai.explain' || command === 'ai.standup') return true;
+    if (command.startsWith('github.') || command.startsWith('jira.')) {
+      return !PAUSED_ALLOWED_COMMANDS.has(command);
+    }
+    return false;
+  }
+
   private backgroundEnabled(): boolean {
     return vscode.workspace.getConfiguration().get<boolean>(BACKGROUND_SETTING, true);
   }
 
   private compositeVisible(): boolean {
+    if (!this.isMonitoringEnabled()) return false;
     return this.backgroundEnabled() || [...this.surfaces].some((surface) => surface.visible);
   }
 

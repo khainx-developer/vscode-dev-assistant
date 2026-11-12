@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.1
+
+### New
+- **Sleep / Wake monitoring** in Setup → Preferences (`devMateKit.monitoring.enabled`). Turn off at night so DevMate stops refreshing and connecting to GitHub/Jira while keeping your sign-in. Resume from Setup, the dashboard/home banner, status bar, or Command Palette.
+
+### Fixed
+- Standup progress toast (“Writing your standup summary…”) now closes when generation finishes instead of staying open until you dismiss the ready dialog.
+- Attention Inbox: **Open in Jira** sits on the same row as **Open PR** for linked ticket + PR items.
+- Jira ↔ PR linking also matches the ticket key in the PR **branch name** (not only the title), including when GitHub’s list response omits `head.ref`.
+
 ## 0.1.0 — First professional release
 
 DevMate Kit is now an attention-first daily work radar.

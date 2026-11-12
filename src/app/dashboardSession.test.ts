@@ -158,4 +158,64 @@ suite('DashboardSession', () => {
     await session.refreshAll({ notify: false });
     assert.doesNotMatch(JSON.stringify(surface.messages), /secret-token/);
   });
+
+  test('pausedMonitoring_skipsRefreshAndBlocksNetworkCommands', async () => {
+    const recorder: Recorder = { getSessionCalls: [], saveConnectionCalls: [], clearConnectionCalls: 0, signedIn: true };
+    const values: Record<string, unknown> = {
+      'devMateKit.monitoring.enabled': true,
+      'devMateKit.refresh.background': true,
+      'devMateKit.notifications.enabled': true,
+    };
+    const changeEmitter = new vscode.EventEmitter<vscode.ConfigurationChangeEvent>();
+    const originalGetConfiguration = vscode.workspace.getConfiguration;
+    const originalOnDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration;
+    (vscode.workspace as { getConfiguration: typeof vscode.workspace.getConfiguration }).getConfiguration = ((section?: string) => ({
+      get: (key: string, fallback?: unknown) => {
+        const full = section ? `${section}.${key}` : key;
+        return full in values ? values[full] : fallback;
+      },
+      update: async (key: string, value: unknown) => {
+        const full = section ? `${section}.${key}` : key;
+        values[full] = value;
+        changeEmitter.fire({
+          affectsConfiguration: (name: string) => full === name || full.startsWith(`${name}.`),
+        });
+      },
+      has: () => false,
+      inspect: () => undefined,
+    })) as unknown as typeof vscode.workspace.getConfiguration;
+    (vscode.workspace as { onDidChangeConfiguration: typeof vscode.workspace.onDidChangeConfiguration }).onDidChangeConfiguration =
+      changeEmitter.event;
+
+    try {
+      session = new DashboardSession(makeServices(recorder));
+      const surface = makeSurface();
+      session.attach(surface);
+      await session.refreshAll({ notify: false });
+      recorder.getSessionCalls.length = 0;
+      recorder.saveConnectionCalls.length = 0;
+
+      await session.setMonitoringEnabled(false);
+      assert.strictEqual(session.isMonitoringEnabled(), false);
+      assert.strictEqual(session.getStatus().monitoringEnabled, false);
+
+      await session.refreshAll({ notify: false });
+      await session.handleCommand({ command: 'session.refreshAll' });
+      await session.handleCommand({ command: 'github.signIn' });
+      await session.handleCommand({ command: 'jira.saveConnection', siteUrl: 'https://acme.atlassian.net' });
+
+      assert.deepStrictEqual(recorder.getSessionCalls, []);
+      assert.deepStrictEqual(recorder.saveConnectionCalls, []);
+
+      await session.setMonitoringEnabled(true);
+      assert.strictEqual(session.isMonitoringEnabled(), true);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      assert.ok(recorder.getSessionCalls.length >= 1);
+    } finally {
+      (vscode.workspace as { getConfiguration: typeof vscode.workspace.getConfiguration }).getConfiguration = originalGetConfiguration;
+      (vscode.workspace as { onDidChangeConfiguration: typeof vscode.workspace.onDidChangeConfiguration }).onDidChangeConfiguration =
+        originalOnDidChangeConfiguration;
+      changeEmitter.dispose();
+    }
+  });
 });

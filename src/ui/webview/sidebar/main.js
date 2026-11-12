@@ -154,9 +154,13 @@ function homeTab() {
       ${more > 0 ? `<button type="button" class="link see-all" data-action="openDashboard">See all ${items.length} items</button>` : ''}`;
   }
 
-  const banner = status.dashboard.kind === 'partialFailure'
-    ? `<div class="banner small" role="status">${icon('alert', 'sm')}<div class="banner-body">${status.dashboard.messages.map(esc).join('<br/>')}</div></div>`
-    : '';
+  const paused = status.monitoringEnabled === false;
+  const banner = paused
+    ? `<div class="banner small" role="status">${icon('info', 'sm')}<div class="banner-body"><strong>Monitoring paused.</strong> GitHub and Jira stay disconnected until you resume.</div>
+        <button type="button" class="secondary" data-action="resumeMonitoring">Resume</button></div>`
+    : status.dashboard.kind === 'partialFailure'
+      ? `<div class="banner small" role="status">${icon('alert', 'sm')}<div class="banner-body">${status.dashboard.messages.map(esc).join('<br/>')}</div></div>`
+      : '';
 
   return `<div class="home">
     <div class="pills">
@@ -164,7 +168,7 @@ function homeTab() {
       ${statusPill(jiraPillKind(), 'Jira', 'jira')}
       ${statusPill(ai?.provider === 'vscodeLm' ? 'ok' : 'off', 'AI', 'ai')}
       <span class="spacer"></span>
-      <button type="button" class="ghost icon-only" data-action="refresh"${refreshing ? ' disabled' : ''} title="Refresh now" aria-label="Refresh now"><span class="${refreshing ? 'spin' : ''}">${icon('refresh', 'sm')}</span></button>
+      <button type="button" class="ghost icon-only" data-action="refresh"${refreshing || paused ? ' disabled' : ''} title="${paused ? 'Monitoring is paused' : 'Refresh now'}" aria-label="Refresh now"><span class="${refreshing ? 'spin' : ''}">${icon('refresh', 'sm')}</span></button>
     </div>
     ${banner}
     ${homeNudges()}
@@ -178,11 +182,11 @@ function homeTab() {
     ${list}
     <div class="home-actions">
       <button type="button" class="block" data-action="openDashboard">${icon('dashboard', 'sm')}Open Daily Tasks</button>
-      ${ai?.provider === 'vscodeLm'
+      ${!paused && ai?.provider === 'vscodeLm'
         ? `<button type="button" class="secondary block" data-action="aiWhatNext">${icon('sparkle', 'sm')}Ask AI: What should I do next?</button>`
         : ''}
     </div>
-    <p class="muted small footnote">${refreshing ? 'Refreshing…' : status.lastRefreshAt ? `Updated ${esc(clockTime(status.lastRefreshAt))} · refreshes every 10 min` : ''}</p>
+    <p class="muted small footnote">${paused ? 'Monitoring paused' : refreshing ? 'Refreshing…' : status.lastRefreshAt ? `Updated ${esc(clockTime(status.lastRefreshAt))} · refreshes every 10 min` : ''}</p>
   </div>`;
 }
 
@@ -396,6 +400,11 @@ function setupTab() {
     </ol>
     <div class="prefs">
       <h3>Preferences</h3>
+      ${status.monitoringEnabled === false
+        ? `<button type="button" data-action="resumeMonitoring">${icon('refresh', 'sm')}Wake — resume monitoring</button>
+           <p class="field-help">Monitoring is asleep. GitHub and Jira are not connecting. Your sign-in is kept.</p>`
+        : `<button type="button" class="secondary" data-action="pauseMonitoring">${icon('stop', 'sm')}Sleep — turn off monitoring</button>
+           <p class="field-help">Stops refreshing and connecting until you wake it. Useful at night.</p>`}
       <label class="checkbox"><input type="checkbox" id="notifications"${status.notificationsEnabled ? ' checked' : ''}> Notify me when something new needs my attention</label>
       <button type="button" class="link" data-action="openSettings">All DevMate Kit settings</button>
     </div>
@@ -437,6 +446,8 @@ delegate(app, {
     render();
   },
   refresh: () => post({ command: 'session.refreshAll' }),
+  pauseMonitoring: () => post({ command: 'settings.setMonitoring', enabled: false }),
+  resumeMonitoring: () => post({ command: 'settings.setMonitoring', enabled: true }),
   openDashboard: () => post({ command: 'nav.openDashboard' }),
   openSettings: () => post({ command: 'nav.openSettings' }),
   openTool: (el) => post({ command: 'nav.openTool', toolId: el.getAttribute('data-tool') }),

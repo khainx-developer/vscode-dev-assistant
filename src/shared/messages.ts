@@ -37,7 +37,8 @@ export type SessionCommand =
   | { command: 'ai.setProvider'; provider: AiProvider }
   | { command: 'ai.setModel'; modelId: string }
   | { command: 'ai.loadModels' }
-  | { command: 'settings.setNotifications'; enabled: boolean };
+  | { command: 'settings.setNotifications'; enabled: boolean }
+  | { command: 'settings.setMonitoring'; enabled: boolean };
 
 export type SurfaceCommand =
   | { command: 'nav.openDashboard' }
@@ -78,6 +79,8 @@ export interface SessionStatus {
   lastRefreshAt: string | null;
   isRefreshing: boolean;
   notificationsEnabled: boolean;
+  /** False when the user paused monitoring (no refresh / no GitHub or Jira network). */
+  monitoringEnabled: boolean;
 }
 
 export type AiRunKind = 'whatNext' | 'explain' | 'standup';

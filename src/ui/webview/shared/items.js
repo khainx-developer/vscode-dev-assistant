@@ -122,7 +122,7 @@ function snoozeControl(item, ui) {
   </span>`;
 }
 
-function relatedPrBlock(related, ctx) {
+function relatedPrBlock(related, ctx, extraActions = '') {
   const pr = related.pr;
   const sourceKey = `github:${pr.repoKey}#${pr.number}`;
   const commentState = ctx.githubState?.commentStatusBySource?.[sourceKey];
@@ -134,7 +134,7 @@ function relatedPrBlock(related, ctx) {
     </div>
     <div class="chips">${reasonChips(related.reasons, { 'pr-unread-comment': related.unreadCount })}${prStatusChips(pr, related.reasons)}${commentStateChip(commentState, 'PR')}</div>
     ${related.latestUnreadComment ? quote(related.latestUnreadComment.authorIdentity, related.latestUnreadComment.bodyText) : ''}
-    <div class="item-actions">${prButton(pr)}${related.latestUnreadComment ? commentButton(pr, related.latestUnreadComment) : ''}</div>
+    <div class="item-actions">${prButton(pr)}${extraActions}${related.latestUnreadComment ? commentButton(pr, related.latestUnreadComment) : ''}</div>
   </div>`;
 }
 
@@ -163,8 +163,11 @@ export function renderAttentionItem(item, ctx, ui) {
     item.prLatestUnreadComment && related.length === 0 ? quote(item.prLatestUnreadComment.authorIdentity, item.prLatestUnreadComment.bodyText) : '',
   ].join('');
 
+  // Keep Open PR + Open in Jira on one row: when PRs are in related blocks, put the
+  // Jira button beside the first Open PR instead of on the secondary actions row.
+  const jiraOnRelated = !!(task && related.length);
   const actions = [
-    task ? jiraButton(task) : '',
+    task && !jiraOnRelated ? jiraButton(task) : '',
     pr ? prButton(pr) : '',
     pr && item.prLatestUnreadComment ? commentButton(pr, item.prLatestUnreadComment) : '',
     ui.snoozable ? snoozeControl(item, ui) : '',
@@ -185,7 +188,7 @@ export function renderAttentionItem(item, ctx, ui) {
       <div class="item-meta">${meta}</div>
       ${chips ? `<div class="chips">${chips}</div>` : ''}
       ${comments}
-      ${related.length ? `<div class="related-list">${related.map((entry) => relatedPrBlock(entry, ctx)).join('')}</div>` : ''}
+      ${related.length ? `<div class="related-list">${related.map((entry, index) => relatedPrBlock(entry, ctx, index === 0 && jiraOnRelated ? jiraButton(task) : '')).join('')}</div>` : ''}
       <div class="item-actions">${actions}</div>
       ${expanded ? `<div class="detail">${task ? renderJiraDetail(task) : renderPrDetail(pr)}</div>` : ''}
     </div>
