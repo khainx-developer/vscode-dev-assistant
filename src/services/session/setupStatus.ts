@@ -26,10 +26,19 @@ export interface SetupStatus {
   required: number;
 }
 
+export interface SetupAiInput {
+  provider: AiProvider;
+  modelName: string | null;
+  /** When provider is cursorCli — PATH detection. */
+  cliAvailable?: boolean;
+  /** When provider is cursorCli — login / CURSOR_API_KEY. */
+  cliAuthenticated?: boolean;
+}
+
 export function deriveSetupStatus(
   github: GitHubViewState | null,
   jira: JiraViewState | null,
-  ai: { provider: AiProvider; modelName: string | null },
+  ai: SetupAiInput,
 ): SetupStatus {
   const githubConnection = deriveGitHubConnection(github);
   const jiraConnection = deriveJiraConnection(jira);
@@ -76,15 +85,44 @@ export function deriveSetupStatus(
     ? { id: 'jira', title: 'Connect Jira', state: 'attention', detail: jiraConnection.message }
     : { id: 'jira', title: 'Connect Jira', state: 'done', detail: `Connected to ${hostOf(jira.siteUrl)} as ${jira.currentUser}.` };
 
-  const aiStep: SetupStep = ai.provider === 'none'
-    ? { id: 'ai', title: 'AI assistant (optional)', state: 'optional', detail: 'Off. Turn on to get “What should I do next?” and standup summaries.' }
-    : { id: 'ai', title: 'AI assistant (optional)', state: 'done', detail: ai.modelName ? `Using ${ai.modelName}.` : 'On — a model is picked automatically when you first ask.' };
+  const aiStep = deriveAiStep(ai);
 
   const steps = [githubStep, monitoringStep, jiraStep, aiStep];
   return {
     steps,
     completed: [githubStep, monitoringStep, jiraStep].filter((step) => step.state === 'done').length,
     required: 3,
+  };
+}
+
+function deriveAiStep(ai: SetupAiInput): SetupStep {
+  const title = 'AI assistant (optional)';
+  if (ai.provider === 'none') {
+    return { id: 'ai', title, state: 'optional', detail: 'Off. Turn on to get “What should I do next?” and standup summaries.' };
+  }
+  if (ai.provider === 'cursorCli') {
+    if (ai.cliAvailable === false) {
+      return { id: 'ai', title, state: 'attention', detail: 'Cursor Agent CLI not found on PATH. Install `agent` / `cursor-agent`, then check again.' };
+    }
+    if (ai.cliAuthenticated === false) {
+      return { id: 'ai', title, state: 'attention', detail: 'Cursor Agent CLI needs login — run `agent login` or set CURSOR_API_KEY.' };
+    }
+    return {
+      id: 'ai',
+      title,
+      state: 'done',
+      detail: ai.modelName ? `Using ${ai.modelName} via Cursor Agent CLI.` : 'On — Cursor Agent CLI (ask/print). A model is picked when you first ask.',
+    };
+  }
+  // vscodeLm
+  if (ai.modelName) {
+    return { id: 'ai', title, state: 'done', detail: `Using ${ai.modelName}.` };
+  }
+  return {
+    id: 'ai',
+    title,
+    state: 'attention',
+    detail: 'Editor language models aren’t ready yet. Check for a model in Setup, or choose Cursor Agent CLI.',
   };
 }
 

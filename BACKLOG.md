@@ -212,29 +212,33 @@ Constructor injection as today is fine. Centralize construction in `app/containe
 
 ---
 
-## AI features (must ship — via VS Code Language Model API)
+## AI features (must ship — vscode.lm + optional Cursor Agent CLI)
 
 ### Correct provider model (read carefully — do not invent fake hosts)
 
-**Wrong mental model:** three equal buttons “Copilot / Claude / Cursor.”  
-**Right mental model:** DevMate calls the host’s **`vscode.lm`** API. Whatever chat models the editor has registered become selectable.
+**Wrong mental model:** three equal buttons “Copilot / Claude / Cursor” as fake vendors.  
+**Right mental model:** DevMate has two real backends the user picks explicitly:
+
+1. **`vscodeLm`** — host Language Model API. Whatever chat models the editor registered become selectable.
+2. **`cursorCli`** — Cursor Agent CLI subprocess (`agent` / `cursor-agent` on PATH), ask/print-only. This is a **policy override** of the earlier “do not add provider:cursor / do not bypass vscode.lm / defer branded Cursor provider” deferral. It is **not** a fake `vscode.lm` vendor and **not** a silent auto-fallback when host models are empty.
 
 | What users say | What it actually means for this extension |
 |---|---|
-| GitHub Copilot | Primary path today. `vscode.lm.selectChatModels({ vendor: 'copilot' })`. Already partially wired in settings/UI. Copilot may also expose Claude-family models *through* Copilot — those appear as Copilot vendor models, not a separate “Claude” login in DevMate. |
+| GitHub Copilot | Primary `vscodeLm` path. `vscode.lm.selectChatModels`. Copilot may also expose Claude-family models *through* Copilot — those appear as Copilot vendor models, not a separate “Claude” login in DevMate. |
 | Claude | Not a separate DevMate OAuth integration. Claude appears if (a) Copilot offers a Claude model, or (b) the user installed a Language Model Chat Provider / BYOK that registers Claude with `vscode.lm`. DevMate only lists models the host returns — **do not** embed Anthropic API keys in DevMate. |
-| Cursor | Cursor is the **IDE host**, not an AI vendor setting. Do **not** add a `provider: cursor` option. If the extension runs inside Cursor and Cursor exposes models through `vscode.lm`, they show up automatically in the model picker. If Cursor does not expose `vscode.lm` models, show a clear “No language models available in this editor” empty state — do not fake a Cursor provider. |
+| Cursor Agent CLI | First-class alternate backend value `cursorCli`. Detect CLI on PATH (any host, not Cursor-only), require Cursor’s own auth (`agent login` / `CURSOR_API_KEY`), invoke hard-coded ask/print only. Setup may **suggest** this when `vscode.lm` is empty/unsupported — never auto-switch. Bare `provider: cursor` stays invalid (`none`). |
 
 ### Settings shape (upgrade existing keys; stay backward compatible)
-- `devMateKit.ai.provider`: `none` | `vscodeLm`  
+- `devMateKit.ai.provider`: `none` | `vscodeLm` | `cursorCli`  
   - Migrate legacy value `githubCopilot` → treat as `vscodeLm` (read both; write `vscodeLm` going forward).
-- `devMateKit.ai.model`: selected model **id** from the host list (keep setting key).
+  - Bare `cursor` / unknowns → `none` (no fake Cursor host vendor).
+- `devMateKit.ai.model`: selected model **id** (host list for `vscodeLm`; CLI `--model` when provider is `cursorCli`).
 - Optional filter preference (nice-to-have, not required): prefer vendor `copilot` when multiple vendors exist; still allow picking any returned model (Claude-via-Copilot, third-party LM providers, etc.).
 
-**Setup UI copy:** “AI runtime: use models from this editor (GitHub Copilot and any other installed language-model providers).”  
-Model dropdown = live result of `vscode.lm.selectChatModels()` (no hard-coded model name list). Default selection: previously saved id if still present, else first Copilot model, else first available.
+**Setup UI:** explicit Off / Editor LM / Cursor Agent CLI.  
+For `vscodeLm`, model dropdown = live `vscode.lm.selectChatModels()`. For `cursorCli`, models from CLI `--list-models` (or Auto). When `vscode.lm` is empty: suggest Cursor Agent CLI (CTA only).
 
-When provider is `none` or no models: Setup nudge; AI commands show a friendly message (never crash). Invoke `selectChatModels` only from user-initiated actions (VS Code requires consent).
+When provider is `none` or backend unavailable: Setup nudge; AI commands show a friendly message (never crash). Invoke `selectChatModels` only from user-initiated actions (VS Code requires consent).
 
 ### Ship these AI use-cases
 1. **What should I do next?** (primary)  
@@ -252,19 +256,21 @@ When provider is `none` or no models: Setup nudge; AI commands show a friendly m
    - From an inbox item’s action menu: summarize why it’s flagged and suggest the next human action (review PR, reply to comment, fix checks, update Jira).
 
 ### AI implementation rules
-- Put prompt templates in `services/ai/` (pure strings + context builders).
+- Put prompt templates in `services/ai/` (pure strings + context builders) — shared by both backends.
 - Put `vscode.lm` calls in `infrastructure/ai/languageModelClient.ts` (adapter only).
+- Put CLI spawning only in `infrastructure/ai/cursorCliClient.ts` (ask/print argv pinned; prompts on stdin).
 - Discover models dynamically; never assume a fixed Copilot/Claude id forever — handle empty lists and `onDidChangeChatModels`.
-- Stream or show a progress notification; allow cancel via `CancellationToken` if available.
+- Stream or show a progress notification; allow cancel via `CancellationToken` if available (CLI cancel is best-effort).
 - Never send access tokens, OAuth secrets, or raw MCP payloads to the model — only curated summaries.
 - Cap context size (e.g. top 20 inbox items, truncated comment bodies).
-- Surface errors plainly (“No language model available — install/enable GitHub Copilot Chat, or another LM provider, then pick a model in Setup.”).
+- Surface errors plainly (no models / CLI missing / CLI unauthenticated / AI off).
 
 ### Explicitly defer (do not build now)
 - Autonomously approving/merging PRs
 - Auto-posting comments to GitHub/Jira without user confirmation
-- Shipping DevMate’s own Anthropic/OpenAI API-key vault (use host LM providers instead)
-- A branded “Cursor” or “Claude” provider enum that bypasses `vscode.lm`
+- Shipping DevMate’s own Anthropic/OpenAI API-key vault (use host LM providers or Cursor CLI auth instead)
+- A fake “Cursor” or “Claude” `vscode.lm` vendor enum (bare `cursor` remains `none`; real CLI is `cursorCli` only)
+- Full Cursor Agent write/shell/edit modes from DevMate (v1 is ask/print-only with no override)
 
 ---
 
@@ -343,7 +349,7 @@ If something conflicts with existing behavior, **prefer the new IA/UX in this pr
 - [ ] Standup summary command produces copyable markdown  
 - [ ] Graceful degradation when AI is off/unavailable / running in a host with no LM models  
 - [ ] No tokens/secrets in model prompts  
-- [ ] No fake “Cursor” provider setting  
+- [ ] No fake “Cursor” `vscode.lm` vendor; real alternate is `cursorCli` (Agent CLI) only  
 
 ### Auth regression (mandatory)
 - [ ] GitHub MCP sign-in / session restore still works after reload  
@@ -391,7 +397,7 @@ Use this priority order:
 **Default choices (do not ask):**
 - Keep package name `devmate-kit` / display name `DevMate Kit`  
 - Sidebar Home + Setup + Tools (three sections)  
-- AI via `vscode.lm` only (discover host models; prefer Copilot when present; no Cursor/Claude fake providers; no DevMate-owned API keys)  
+- AI via `vscode.lm` and/or Cursor Agent CLI ask/print (`cursorCli`); prefer host models when present; no fake Cursor/Claude vendors; no DevMate-owned API keys  
 - Never break GitHub/Jira MCP OAuth — wrap, don’t rewrite  
 - Version bump to `0.1.0`  
 - Extract webviews without React  

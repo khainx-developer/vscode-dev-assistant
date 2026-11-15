@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### New
+- **Cursor Agent CLI** as an alternate AI backend (`devMateKit.ai.provider`: `cursorCli`). When editor language models are empty or unsupported, Setup suggests this option without auto-switching. Runs `agent -p --mode ask` only (no write/shell). Model id maps to the CLI `--model` flag. Install/login guidance when the CLI is missing or unauthenticated.
+
 ## 0.1.1
 
 ### New

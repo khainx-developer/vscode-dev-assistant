@@ -184,6 +184,8 @@ function aiCard() {
       ${run.setupHint
         ? (ai.provider === 'none'
           ? '<button type="button" data-action="aiEnable">Turn on AI</button>'
+          : ai.suggestCursorCli
+          ? '<button type="button" class="secondary" data-action="useCursorCli">Use Cursor Agent CLI</button><button type="button" class="ghost" data-action="openSetup" data-step="ai">Open Setup</button>'
           : '<button type="button" class="secondary" data-action="openSetup" data-step="ai">Open Setup</button>')
         : (run.kind === 'whatNext' ? '<button type="button" class="secondary" data-action="aiWhatNext">Try again</button>' : '')}
     </div>`;
@@ -434,7 +436,13 @@ delegate(app, {
   aiDismiss: () => post({ command: 'ai.dismiss' }),
   aiCopy: () => post({ command: 'ai.copy' }),
   aiEnable: () => {
-    post({ command: 'ai.setProvider', provider: 'vscodeLm' });
+    // Prefer editor LM when turning on from none; honor Cursor Agent CLI if already selected.
+    const provider = ai?.provider === 'cursorCli' ? 'cursorCli' : 'vscodeLm';
+    if (ai?.provider === 'none') post({ command: 'ai.setProvider', provider });
+    post({ command: 'ai.whatNext' });
+  },
+  useCursorCli: () => {
+    post({ command: 'ai.setProvider', provider: 'cursorCli' });
     post({ command: 'ai.whatNext' });
   },
 });

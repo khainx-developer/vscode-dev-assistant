@@ -4,6 +4,7 @@ import { modelLabel, pickDefaultModel, sortModelsForPicker, type AiProvider, typ
 import { buildStandupSnapshot } from '../services/ai/standupSnapshot';
 import { itemTitle } from '../services/attention/notificationPlanner';
 import { AiConfigStore } from '../infrastructure/ai/aiConfigStore';
+import { CursorCliClient } from '../infrastructure/ai/cursorCliClient';
 import { LanguageModelClient } from '../infrastructure/ai/languageModelClient';
 import type { AiRunKind, AiRunState, AiViewState, SessionCommand } from '../shared/messages';
 import type { AiCommandHandler, DashboardSession, SessionSurface } from './dashboardSession';
@@ -28,24 +29,35 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   private run: AiRunState | null = null;
   private runCounter = 0;
   private cancellation: vscode.CancellationTokenSource | undefined;
+  private cliAvailable = false;
+  private cliAuthenticated = false;
+  private cliStatusLoading = false;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(
     private readonly session: DashboardSession,
     private readonly config: AiConfigStore,
-    private readonly client: LanguageModelClient,
+    private readonly vscodeLm: LanguageModelClient,
+    private readonly cursorCli: CursorCliClient,
     private readonly hooks: AiUiHooks,
   ) {
-    this.assistant = new AiAssistant(client, () => config.read());
+    this.assistant = new AiAssistant(
+      { vscodeLm, cursorCli },
+      () => config.read(),
+    );
     this.disposables.push(
       LanguageModelClient.onDidChangeModels(() => {
         // Only re-list once the user has asked for the list (model access is user-initiated).
-        if (this.models !== null) void this.loadModels();
+        if (this.models !== null && this.config.getProvider() === 'vscodeLm') void this.loadModels();
       }),
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (AiConfigStore.affects(event)) this.publish();
+        if (AiConfigStore.affects(event)) {
+          void this.refreshCliStatus();
+          this.publish();
+        }
       }),
     );
+    void this.refreshCliStatus();
   }
 
   // ── AiCommandHandler ────────────────────────────────────────────────────
@@ -72,12 +84,24 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
           void vscode.window.setStatusBarMessage('$(check) DevMate: Copied to clipboard', 2500);
         }
         return;
-      case 'ai.setProvider':
-        await this.config.setProvider(message.provider === 'vscodeLm' ? 'vscodeLm' : 'none');
-        if (message.provider === 'vscodeLm') await this.loadModels();
+      case 'ai.setProvider': {
+        const provider = normalizeProviderChoice(message.provider);
+        await this.config.setProvider(provider);
+        this.models = null;
+        if (provider === 'vscodeLm' || provider === 'cursorCli') await this.loadModels();
+        await this.refreshCliStatus();
         this.publish();
         return;
+      }
       case 'ai.setModel':
+        if (this.config.getProvider() === 'cursorCli') {
+          // CLI model ids are free-form; accept any non-empty id (stale ids are omitted at spawn).
+          if (message.modelId.trim()) {
+            await this.config.setModel(message.modelId.trim());
+            this.publish();
+          }
+          return;
+        }
         if (this.models?.some((model) => model.id === message.modelId)) {
           await this.config.setModel(message.modelId);
           this.publish();
@@ -85,6 +109,8 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
         return;
       case 'ai.loadModels':
         return this.loadModels();
+      case 'ai.cliTerminal':
+        return this.openCliTerminal(message.action);
     }
   }
 
@@ -93,8 +119,18 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   }
 
   selectedModelName(): string | null {
+    if (this.config.getProvider() === 'cursorCli') {
+      const model = this.models ? pickDefaultModel(this.models, this.config.getModel()) : undefined;
+      if (model) return modelLabel(model);
+      const saved = this.config.getModel();
+      return saved ? `${saved} · Cursor Agent CLI` : null;
+    }
     const model = this.models ? pickDefaultModel(this.models, this.config.getModel()) : undefined;
     return model ? modelLabel(model) : null;
+  }
+
+  cliStatus(): { available: boolean; authenticated: boolean } {
+    return { available: this.cliAvailable, authenticated: this.cliAuthenticated };
   }
 
   // ── Use-cases ───────────────────────────────────────────────────────────
@@ -163,25 +199,41 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   async pickModel(): Promise<void> {
     if (this.config.getProvider() === 'none') {
       const enable = await vscode.window.showInformationMessage(
-        'DevMate: AI is off. Turn it on to use models from this editor?', 'Turn on AI');
+        'DevMate: AI is off. Turn it on to use models from this editor, or choose Cursor Agent CLI in Setup.',
+        'Turn on editor AI',
+        'Open Setup',
+      );
+      if (enable === 'Open Setup') {
+        this.hooks.revealSetup();
+        return;
+      }
       if (!enable) return;
       await this.config.setProvider('vscodeLm');
     }
     await this.loadModels();
     const models = this.models ?? [];
     if (models.length === 0) {
-      void vscode.window.showWarningMessage(`DevMate: ${noModelsMessage()}`);
+      void vscode.window.showWarningMessage(`DevMate: ${noModelsMessage(this.config.getProvider())}`);
       return;
     }
     const current = pickDefaultModel(models, this.config.getModel());
     const picked = await vscode.window.showQuickPick(
       models.map((model) => ({
         label: model.name || model.id,
-        description: model.vendor === 'copilot' ? 'GitHub Copilot' : model.vendor,
+        description: model.vendor === 'copilot'
+          ? 'GitHub Copilot'
+          : model.vendor === 'cursor-cli'
+          ? 'Cursor Agent CLI'
+          : model.vendor,
         detail: model.id === current?.id ? 'Currently selected' : undefined,
         model,
       })),
-      { title: 'DevMate Kit: AI model', placeHolder: 'Models available in this editor' },
+      {
+        title: 'DevMate Kit: AI model',
+        placeHolder: this.config.getProvider() === 'cursorCli'
+          ? 'Models from Cursor Agent CLI'
+          : 'Models available in this editor',
+      },
     );
     if (picked) {
       await this.config.setModel(picked.model.id);
@@ -227,7 +279,7 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
         this.run = {
           ...this.run,
           status: 'error',
-          error: errorMessage(error),
+          error: errorMessage(error, this.config.getProvider()),
           setupHint: error instanceof AiUnavailableError,
         };
       }
@@ -247,11 +299,11 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   private async ensureEnabled(): Promise<boolean> {
     if (this.config.getProvider() !== 'none') return true;
     const choice = await vscode.window.showInformationMessage(
-      'DevMate: AI is off. It uses the language models already available in this editor (for example GitHub Copilot).',
-      'Turn on AI',
+      'DevMate: AI is off. Use language models from this editor, or choose Cursor Agent CLI in Setup.',
+      'Turn on editor AI',
       'Open Setup',
     );
-    if (choice === 'Turn on AI') {
+    if (choice === 'Turn on editor AI') {
       await this.config.setProvider('vscodeLm');
       return true;
     }
@@ -267,11 +319,45 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
     this.modelsLoading = true;
     this.publish();
     try {
-      this.models = sortModelsForPicker(await this.client.listModels());
+      const provider = this.config.getProvider();
+      if (provider === 'cursorCli') {
+        await this.refreshCliStatus();
+        this.models = sortModelsForPicker(await this.cursorCli.listModels());
+      } else {
+        this.models = sortModelsForPicker(await this.vscodeLm.listModels());
+      }
     } finally {
       this.modelsLoading = false;
       this.publish();
     }
+  }
+
+  private async refreshCliStatus(): Promise<void> {
+    if (this.cliStatusLoading) return;
+    this.cliStatusLoading = true;
+    try {
+      const status = await this.cursorCli.getStatus();
+      this.cliAvailable = status.available;
+      this.cliAuthenticated = status.authenticated;
+    } catch {
+      this.cliAvailable = false;
+      this.cliAuthenticated = false;
+    } finally {
+      this.cliStatusLoading = false;
+      this.session.refreshSetupStatus();
+    }
+  }
+
+  private openCliTerminal(action: 'install' | 'login'): void {
+    const terminal = vscode.window.createTerminal('DevMate Kit — Cursor Agent CLI');
+    if (action === 'login') {
+      terminal.sendText('agent login');
+    } else if (process.platform === 'win32') {
+      terminal.sendText('echo Install Cursor Agent CLI from https://cursor.com/docs/cli/overview then reopen this terminal');
+    } else {
+      terminal.sendText('curl https://cursor.com/install -fsS | bash');
+    }
+    terminal.show();
   }
 
   private showAiError(error: unknown): void {
@@ -281,12 +367,16 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
       });
       return;
     }
-    void vscode.window.showErrorMessage(`DevMate: ${errorMessage(error)}`);
+    void vscode.window.showErrorMessage(`DevMate: ${errorMessage(error, this.config.getProvider())}`);
   }
 
   private viewState(): AiViewState {
     const provider: AiProvider = this.config.getProvider();
     const selected = this.models ? pickDefaultModel(this.models, this.config.getModel()) : undefined;
+    const lmUnsupported = !LanguageModelClient.isSupported();
+    const lmEmpty = this.models !== null && this.models.length === 0;
+    const suggestCursorCli = provider !== 'cursorCli' && (lmUnsupported || (provider === 'vscodeLm' && lmEmpty) || (provider === 'none' && (lmUnsupported || lmEmpty)));
+
     return {
       provider,
       supported: LanguageModelClient.isSupported(),
@@ -294,11 +384,15 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
       models: this.models,
       modelsLoading: this.modelsLoading,
       run: this.run,
+      cliAvailable: this.cliAvailable,
+      cliAuthenticated: this.cliAuthenticated,
+      suggestCursorCli,
     };
   }
 
   private publish(): void {
     this.session.broadcast({ command: 'ai.state', state: this.viewState() });
+    this.session.refreshSetupStatus();
   }
 
   dispose(): void {
@@ -308,15 +402,24 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   }
 }
 
-function noModelsMessage(): string {
-  return LanguageModelClient.isSupported()
-    ? 'No language models are available in this editor. Install or sign in to GitHub Copilot Chat (or another language-model provider), then try again.'
-    : 'This editor does not expose a language-model API, so AI features are unavailable here.';
+function normalizeProviderChoice(raw: unknown): AiProvider {
+  if (raw === 'vscodeLm') return 'vscodeLm';
+  if (raw === 'cursorCli') return 'cursorCli';
+  return 'none';
 }
 
-function errorMessage(error: unknown): string {
-  if (error instanceof AiUnavailableError && error.reason === 'noModels' && !LanguageModelClient.isSupported()) {
-    return noModelsMessage();
+function noModelsMessage(provider: AiProvider): string {
+  if (provider === 'cursorCli') {
+    return 'No models reported by Cursor Agent CLI. Check `agent --list-models`, or leave the model blank for Auto.';
+  }
+  return LanguageModelClient.isSupported()
+    ? 'No language models are available in this editor. Install or sign in to GitHub Copilot Chat (or another language-model provider), then try again — or choose Cursor Agent CLI in Setup.'
+    : 'This editor does not expose a language-model API. Choose Cursor Agent CLI in Setup if `agent` is on your PATH.';
+}
+
+function errorMessage(error: unknown, provider: AiProvider): string {
+  if (error instanceof AiUnavailableError && error.reason === 'noModels' && provider === 'vscodeLm' && !LanguageModelClient.isSupported()) {
+    return noModelsMessage(provider);
   }
   return error instanceof Error && error.message ? error.message : 'The AI request failed.';
 }

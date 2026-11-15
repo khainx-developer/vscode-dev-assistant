@@ -1,15 +1,18 @@
 /**
- * AI runtime settings. DevMate never talks to an AI vendor directly: it uses whatever chat models
- * the editor registers with the VS Code Language Model API (GitHub Copilot, Claude exposed through
- * Copilot or a BYOK provider, …). So the only provider choice is on/off.
+ * AI runtime settings. DevMate never talks to a cloud model vendor with its own API keys:
+ * it either uses whatever chat models the editor registers with the VS Code Language Model API
+ * (`vscodeLm`), or spawns the Cursor Agent CLI in ask/print-only mode (`cursorCli`).
  */
-export type AiProvider = 'none' | 'vscodeLm';
+export type AiProvider = 'none' | 'vscodeLm' | 'cursorCli';
 
 /** Legacy value written by DevMate ≤ 0.0.6 — read as `vscodeLm`. */
 const LEGACY_COPILOT = 'githubCopilot';
 
 export function normalizeAiProvider(raw: unknown): AiProvider {
-  return raw === 'vscodeLm' || raw === LEGACY_COPILOT ? 'vscodeLm' : 'none';
+  if (raw === 'vscodeLm' || raw === LEGACY_COPILOT) return 'vscodeLm';
+  if (raw === 'cursorCli') return 'cursorCli';
+  // Bare 'cursor' and other unknowns stay off — do not invent a fake host vendor.
+  return 'none';
 }
 
 export function isLegacyProviderValue(raw: unknown): boolean {
@@ -52,6 +55,9 @@ export function sortModelsForPicker(models: ChatModelInfo[]): ChatModelInfo[] {
 }
 
 export function modelLabel(model: ChatModelInfo): string {
+  if (model.vendor === 'cursor-cli') {
+    return `${model.name || model.family || model.id} · Cursor Agent CLI`;
+  }
   const vendor = model.vendor === 'copilot' ? 'GitHub Copilot' : model.vendor;
   return `${model.name || model.family || model.id} · ${vendor}`;
 }

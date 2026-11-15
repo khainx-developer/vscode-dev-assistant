@@ -33,6 +33,7 @@ export interface AiCommandHandler {
   handleCommand(message: SessionCommand): Promise<void> | void;
   replay(surface: SessionSurface): void;
   selectedModelName(): string | null;
+  cliStatus(): { available: boolean; authenticated: boolean };
 }
 
 const STALE_AFTER_MS = 60 * 1000;
@@ -150,6 +151,12 @@ export class DashboardSession implements vscode.Disposable {
 
   setAiHandler(handler: AiCommandHandler): void {
     this.aiHandler = handler;
+    this.publishStatus();
+  }
+
+  /** Recompute Setup checklist (e.g. after CLI probe or AI provider change). */
+  refreshSetupStatus(): void {
+    this.publishStatus();
   }
 
   // ── Surfaces ────────────────────────────────────────────────────────────
@@ -341,6 +348,8 @@ export class DashboardSession implements vscode.Disposable {
       setup: deriveSetupStatus(this.githubState, this.jiraState, {
         provider: this.services.aiConfig.getProvider(),
         modelName: this.aiHandler?.selectedModelName() ?? null,
+        cliAvailable: this.aiHandler?.cliStatus().available,
+        cliAuthenticated: this.aiHandler?.cliStatus().authenticated,
       }),
       lastRefreshAt: refreshTimes.length ? new Date(Math.max(...refreshTimes)).toISOString() : null,
       isRefreshing: this.refreshInFlight !== null || this.anyControllerRefreshing(),

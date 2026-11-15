@@ -34,7 +34,9 @@ src/
   infrastructure/       adapters to external systems and persistence
     mcp/ github/ jira/  MCP connection + OAuth, GitHub/Atlassian adapters, config stores
     attention/          comment read state, snoozes + notification baseline (globalState)
-    ai/                 languageModelClient.ts (the only vscode.lm caller), AI settings store
+    ai/                 languageModelClient.ts (the only vscode.lm caller),
+                        cursorCliClient.ts (the only process-spawning AI adapter),
+                        AI settings store
   shared/               types and message contracts (githubTypes, jiraTypes, messages, …)
 ```
 

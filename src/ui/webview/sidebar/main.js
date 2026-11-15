@@ -166,7 +166,7 @@ function homeTab() {
     <div class="pills">
       ${statusPill(githubPillKind(), 'GitHub', signedIn() ? 'monitoring' : 'github')}
       ${statusPill(jiraPillKind(), 'Jira', 'jira')}
-      ${statusPill(ai?.provider === 'vscodeLm' ? 'ok' : 'off', 'AI', 'ai')}
+      ${statusPill(aiOn() ? 'ok' : 'off', 'AI', 'ai')}
       <span class="spacer"></span>
       <button type="button" class="ghost icon-only" data-action="refresh"${refreshing || paused ? ' disabled' : ''} title="${paused ? 'Monitoring is paused' : 'Refresh now'}" aria-label="Refresh now"><span class="${refreshing ? 'spin' : ''}">${icon('refresh', 'sm')}</span></button>
     </div>
@@ -182,7 +182,7 @@ function homeTab() {
     ${list}
     <div class="home-actions">
       <button type="button" class="block" data-action="openDashboard">${icon('dashboard', 'sm')}Open Daily Tasks</button>
-      ${!paused && ai?.provider === 'vscodeLm'
+      ${!paused && aiOn()
         ? `<button type="button" class="secondary block" data-action="aiWhatNext">${icon('sparkle', 'sm')}Ask AI: What should I do next?</button>`
         : ''}
     </div>
@@ -344,28 +344,81 @@ function jiraStepBody() {
     </div>`;
 }
 
+function aiOn() {
+  return ai?.provider === 'vscodeLm' || ai?.provider === 'cursorCli';
+}
+
+function aiModelLabel(model) {
+  if (model.vendor === 'copilot') return 'GitHub Copilot';
+  if (model.vendor === 'cursor-cli') return 'Cursor Agent CLI';
+  return model.vendor;
+}
+
 function aiStepBody() {
-  const enabled = ai?.provider === 'vscodeLm';
-  let models = '';
-  if (enabled) {
+  const provider = ai?.provider || 'none';
+  let body = '';
+
+  if (provider === 'none') {
+    body = `<p class="field-help">AI is off. Choose a backend below when you want “What should I do next?” and standup summaries.</p>
+      ${ai?.suggestCursorCli
+        ? `<div class="banner small">${icon('info', 'sm')}<div class="banner-body">This editor has no language models (or none are registered yet). You can use <strong>Cursor Agent CLI</strong> if <code>agent</code> is on your PATH.
+          <div class="step-actions"><button type="button" class="secondary" data-action="useCursorCli">Use Cursor Agent CLI</button></div>
+        </div></div>`
+        : ''}`;
+  } else if (provider === 'vscodeLm') {
     if (ai && !ai.supported) {
-      models = '<p class="field-help">This editor doesn’t expose a language-model API, so AI features aren’t available here.</p>';
+      body = `<div class="banner small">${icon('info', 'sm')}<div class="banner-body">This editor doesn’t expose a language-model API.
+        ${ai.suggestCursorCli ? `<div class="step-actions"><button type="button" class="secondary" data-action="useCursorCli">Use Cursor Agent CLI</button></div>` : ''}
+      </div></div>`;
     } else if (ai?.modelsLoading) {
-      models = '<p class="field-help">Looking for models in this editor…</p>';
+      body = '<p class="field-help">Looking for models in this editor…</p>';
     } else if (!ai?.models) {
-      models = `<div class="step-actions"><button type="button" class="secondary" data-action="loadModels">Choose a model…</button></div>
+      body = `<div class="step-actions"><button type="button" class="secondary" data-action="loadModels">Choose a model…</button></div>
         <p class="field-help">If you don’t choose, DevMate uses the first GitHub Copilot model available.</p>`;
     } else if (ai.models.length === 0) {
-      models = `<div class="banner small">${icon('info', 'sm')}<div class="banner-body">No language models available in this editor. Install or sign in to GitHub Copilot Chat (or another language-model provider), then <button type="button" class="link" data-action="loadModels">check again</button>.</div></div>`;
+      body = `<div class="banner small">${icon('info', 'sm')}<div class="banner-body">No language models available in this editor. Install or sign in to GitHub Copilot Chat (or another LM provider), then <button type="button" class="link" data-action="loadModels">check again</button>.
+        ${ai.suggestCursorCli ? `<div class="step-actions"><button type="button" class="secondary" data-action="useCursorCli">Use Cursor Agent CLI</button></div>` : ''}
+      </div></div>`;
     } else {
-      models = `<label class="field-label" for="aiModel">Model</label>
-        <select id="aiModel">${ai.models.map((model) => `<option value="${esc(model.id)}"${model.id === ai.selectedModelId ? ' selected' : ''}>${esc(model.name || model.id)} · ${esc(model.vendor === 'copilot' ? 'GitHub Copilot' : model.vendor)}</option>`).join('')}</select>
+      body = `<label class="field-label" for="aiModel">Model</label>
+        <select id="aiModel">${ai.models.map((model) => `<option value="${esc(model.id)}"${model.id === ai.selectedModelId ? ' selected' : ''}>${esc(model.name || model.id)} · ${esc(aiModelLabel(model))}</option>`).join('')}</select>
         <p class="field-help">The list comes from this editor — any installed language-model provider shows up here.</p>`;
     }
+  } else if (provider === 'cursorCli') {
+    if (!ai?.cliAvailable) {
+      body = `<div class="banner small">${icon('alert', 'sm')}<div class="banner-body">Cursor Agent CLI (<code>agent</code> / <code>cursor-agent</code>) was not found on PATH.
+        <div class="step-actions">
+          <button type="button" class="secondary" data-action="cliInstall">Open terminal to install</button>
+          <button type="button" class="link" data-action="loadModels">Check again</button>
+        </div>
+      </div></div>`;
+    } else if (!ai?.cliAuthenticated) {
+      body = `<div class="banner small">${icon('alert', 'sm')}<div class="banner-body">CLI found, but you’re not logged in. Run <code>agent login</code> or set <code>CURSOR_API_KEY</code>.
+        <div class="step-actions">
+          <button type="button" class="secondary" data-action="cliLogin">Open terminal to log in</button>
+          <button type="button" class="link" data-action="loadModels">Check again</button>
+        </div>
+      </div></div>`;
+    } else if (ai?.modelsLoading) {
+      body = '<p class="field-help">Asking Cursor Agent CLI for models…</p>';
+    } else if (!ai?.models) {
+      body = `<div class="step-actions"><button type="button" class="secondary" data-action="loadModels">Choose a model…</button></div>
+        <p class="field-help">Leave blank to use the CLI default (Auto). Runs are ask/print-only — no file writes or shell.</p>`;
+    } else {
+      body = `<label class="field-label" for="aiModel">Model</label>
+        <select id="aiModel">${ai.models.map((model) => `<option value="${esc(model.id)}"${model.id === ai.selectedModelId ? ' selected' : ''}>${esc(model.name || model.id)} · ${esc(aiModelLabel(model))}</option>`).join('')}</select>
+        <p class="field-help">Mapped to the CLI <code>--model</code> flag. DevMate always uses ask/print mode.</p>`;
+    }
   }
-  return `<label class="checkbox"><input type="checkbox" id="aiEnabled"${enabled ? ' checked' : ''}> Use AI from this editor</label>
-    <p class="field-help">AI runtime: use models from this editor (GitHub Copilot and any other installed language-model providers). DevMate sends only titles, statuses and short comment excerpts — never tokens.</p>
-    ${models}`;
+
+  return `<fieldset class="ai-provider">
+      <legend class="field-label">AI backend</legend>
+      <label class="checkbox"><input type="radio" name="aiProvider" value="none"${provider === 'none' ? ' checked' : ''}> Off</label>
+      <label class="checkbox"><input type="radio" name="aiProvider" value="vscodeLm"${provider === 'vscodeLm' ? ' checked' : ''}> Editor language models</label>
+      <label class="checkbox"><input type="radio" name="aiProvider" value="cursorCli"${provider === 'cursorCli' ? ' checked' : ''}> Cursor Agent CLI</label>
+    </fieldset>
+    <p class="field-help">Editor LM uses models from this host (e.g. GitHub Copilot). Cursor Agent CLI runs <code>agent -p --mode ask</code> on your machine. DevMate sends only titles, statuses and short comment excerpts — never tokens. No Anthropic API key is stored in DevMate.</p>
+    ${body}`;
 }
 
 const STEP_BODIES = { github: githubStepBody, monitoring: monitoringStepBody, jira: jiraStepBody, ai: aiStepBody };
@@ -454,6 +507,10 @@ delegate(app, {
   openPr: (el) => post({ command: 'github.openPr', repoKey: el.getAttribute('data-repo'), number: Number(el.getAttribute('data-number')), url: el.getAttribute('data-url') }),
   openJira: (el) => post({ command: 'jira.openTask', url: el.getAttribute('data-url') }),
   aiWhatNext: () => post({ command: 'ai.whatNext' }),
+  useCursorCli: () => post({ command: 'ai.setProvider', provider: 'cursorCli' }),
+  cliInstall: () => post({ command: 'ai.cliTerminal', action: 'install' }),
+  cliLogin: () => post({ command: 'ai.cliTerminal', action: 'login' }),
+  loadModels: () => post({ command: 'ai.loadModels' }),
   githubSignIn: () => post({ command: 'github.signIn' }),
   addRepo: () => {
     const repo = value('ghRepo');
@@ -531,7 +588,6 @@ delegate(app, {
       ? { command: 'jira.updateQuery', originalLabel: editingQuery, label, jql }
       : { command: 'jira.addQuery', label, jql });
   },
-  loadModels: () => post({ command: 'ai.loadModels' }),
 });
 
 // Enter in a single-line field triggers its form's action.
@@ -562,8 +618,8 @@ app.addEventListener('input', (event) => {
 
 app.addEventListener('change', (event) => {
   const target = event.target;
-  if (target.id === 'aiEnabled') {
-    post({ command: 'ai.setProvider', provider: target.checked ? 'vscodeLm' : 'none' });
+  if (target.name === 'aiProvider') {
+    post({ command: 'ai.setProvider', provider: target.value });
   } else if (target.id === 'aiModel') {
     post({ command: 'ai.setModel', modelId: target.value });
   } else if (target.id === 'notifications') {

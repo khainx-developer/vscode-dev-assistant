@@ -37,6 +37,7 @@ export type SessionCommand =
   | { command: 'ai.setProvider'; provider: AiProvider }
   | { command: 'ai.setModel'; modelId: string }
   | { command: 'ai.loadModels' }
+  | { command: 'ai.cliTerminal'; action: 'install' | 'login' }
   | { command: 'settings.setNotifications'; enabled: boolean }
   | { command: 'settings.setMonitoring'; enabled: boolean };
 
@@ -105,6 +106,15 @@ export interface AiViewState {
   models: ChatModelInfo[] | null;
   modelsLoading: boolean;
   run: AiRunState | null;
+  /** Cursor Agent CLI detected on PATH. */
+  cliAvailable: boolean;
+  /** CLI present and logged in / CURSOR_API_KEY set. */
+  cliAuthenticated: boolean;
+  /**
+   * Suggestion-only: host vscode.lm models are empty/unsupported.
+   * Never auto-switches provider — the webview CTA must post `ai.setProvider`.
+   */
+  suggestCursorCli: boolean;
 }
 
 export type SessionEvent =

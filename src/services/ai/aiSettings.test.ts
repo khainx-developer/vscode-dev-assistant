@@ -12,7 +12,8 @@ suite('aiSettings', () => {
     assert.strictEqual(normalizeAiProvider('vscodeLm'), 'vscodeLm');
   });
 
-  test('unknownProviderValues_turnAiOff_noFakeCursorOrClaudeProviders', () => {
+  test('cursorCli_normalizesDistinctly_fromBareCursor', () => {
+    assert.strictEqual(normalizeAiProvider('cursorCli'), 'cursorCli');
     assert.strictEqual(normalizeAiProvider('cursor'), 'none');
     assert.strictEqual(normalizeAiProvider('claude'), 'none');
     assert.strictEqual(normalizeAiProvider(undefined), 'none');

@@ -50,20 +50,22 @@
           "enum": [
             "none",
             "vscodeLm",
+            "cursorCli",
             "githubCopilot"
           ],
           "enumDescriptions": [
             "AI features are off.",
             "Use language models available in this editor through the VS Code Language Model API (GitHub Copilot, Claude via Copilot or another provider, …).",
+            "Use the Cursor Agent CLI on your PATH (`agent` / `cursor-agent`) in ask/print-only mode. Real subprocess backend — not a fake editor model.",
             "Deprecated: same as vscodeLm. Kept so existing settings keep working."
           ],
           "default": "none",
-          "markdownDescription": "AI runtime for DevMate Kit. `vscodeLm` uses whatever chat models this editor provides — DevMate never stores its own API keys."
+          "markdownDescription": "AI runtime for DevMate Kit. `vscodeLm` uses host chat models via the Language Model API; `cursorCli` spawns the Cursor Agent CLI (ask/print only). DevMate never stores Anthropic/OpenAI API keys."
         },
         "devMateKit.ai.model": {
           "type": "string",
           "default": "",
-          "markdownDescription": "ID of the language model to use. Leave empty to use the first GitHub Copilot model (or the first available model). Pick from the live list with **DevMate Kit: Select AI Model**."
+          "markdownDescription": "Model id. For `vscodeLm`, leave empty to use the first GitHub Copilot model (or the first available). For `cursorCli`, mapped to the CLI `--model` flag when non-empty. Pick from the live list with **DevMate Kit: Select AI Model**."
         },
         "devMateKit.github.monitoredRepos": {
           "type": "array",
@@ -415,7 +417,7 @@
           {
             "id": "turnOnAi",
             "title": "Ask AI what to do next (optional)",
-            "description": "Use the language models already in your editor, such as GitHub Copilot.\n[Select a model](command:devMateKit.ai.selectModel)",
+            "description": "Use editor language models (e.g. GitHub Copilot) or the Cursor Agent CLI.\n[Select a model](command:devMateKit.ai.selectModel)",
             "media": {
               "markdown": "media/walkthrough/ai.md"
             },
