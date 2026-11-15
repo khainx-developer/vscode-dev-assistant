@@ -10,8 +10,11 @@ import {
 import type { ChatModelInfo } from '../../services/ai/aiSettings';
 import type { PromptMessage } from '../../services/ai/prompts';
 
-/** Hard-coded ask/print-only argv — no escape hatch for write/shell/edit modes. */
-export const CURSOR_CLI_ASK_PRINT_ARGS = ['-p', '--mode', 'ask', '--output-format', 'text'] as const;
+/**
+ * Hard-coded ask/print-only argv — no write/shell/edit modes.
+ * `--trust` is required for non-interactive headless runs (not the same as `--force`/`--yolo`).
+ */
+export const CURSOR_CLI_ASK_PRINT_ARGS = ['-p', '--mode', 'ask', '--output-format', 'text', '--trust'] as const;
 
 const CANDIDATE_BINARIES = ['agent', 'cursor-agent'] as const;
 const DEFAULT_MODEL: ChatModelInfo = {
@@ -38,6 +41,8 @@ export interface CursorCliClientOptions {
   env?: NodeJS.ProcessEnv;
   /** Override PATH probing (tests). Return the binary name to use, or null if missing. */
   resolveBinary?: () => Promise<string | null>;
+  /** Workspace folder for cwd / `--workspace` (defaults to the first VS Code folder). */
+  workspacePath?: () => string | undefined;
 }
 
 /**
@@ -48,12 +53,15 @@ export class CursorCliClient implements LanguageModelPort {
   private readonly spawn: SpawnFn;
   private readonly env: NodeJS.ProcessEnv;
   private readonly resolveBinary: () => Promise<string | null>;
+  private readonly workspacePath: () => string | undefined;
   private cachedBinary: string | null | undefined;
 
   constructor(options: CursorCliClientOptions = {}) {
     this.spawn = options.spawn ?? ((command, args, opts) => nodeSpawn(command, [...args], opts) as ChildProcessWithoutNullStreams);
     this.env = options.env ?? process.env;
     this.resolveBinary = options.resolveBinary ?? (() => detectBinaryOnPath(this.spawn, this.env));
+    this.workspacePath = options.workspacePath
+      ?? (() => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
   }
 
   async getStatus(): Promise<CursorCliStatus> {
@@ -92,13 +100,17 @@ export class CursorCliClient implements LanguageModelPort {
     }
 
     const args: string[] = [...CURSOR_CLI_ASK_PRINT_ARGS];
+    const workspace = this.workspacePath()?.trim();
+    if (workspace) {
+      args.push('--workspace', workspace);
+    }
     const model = modelId?.trim();
     if (model && model !== 'auto') {
       args.push('--model', model);
     }
 
     const prompt = messages.map((message) => message.content).join('\n\n').trim();
-    return this.runAskPrint(status.binary, args, prompt, onText, token);
+    return this.runAskPrint(status.binary, args, prompt, onText, token, workspace);
   }
 
   private async ensureBinary(): Promise<string | null> {
@@ -198,12 +210,15 @@ export class CursorCliClient implements LanguageModelPort {
     prompt: string,
     onText: (chunk: string) => void,
     token?: AiCancellation,
+    workspace?: string,
   ): Promise<string> {
     return new Promise((resolve, reject) => {
       let child: ChildProcessWithoutNullStreams;
       try {
         child = this.spawn(binary, args, {
           env: this.env,
+          // Extension-host cwd is often the Cursor install dir; pin to the workspace.
+          cwd: workspace || undefined,
           shell: process.platform === 'win32',
           windowsHide: true,
           stdio: ['pipe', 'pipe', 'pipe'],
@@ -252,7 +267,9 @@ export class CursorCliClient implements LanguageModelPort {
         if (code && code !== 0 && !stdout.trim()) {
           const detail = stderr.trim() || stdout.trim() || `exit code ${code}`;
           finish(new Error(
-            /unknown|unrecognized|invalid.*(mode|option|flag)/i.test(detail)
+            /workspace\s+trust\s+required/i.test(detail)
+              ? 'Cursor Agent CLI needs workspace trust for headless runs. DevMate passes --trust automatically — update the CLI, then try again.'
+              : /unknown|unrecognized|invalid.*(mode|option|flag)/i.test(detail)
               ? `Cursor Agent CLI flags look unsupported in this version (${detail}). Update the CLI or switch AI provider in Setup.`
               : `Cursor Agent CLI failed: ${detail}`,
           ));

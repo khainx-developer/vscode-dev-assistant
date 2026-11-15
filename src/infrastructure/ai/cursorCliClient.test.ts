@@ -75,7 +75,7 @@ suite('CursorCliClient', () => {
     );
   });
 
-  test('askPrintArgv_isPinned_andOmitsModelWhenEmpty_orAuto', async () => {
+  test('askPrintArgv_isPinned_withTrust_andOmitsModelWhenEmpty_orAuto', async () => {
     const { spawn, calls } = scriptedSpawn((_command, args, child) => {
       if (args[0] === 'status') {
         child.stdout.emit('data', '✓ Logged in as someone\n');
@@ -95,8 +95,35 @@ suite('CursorCliClient', () => {
     const askCall = calls.find((call) => call.args.includes('-p'));
     assert.ok(askCall);
     assert.deepStrictEqual(askCall!.args.slice(0, CURSOR_CLI_ASK_PRINT_ARGS.length), [...CURSOR_CLI_ASK_PRINT_ARGS]);
+    assert.ok(askCall!.args.includes('--trust'));
     assert.ok(!askCall!.args.includes('--model'));
-    assert.ok(!askCall!.args.some((arg) => /write|shell|yolo|force/i.test(arg)));
+    assert.ok(!askCall!.args.some((arg) => /^(--)?(write|shell|yolo|force|-f)$/i.test(arg)));
+  });
+
+  test('workspacePath_addsWorkspaceFlag_andSpawnCwd', async () => {
+    const spawnOpts: Array<{ cwd?: string }> = [];
+    const { spawn, calls } = scriptedSpawn((_command, _args, child) => {
+      child.stdout.emit('data', 'answer');
+      child.emit('close', 0);
+    });
+    const wrapped: SpawnFn = (command, args, options) => {
+      spawnOpts.push({ cwd: typeof options.cwd === 'string' ? options.cwd : undefined });
+      return spawn(command, args, options);
+    };
+    const client = new CursorCliClient({
+      resolveBinary: async () => 'agent',
+      spawn: wrapped,
+      env: { CURSOR_API_KEY: 'k' },
+      workspacePath: () => 'D:/projects/demo',
+    });
+
+    await client.sendRequest('auto', [{ role: 'user', content: 'hi' }], () => undefined);
+    const askCall = calls.find((call) => call.args.includes('-p'));
+    assert.deepStrictEqual(
+      askCall?.args.slice(CURSOR_CLI_ASK_PRINT_ARGS.length, CURSOR_CLI_ASK_PRINT_ARGS.length + 2),
+      ['--workspace', 'D:/projects/demo'],
+    );
+    assert.strictEqual(spawnOpts.at(-1)?.cwd, 'D:/projects/demo');
   });
 
   test('nonEmptyModel_addsModelFlag_andPromptGoesOnStdin', async () => {
