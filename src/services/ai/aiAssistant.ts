@@ -14,7 +14,7 @@ export interface AiCancellation {
   onCancellationRequested(listener: () => unknown): { dispose(): unknown };
 }
 
-/** Port implemented by `infrastructure/ai/languageModelClient.ts` (the only `vscode.lm` caller). */
+/** Port implemented by `infrastructure/ai/languageModelClient.ts` and `cursorCliClient.ts`. */
 export interface LanguageModelPort {
   listModels(): Promise<ChatModelInfo[]>;
   sendRequest(
@@ -25,16 +25,25 @@ export interface LanguageModelPort {
   ): Promise<string>;
 }
 
+/** Optional status probe used when provider is `cursorCli`. */
+export interface CursorCliPort extends LanguageModelPort {
+  getStatus(): Promise<{ available: boolean; authenticated: boolean }>;
+}
+
 export interface AiSettingsSnapshot {
   provider: unknown;
   model: string | undefined;
 }
 
-export type AiUnavailableReason = 'disabled' | 'noModels';
+export type AiUnavailableReason = 'disabled' | 'noModels' | 'cliMissing' | 'cliUnauthenticated';
 
 export const AI_DISABLED_MESSAGE = 'AI is turned off. Turn it on in DevMate Kit → Setup → AI assistant.';
 export const AI_NO_MODELS_MESSAGE =
   'No language model available — install/enable GitHub Copilot Chat, or another LM provider, then pick a model in Setup.';
+export const AI_CLI_MISSING_MESSAGE =
+  'Cursor Agent CLI was not found on PATH. Install it (`agent` / `cursor-agent`), then choose Cursor Agent CLI again in Setup.';
+export const AI_CLI_UNAUTHENTICATED_MESSAGE =
+  'Cursor Agent CLI is installed but not logged in. Run `agent login` (or set CURSOR_API_KEY), then try again.';
 
 export class AiUnavailableError extends Error {
   constructor(readonly reason: AiUnavailableReason, message: string) {
@@ -53,10 +62,15 @@ export interface AiRunOptions {
   token?: AiCancellation;
 }
 
-/** DevMate's AI use-cases. Pure orchestration over a port — testable without a VS Code window. */
+export interface AiAssistantPorts {
+  vscodeLm: LanguageModelPort;
+  cursorCli: CursorCliPort;
+}
+
+/** DevMate's AI use-cases. Pure orchestration over ports — testable without a VS Code window. */
 export class AiAssistant {
   constructor(
-    private readonly port: LanguageModelPort,
+    private readonly ports: AiAssistantPorts,
     private readonly readSettings: () => AiSettingsSnapshot,
   ) {}
 
@@ -64,9 +78,22 @@ export class AiAssistant {
     return normalizeAiProvider(this.readSettings().provider);
   }
 
+  private get port(): LanguageModelPort {
+    return this.provider === 'cursorCli' ? this.ports.cursorCli : this.ports.vscodeLm;
+  }
+
   async resolveModel(): Promise<ChatModelInfo> {
     if (this.provider === 'none') {
       throw new AiUnavailableError('disabled', AI_DISABLED_MESSAGE);
+    }
+    if (this.provider === 'cursorCli') {
+      const status = await this.ports.cursorCli.getStatus();
+      if (!status.available) {
+        throw new AiUnavailableError('cliMissing', AI_CLI_MISSING_MESSAGE);
+      }
+      if (!status.authenticated) {
+        throw new AiUnavailableError('cliUnauthenticated', AI_CLI_UNAUTHENTICATED_MESSAGE);
+      }
     }
     const model = pickDefaultModel(await this.port.listModels(), this.readSettings().model);
     if (!model) {

@@ -37,7 +37,10 @@ The full dashboard opens on the Attention Inbox. Stat tiles — *Needs attention
 
 ### AI assistant (optional)
 
-DevMate uses the **language models already available in your editor** through the VS Code Language Model API — GitHub Copilot, Claude when Copilot or another installed provider offers it, or any other registered model. DevMate stores no API keys of its own.
+DevMate can use either:
+
+- **Editor language models** through the VS Code Language Model API — GitHub Copilot, Claude when Copilot or another installed provider offers it, or any other registered model.
+- **Cursor Agent CLI** (`agent` / `cursor-agent` on your PATH) in ask/print-only mode — a real subprocess backend, not a fake editor model. Useful when the host exposes no `vscode.lm` models (including Cursor IDE and VS Code without Copilot). Install the CLI, run `agent login` (or set `CURSOR_API_KEY` in the environment). DevMate never stores Anthropic or other vendor API keys.
 
 - **Ask AI: What should I do next?** — a 3–7 step plan with one "start here" recommendation.
 - **Generate Standup Summary** — Yesterday / Today / Blockers in Markdown, ready to copy.
@@ -45,7 +48,7 @@ DevMate uses the **language models already available in your editor** through th
 
 Only titles, keys, statuses, reasons, dates and short comment excerpts are sent to the model. Access tokens, OAuth secrets, URLs and raw API payloads are never included, and comment excerpts are scanned for anything that looks like a credential.
 
-If your editor exposes no language models (for example, some VS Code forks), AI features say so and everything else keeps working.
+If editor models are empty, Setup can **suggest** Cursor Agent CLI; it never switches provider automatically.
 
 ### Text utilities
 
@@ -88,8 +91,8 @@ There's also a guided walkthrough: **Help → Welcome → Get started with DevMa
 | `devMateKit.jira.currentUser` | `""` | Your Jira display name, exactly as shown in Assignee |
 | `devMateKit.jira.teamMembers` | `[]` | Teammates' Jira display names |
 | `devMateKit.jira.savedQueries` | `[]` | JQL queries that choose which tickets to fetch |
-| `devMateKit.ai.provider` | `none` | `vscodeLm` to use this editor's language models |
-| `devMateKit.ai.model` | `""` | Model id; empty picks the first Copilot model |
+| `devMateKit.ai.provider` | `none` | `vscodeLm` (editor LM API), `cursorCli` (Cursor Agent CLI ask/print), or `none` |
+| `devMateKit.ai.model` | `""` | Model id; for `vscodeLm` empty picks first Copilot model; for `cursorCli` maps to `--model` |
 | `devMateKit.monitoring.enabled` | `true` | Keep watching GitHub and Jira; turn off to pause all monitoring network activity |
 | `devMateKit.notifications.enabled` | `true` | Notify when new items need attention |
 | `devMateKit.refresh.background` | `true` | Refresh every 10 minutes even when no DevMate view is open |
@@ -99,7 +102,7 @@ There's also a guided walkthrough: **Help → Welcome → Get started with DevMa
 
 - GitHub access uses VS Code's built-in GitHub authentication; Jira access uses Atlassian's OAuth through their official MCP server. Tokens are kept in VS Code's secret storage.
 - DevMate only reads data. It never comments, approves, merges or changes Jira tickets on your behalf.
-- AI requests go only to the language model you select in your editor, with the curated summary described above.
+- AI requests go only to the backend you chose (`vscode.lm` or Cursor Agent CLI ask/print), with the curated summary described above.
 
 ## Roadmap
 

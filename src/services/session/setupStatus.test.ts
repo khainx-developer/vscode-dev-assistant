@@ -42,6 +42,10 @@ function stateOf(status: ReturnType<typeof deriveSetupStatus>, id: string): stri
   return status.steps.find((step) => step.id === id)?.state;
 }
 
+function detailOf(status: ReturnType<typeof deriveSetupStatus>, id: string): string {
+  return status.steps.find((step) => step.id === id)?.detail ?? '';
+}
+
 suite('setupStatus', () => {
   test('freshInstall_everythingToDo_aiOptional', () => {
     const status = deriveSetupStatus(
@@ -60,6 +64,46 @@ suite('setupStatus', () => {
     const status = deriveSetupStatus(github(), jira(), { provider: 'vscodeLm', modelName: 'X · GitHub Copilot' });
     assert.strictEqual(status.completed, status.required);
     assert.strictEqual(stateOf(status, 'ai'), 'done');
+  });
+
+  test('vscodeLm_withoutModel_needsAttention_suggestsCliWithoutAutoSwitch', () => {
+    const status = deriveSetupStatus(github(), jira(), { provider: 'vscodeLm', modelName: null });
+    assert.strictEqual(stateOf(status, 'ai'), 'attention');
+    assert.match(detailOf(status, 'ai'), /Cursor Agent CLI/);
+    assert.ok(!/automatically switched|auto-switch/i.test(detailOf(status, 'ai')));
+  });
+
+  test('cursorCli_missing_needsAttention', () => {
+    const status = deriveSetupStatus(github(), jira(), {
+      provider: 'cursorCli',
+      modelName: null,
+      cliAvailable: false,
+      cliAuthenticated: false,
+    });
+    assert.strictEqual(stateOf(status, 'ai'), 'attention');
+    assert.match(detailOf(status, 'ai'), /not found on PATH/i);
+  });
+
+  test('cursorCli_unauthenticated_needsAttention', () => {
+    const status = deriveSetupStatus(github(), jira(), {
+      provider: 'cursorCli',
+      modelName: null,
+      cliAvailable: true,
+      cliAuthenticated: false,
+    });
+    assert.strictEqual(stateOf(status, 'ai'), 'attention');
+    assert.match(detailOf(status, 'ai'), /login/i);
+  });
+
+  test('cursorCli_ready_isDone', () => {
+    const status = deriveSetupStatus(github(), jira(), {
+      provider: 'cursorCli',
+      modelName: 'Auto · Cursor Agent CLI',
+      cliAvailable: true,
+      cliAuthenticated: true,
+    });
+    assert.strictEqual(stateOf(status, 'ai'), 'done');
+    assert.match(detailOf(status, 'ai'), /Cursor Agent CLI/);
   });
 
   test('invalidRepo_needsAttention_withPlainLanguage', () => {
