@@ -156,6 +156,55 @@ body {
 .ai-body { margin-top: 6px; }
 .ai-foot { margin: 8px 0 0; }
 
+/* Per-card chatbox */
+.card-chat {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--dm-border);
+  border-radius: var(--dm-radius);
+  background: var(--dm-subtle-bg);
+}
+.card-chat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.card-chat-messages { display: flex; flex-direction: column; gap: 8px; }
+.card-chat-msg.user .card-chat-user {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--dm-radius);
+  background: color-mix(in srgb, var(--dm-fg) 8%, transparent);
+}
+.card-chat-msg.assistant .markdown { margin: 0; }
+.card-chat-section { margin: 8px 0; }
+.card-chat-label { margin: 0 0 6px; }
+.card-chat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+.card-chat-chips .chip-btn { font-size: 0.85em; }
+.card-chat-section .banner { margin: 0 0 8px; }
+.card-chat-compose {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.card-chat-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--dm-border);
+  border-radius: var(--dm-radius);
+  background: var(--vscode-input-background, transparent);
+  color: var(--vscode-input-foreground, inherit);
+}
+
 @media (max-width: 640px) {
   #app { padding: 14px 14px 32px; }
   .header-actions { width: 100%; }

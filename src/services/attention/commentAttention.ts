@@ -14,10 +14,17 @@ export interface CommentAttentionSummary {
   latestUnreadComment: ProviderCommentCandidate | null;
 }
 
+/** Exact identities (case-insensitive) treated as automation / bots. */
 const AUTOMATION_IDENTITIES = new Set([
   'automation for jira',
   'github-action',
+  'github-actions',
   'copilot',
+  'dependabot',
+  'renovate',
+  'renovate[bot]',
+  'dependabot[bot]',
+  'github-actions[bot]',
 ]);
 
 const EMPTY_SUMMARY: CommentAttentionSummary = {
@@ -25,6 +32,17 @@ const EMPTY_SUMMARY: CommentAttentionSummary = {
   latestUnreadAt: null,
   latestUnreadComment: null,
 };
+
+/** True for known automation accounts and GitHub `…[bot]` authors (e.g. github-actions[bot]). */
+export function isAutomationIdentity(author: string | null | undefined): boolean {
+  const raw = String(author ?? '').trim().toLowerCase();
+  if (!raw) return false;
+  if (AUTOMATION_IDENTITIES.has(raw)) return true;
+  if (raw.endsWith('[bot]')) return true;
+  // github-actions[bot] → also match bare github-actions after stripping the suffix
+  const bare = raw.replace(/\[bot\]$/u, '');
+  return bare !== raw && AUTOMATION_IDENTITIES.has(bare);
+}
 
 export function buildCommentAttention(
   comments: ProviderCommentCandidate[],
@@ -39,7 +57,7 @@ export function buildCommentAttention(
   let latestUnreadComment: ProviderCommentCandidate | null = null;
 
   for (const comment of comments) {
-    if (comment.isCurrentUser || AUTOMATION_IDENTITIES.has(comment.authorIdentity.toLowerCase())) {
+    if (comment.isCurrentUser || isAutomationIdentity(comment.authorIdentity)) {
       continue;
     }
 

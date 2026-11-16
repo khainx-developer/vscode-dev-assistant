@@ -140,4 +140,50 @@ suite('AiAssistant', () => {
     await assert.rejects(() => assistant.whatShouldIDoNext([], { github: null, jira: null }, 0), (error: unknown) =>
       error instanceof AiUnavailableError && error.reason === 'cliUnauthenticated' && error.message === AI_CLI_UNAUTHENTICATED_MESSAGE);
   });
+
+  test('chatAboutItem_sendsContextThenHistory', async () => {
+    const vscodeLm = fakePort([copilot], 'Because checks failed.');
+    const assistant = new AiAssistant(
+      { vscodeLm, cursorCli: fakeCli({ available: true, authenticated: true }, [cliModel]) },
+      () => ({ provider: 'vscodeLm', model: undefined }),
+    );
+    const item = {
+      key: 'github:acme/web#1',
+      pr: {
+        repoKey: 'acme/web',
+        number: 1,
+        title: 'Fix',
+        url: 'https://example.com',
+        author: 'a',
+        state: 'OPEN',
+        mergedAt: null,
+        createdAt: '2026-11-09T00:00:00.000Z',
+        updatedAt: '2026-11-10T09:00:00.000Z',
+        labels: [],
+        checkStatus: 'FAILURE',
+        mergeable: 'MERGEABLE',
+        reviews: [],
+        comments: [],
+        requestedReviewers: [],
+      },
+      relatedPRs: [],
+      reasons: ['pr-checks-failing'],
+      priority: 1,
+      latestRelevantAt: null,
+      jiraUnreadCount: 0,
+      jiraLatestUnreadComment: null,
+      prUnreadCount: 0,
+      prLatestUnreadComment: null,
+    };
+    const result = await assistant.chatAboutItem(
+      item as never,
+      [{ role: 'user', content: 'Why is this flagged?' }],
+      { github: 'me', jira: null },
+      Date.parse('2026-11-11T09:00:00.000Z'),
+    );
+    assert.strictEqual(result.text, 'Because checks failed.');
+    assert.strictEqual(vscodeLm.calls[0].messages.length, 2);
+    assert.match(vscodeLm.calls[0].messages[0].content, /triage one work item/);
+    assert.strictEqual(vscodeLm.calls[0].messages[1].content, 'Why is this flagged?');
+  });
 });

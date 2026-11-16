@@ -1,18 +1,26 @@
 import * as vscode from 'vscode';
 import { AiAssistant, AiUnavailableError, type AiResult } from '../services/ai/aiAssistant';
+import {
+  cloneThreadsRecord,
+  emptyThread,
+  pruneThreadMap,
+  toPromptHistory,
+  trimStoredMessages,
+} from '../services/ai/cardChat';
 import { modelLabel, pickDefaultModel, sortModelsForPicker, type AiProvider, type ChatModelInfo } from '../services/ai/aiSettings';
+import { appendEditorHandoffTranscript, buildReviewPrompt } from '../services/ai/prompts';
 import { buildStandupSnapshot } from '../services/ai/standupSnapshot';
-import { itemTitle } from '../services/attention/notificationPlanner';
 import { AiConfigStore } from '../infrastructure/ai/aiConfigStore';
+import { ChatHandoff } from '../infrastructure/ai/chatHandoff';
 import { CursorCliClient } from '../infrastructure/ai/cursorCliClient';
 import { LanguageModelClient } from '../infrastructure/ai/languageModelClient';
-import type { AiRunKind, AiRunState, AiViewState, SessionCommand } from '../shared/messages';
+import type { AiCardThread, AiRunKind, AiRunState, AiViewState, SessionCommand } from '../shared/messages';
 import type { AiCommandHandler, DashboardSession, SessionSurface } from './dashboardSession';
 
 const STREAM_THROTTLE_MS = 120;
 
 export interface AiUiHooks {
-  /** Reveal the dashboard (AI results for "what next" / "explain" render there). */
+  /** Reveal the dashboard (inbox-wide AI results like "what next" render there). */
   revealDashboard(): void;
   /** Reveal the sidebar Setup tab. */
   revealSetup(): void;
@@ -28,10 +36,13 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   private modelsLoading = false;
   private run: AiRunState | null = null;
   private runCounter = 0;
+  private readonly threads = new Map<string, AiCardThread>();
+  private chatKeyRunning: string | null = null;
   private cancellation: vscode.CancellationTokenSource | undefined;
   private cliAvailable = false;
   private cliAuthenticated = false;
   private cliStatusLoading = false;
+  private readonly chatHandoff: ChatHandoff;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(
@@ -40,11 +51,13 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
     private readonly vscodeLm: LanguageModelClient,
     private readonly cursorCli: CursorCliClient,
     private readonly hooks: AiUiHooks,
+    chatHandoff?: ChatHandoff,
   ) {
     this.assistant = new AiAssistant(
       { vscodeLm, cursorCli },
       () => config.read(),
     );
+    this.chatHandoff = chatHandoff ?? new ChatHandoff();
     this.disposables.push(
       LanguageModelClient.onDidChangeModels(() => {
         // Only re-list once the user has asked for the list (model access is user-initiated).
@@ -68,6 +81,12 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
         return this.whatShouldIDoNext();
       case 'ai.explain':
         return this.explain(message.key);
+      case 'ai.reviewInChat':
+        return this.reviewInChat(message.key, message.template);
+      case 'ai.chat.send':
+        return this.chatSend(message.key, message.text);
+      case 'ai.chat.clear':
+        return this.chatClear(message.key);
       case 'ai.standup':
         return this.standup();
       case 'ai.cancel':
@@ -146,16 +165,73 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
       this.assistant.whatShouldIDoNext(items, { github: github?.me ?? null, jira: jira?.currentUser ?? null }, Date.now(), { token, onText }));
   }
 
+  /** Explain is part of the per-card Ask AI chat — not the top-of-dashboard AI panel. */
   async explain(key: string): Promise<void> {
+    if (this.run?.kind === 'explain') {
+      this.run = null;
+      this.publish();
+    }
+    await this.chatSend(key, 'Explain');
+  }
+
+  /** Copy an editor-chat hand-off prompt (MCP guidance + item URL + optional Ask AI transcript). Does not use AiAssistant. */
+  async reviewInChat(key: string, template?: string): Promise<void> {
     if (!this.ensureMonitoring()) return;
     const item = this.session.findItem(key);
     if (!item) {
       void vscode.window.showInformationMessage('DevMate: That item is no longer in your inbox.');
       return;
     }
+    const base = buildReviewPrompt(item, template ?? 'review', this.config.getReviewPrompt());
+    const thread = this.threads.get(key);
+    const prompt = appendEditorHandoffTranscript(base, thread?.messages);
+    await this.chatHandoff.send(prompt);
+  }
+
+  /** Append a user question on a card thread and stream the assistant reply. */
+  async chatSend(key: string, text: string): Promise<void> {
+    if (!this.ensureMonitoring()) return;
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const item = this.session.findItem(key);
+    if (!item) {
+      void vscode.window.showInformationMessage('DevMate: That item is no longer in your inbox.');
+      return;
+    }
+
+    pruneThreadMap(this.threads, key);
+    const thread = this.threads.get(key) ?? emptyThread(key);
+    const withoutEmptyAssistant = thread.messages.filter(
+      (message, index, all) => !(index === all.length - 1 && message.role === 'assistant' && message.text === ''),
+    );
+    thread.messages = trimStoredMessages([...withoutEmptyAssistant, { role: 'user', text: trimmed }]);
+    thread.error = undefined;
+    thread.setupHint = undefined;
+    this.threads.set(key, thread);
+
     this.hooks.revealDashboard();
-    await this.execute('explain', `Explain: ${itemTitle(item)}`, (token, onText) =>
-      this.assistant.explainItem(item, Date.now(), { token, onText }));
+    const github = this.session.getGitHubState();
+    const jira = this.session.getJiraState();
+    const history = toPromptHistory(thread.messages);
+    await this.executeChat(key, (token, onText) =>
+      this.assistant.chatAboutItem(
+        // Re-resolve the item at send time so the snapshot stays fresh if inbox refreshed mid-flight.
+        this.session.findItem(key) ?? item,
+        history,
+        { github: github?.me ?? null, jira: jira?.currentUser ?? null },
+        Date.now(),
+        { token, onText },
+      ));
+  }
+
+  /** Reset one card's chat thread. */
+  chatClear(key: string): void {
+    if (this.chatKeyRunning === key) {
+      this.cancellation?.cancel();
+      this.chatKeyRunning = null;
+    }
+    this.threads.delete(key);
+    this.publish();
   }
 
   async standup(): Promise<void> {
@@ -243,15 +319,28 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
 
   // ── Internals ───────────────────────────────────────────────────────────
 
+  private beginWork(): vscode.CancellationTokenSource {
+    this.cancellation?.cancel();
+    this.cancellation?.dispose();
+    if (this.chatKeyRunning) {
+      const prior = this.threads.get(this.chatKeyRunning);
+      if (prior?.status === 'running') {
+        prior.status = 'idle';
+        this.threads.set(this.chatKeyRunning, prior);
+      }
+      this.chatKeyRunning = null;
+    }
+    const source = new vscode.CancellationTokenSource();
+    this.cancellation = source;
+    return source;
+  }
+
   private async execute(
     kind: AiRunKind,
     title: string,
     work: (token: vscode.CancellationToken, onText: (chunk: string) => void) => Promise<AiResult>,
   ): Promise<void> {
-    this.cancellation?.cancel();
-    this.cancellation?.dispose();
-    const source = new vscode.CancellationTokenSource();
-    this.cancellation = source;
+    const source = this.beginWork();
     const id = ++this.runCounter;
     this.run = { id, kind, title, status: 'running', text: '' };
     this.publish();
@@ -284,6 +373,72 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
         };
       }
     } finally {
+      if (this.cancellation === source) this.cancellation = undefined;
+      source.dispose();
+      this.publish();
+    }
+  }
+
+  private async executeChat(
+    key: string,
+    work: (token: vscode.CancellationToken, onText: (chunk: string) => void) => Promise<AiResult>,
+  ): Promise<void> {
+    // Card chat owns per-item answers; drop a leftover top-panel Explain run if present.
+    if (this.run?.kind === 'explain') this.run = null;
+    const source = this.beginWork();
+    const thread = this.threads.get(key);
+    if (!thread) {
+      source.dispose();
+      if (this.cancellation === source) this.cancellation = undefined;
+      return;
+    }
+    thread.messages.push({ role: 'assistant', text: '' });
+    thread.status = 'running';
+    thread.modelName = undefined;
+    this.threads.set(key, thread);
+    this.chatKeyRunning = key;
+    this.publish();
+
+    let lastPublish = 0;
+    const onText = (chunk: string): void => {
+      const current = this.threads.get(key);
+      if (!current || this.chatKeyRunning !== key) return;
+      const last = current.messages[current.messages.length - 1];
+      if (!last || last.role !== 'assistant') return;
+      last.text += chunk;
+      this.threads.set(key, current);
+      const now = Date.now();
+      if (now - lastPublish > STREAM_THROTTLE_MS) {
+        lastPublish = now;
+        this.publish();
+      }
+    };
+
+    try {
+      const result = await work(source.token, onText);
+      if (this.chatKeyRunning !== key) return;
+      const current = this.threads.get(key);
+      if (!current) return;
+      const last = current.messages[current.messages.length - 1];
+      if (last?.role === 'assistant') last.text = result.text;
+      current.status = 'idle';
+      current.modelName = modelLabel(result.model);
+      current.messages = trimStoredMessages(current.messages);
+      this.threads.set(key, current);
+    } catch (error) {
+      if (this.chatKeyRunning !== key) return;
+      const current = this.threads.get(key);
+      if (!current) return;
+      if (source.token.isCancellationRequested || error instanceof vscode.CancellationError) {
+        current.status = 'idle';
+      } else {
+        current.status = 'error';
+        current.error = errorMessage(error, this.config.getProvider());
+        current.setupHint = error instanceof AiUnavailableError;
+      }
+      this.threads.set(key, current);
+    } finally {
+      if (this.chatKeyRunning === key) this.chatKeyRunning = null;
       if (this.cancellation === source) this.cancellation = undefined;
       source.dispose();
       this.publish();
@@ -384,6 +539,7 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
       models: this.models,
       modelsLoading: this.modelsLoading,
       run: this.run,
+      threads: cloneThreadsRecord(this.threads),
       cliAvailable: this.cliAvailable,
       cliAuthenticated: this.cliAuthenticated,
       suggestCursorCli,
