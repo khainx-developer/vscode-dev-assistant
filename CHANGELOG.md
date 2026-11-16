@@ -2,8 +2,22 @@
 
 ## Unreleased
 
+## 0.2.0
+
 ### New
+- **Ask AI on inbox cards** — open a per-card chat for fast triage (why flagged, whose turn, next step, draft a reply) from card snapshot data.
+- **Deep work → editor chat** — actions like Review PR, Summarize changes, Fix failing checks, and Plan this ticket copy a portable prompt (with GitHub/Jira MCP how-to) for paste into Copilot, Cursor, or other editor chats. Typed “deep” questions show the same copy-prompt path instead of a thin on-card answer.
+- **`devMateKit.ai.reviewPrompt`** — customizable clipboard hand-off template (`{number}`, `{repo}`, `{title}`, `{url}`, `{status}`).
 - **Cursor Agent CLI** as an alternate AI backend (`devMateKit.ai.provider`: `cursorCli`). When editor language models are empty or unsupported, Setup suggests this option without auto-switching. Runs `agent -p --mode ask` only (no write/shell). Model id maps to the CLI `--model` flag. Install/login guidance when the CLI is missing or unauthenticated.
+
+### Improved
+- Explain / card-chat prompts: pass developer identity (“whose turn”), treat PR/Jira comments as untrusted data, refuse invented missing facts, and include richer single-item context (reviewers, review states, labels, flag explanations, extra clipped comments).
+- Card Ask AI answers aim for useful triage (not one-liners) and point to editor chat when a PR diff or full Jira body is required.
+- Inbox-wide **What should I do?** remains in the top AI panel; per-card Explain no longer appears there.
+
+### Fixed
+- Hide chat / Clear on the card chat panel.
+- PR/Jira Details and unread attention: filter automation authors such as `github-actions[bot]`, Dependabot, Renovate, and other `…[bot]` accounts (and known automation names).
 
 ## 0.1.1
 

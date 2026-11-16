@@ -30,6 +30,9 @@ export type SessionCommand =
   | { command: 'attention.unsnooze'; key: string }
   | { command: 'ai.whatNext' }
   | { command: 'ai.explain'; key: string }
+  | { command: 'ai.reviewInChat'; key: string; template?: string }
+  | { command: 'ai.chat.send'; key: string; text: string }
+  | { command: 'ai.chat.clear'; key: string }
   | { command: 'ai.standup' }
   | { command: 'ai.cancel' }
   | { command: 'ai.dismiss' }
@@ -98,6 +101,22 @@ export interface AiRunState {
   modelName?: string;
 }
 
+/** One turn in a per-card chatbox thread (in-memory only). */
+export interface AiChatMessage {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+export interface AiCardThread {
+  key: string;
+  messages: AiChatMessage[];
+  status: 'idle' | 'running' | 'error';
+  error?: string;
+  /** Set when the error can be fixed in Setup (AI off / no models). */
+  setupHint?: boolean;
+  modelName?: string;
+}
+
 export interface AiViewState {
   provider: AiProvider;
   supported: boolean;
@@ -106,6 +125,8 @@ export interface AiViewState {
   models: ChatModelInfo[] | null;
   modelsLoading: boolean;
   run: AiRunState | null;
+  /** Per-card chatbox threads keyed by inbox item key. */
+  threads: Record<string, AiCardThread>;
   /** Cursor Agent CLI detected on PATH. */
   cliAvailable: boolean;
   /** CLI present and logged in / CURSOR_API_KEY set. */

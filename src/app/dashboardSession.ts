@@ -381,7 +381,13 @@ export class DashboardSession implements vscode.Disposable {
   private blocksWhilePaused(command: string): boolean {
     if (this.isMonitoringEnabled()) return false;
     if (command === 'session.refreshAll') return true;
-    if (command === 'ai.whatNext' || command === 'ai.explain' || command === 'ai.standup') return true;
+    if (
+      command === 'ai.whatNext'
+      || command === 'ai.explain'
+      || command === 'ai.reviewInChat'
+      || command === 'ai.chat.send'
+      || command === 'ai.standup'
+    ) return true;
     if (command.startsWith('github.') || command.startsWith('jira.')) {
       return !PAUSED_ALLOWED_COMMANDS.has(command);
     }

@@ -4,7 +4,7 @@ import { loadUiState, onMessage, post, saveUiState } from '../shared/bridge.js';
 import { attrs, clockTime, delegate, esc, plural, renderPreserving, timeUntil } from '../shared/dom.js';
 import { icon } from '../shared/icons.js';
 import { renderMarkdown } from '../shared/markdown.js';
-import { itemTitleText, renderAttentionItem, renderJiraItem, renderPrItem } from '../shared/items.js';
+import { isDeepEditorQuestion, itemTitleText, renderAttentionItem, renderJiraItem, renderPrItem } from '../shared/items.js';
 
 const app = document.getElementById('app');
 
@@ -22,6 +22,8 @@ const ui = loadUiState({
   jiraFilters: {},
   open: { snoozed: false },
   expanded: {},
+  chatOpen: {},
+  deepHint: {},
 });
 
 function persist() {
@@ -174,7 +176,9 @@ function welcome() {
 
 function aiCard() {
   const run = ai?.run;
-  if (!run) return '';
+  // Per-card Explain / Ask AI answers render inside the card chat — keep the top
+  // panel for inbox-wide runs (What next) only.
+  if (!run || run.kind === 'explain') return '';
   const running = run.status === 'running';
   let body;
   if (run.status === 'error') {
@@ -264,7 +268,14 @@ function attentionSection() {
         : emptyState('checkCircle', 'You’re clear — nothing needs your attention right now.',
           status?.lastRefreshAt ? `Last checked at ${clockTime(status.lastRefreshAt)}.` : '', '');
     } else {
-      list = `<div class="list">${visible.map((item) => renderAttentionItem(item, ctx(), { expanded: ui.expanded, menuKey, snoozable: true })).join('')}</div>`;
+      list = `<div class="list">${visible.map((item) => renderAttentionItem(item, ctx(), {
+        expanded: ui.expanded,
+        menuKey,
+        snoozable: true,
+        threads: ai?.threads || {},
+        chatOpen: ui.chatOpen,
+        deepHint: ui.deepHint,
+      })).join('')}</div>`;
     }
   }
   const count = items ? (ui.mineOnly ? items.filter(isMine).length : items.length) : 0;
@@ -415,6 +426,59 @@ delegate(app, {
     persist();
     render();
   },
+  toggleChat: (el) => {
+    const key = el.getAttribute('data-key');
+    if (!key) return;
+    const thread = ai?.threads?.[key];
+    const open = ui.chatOpen[key] === false ? false : !!(ui.chatOpen[key] || thread);
+    // Persist explicit false so Hide wins over an existing thread; true re-opens it.
+    ui.chatOpen[key] = !open;
+    persist();
+    render();
+    if (ui.chatOpen[key]) {
+      app.querySelector(`[data-chat-input="${CSS.escape(key)}"]`)?.focus();
+    }
+  },
+  chatSend: (el) => {
+    const key = el.getAttribute('data-key');
+    const preset = el.getAttribute('data-text');
+    const input = app.querySelector(`[data-chat-input="${CSS.escape(key)}"]`);
+    const text = (preset || input?.value || '').trim();
+    if (!text) return;
+    ui.chatOpen[key] = true;
+    // Typed deep questions need the PR/Jira body — show copy-prompt actions instead of a thin card answer.
+    if (!preset && isDeepEditorQuestion(text)) {
+      ui.deepHint[key] = text;
+      persist();
+      render();
+      return;
+    }
+    if (ui.deepHint?.[key]) delete ui.deepHint[key];
+    if (input && !preset) input.value = '';
+    persist();
+    post({ command: 'ai.chat.send', key, text });
+  },
+  dismissDeepHint: (el) => {
+    const key = el.getAttribute('data-key');
+    if (!key) return;
+    delete ui.deepHint[key];
+    persist();
+    render();
+  },
+  chatClear: (el) => {
+    const key = el.getAttribute('data-key');
+    if (!key) return;
+    delete ui.deepHint[key];
+    persist();
+    post({ command: 'ai.chat.clear', key });
+    // Optimistic local clear so the transcript disappears even before ai.state arrives.
+    if (ai?.threads?.[key]) {
+      const threads = { ...ai.threads };
+      delete threads[key];
+      ai = { ...ai, threads };
+      render();
+    }
+  },
   openPr: (el) => post({ command: 'github.openPr', repoKey: el.getAttribute('data-repo'), number: Number(el.getAttribute('data-number')), url: el.getAttribute('data-url') }),
   openComment: (el) => post({ command: 'github.openComment', repoKey: el.getAttribute('data-repo'), number: Number(el.getAttribute('data-number')), url: el.getAttribute('data-url') }),
   openJira: (el) => post({ command: 'jira.openTask', url: el.getAttribute('data-url') }),
@@ -424,12 +488,23 @@ delegate(app, {
     render();
     if (menuKey) app.querySelector('.menu [role="menuitem"]')?.focus();
   },
+  reviewInChat: (el) => {
+    menuKey = null;
+    const key = el.getAttribute('data-key');
+    if (key && ui.deepHint?.[key]) delete ui.deepHint[key];
+    persist();
+    post({
+      command: 'ai.reviewInChat',
+      key,
+      template: el.getAttribute('data-template') || 'review',
+    });
+    render();
+  },
   snooze: (el) => {
     menuKey = null;
     post({ command: 'attention.snooze', key: el.getAttribute('data-key'), option: el.getAttribute('data-option') });
   },
   unsnooze: (el) => post({ command: 'attention.unsnooze', key: el.getAttribute('data-key') }),
-  explain: (el) => post({ command: 'ai.explain', key: el.getAttribute('data-key') }),
   aiWhatNext: () => post({ command: 'ai.whatNext' }),
   aiStandup: () => post({ command: 'ai.standup' }),
   aiCancel: () => post({ command: 'ai.cancel' }),
@@ -475,6 +550,24 @@ document.addEventListener('keydown', (event) => {
     menuKey = null;
     render();
     app.querySelector(`[data-action="toggleSnoozeMenu"][data-key="${CSS.escape(key)}"]`)?.focus();
+    return;
+  }
+  if (event.key === 'Enter' && event.target?.matches?.('[data-chat-input]')) {
+    event.preventDefault();
+    const key = event.target.getAttribute('data-chat-input');
+    const text = event.target.value.trim();
+    if (!text) return;
+    ui.chatOpen[key] = true;
+    if (isDeepEditorQuestion(text)) {
+      ui.deepHint[key] = text;
+      persist();
+      render();
+      return;
+    }
+    if (ui.deepHint?.[key]) delete ui.deepHint[key];
+    event.target.value = '';
+    persist();
+    post({ command: 'ai.chat.send', key, text });
   }
 });
 

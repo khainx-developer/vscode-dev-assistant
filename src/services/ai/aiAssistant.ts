@@ -1,6 +1,7 @@
 import type { AttentionInboxItem } from '../attention/attentionInboxBuilder';
 import { normalizeAiProvider, pickDefaultModel, type AiProvider, type ChatModelInfo } from './aiSettings';
 import {
+  buildChatAboutItemPrompt,
   buildExplainItemPrompt,
   buildNextStepsPrompt,
   buildStandupPrompt,
@@ -115,8 +116,27 @@ export class AiAssistant {
     return this.run(buildStandupPrompt(snapshot, now), options);
   }
 
-  explainItem(item: AttentionInboxItem, now: number, options: AiRunOptions = {}): Promise<AiResult> {
-    return this.run(buildExplainItemPrompt(item, now), options);
+  explainItem(
+    item: AttentionInboxItem,
+    me: { github: string | null; jira: string | null },
+    now: number,
+    options: AiRunOptions = {},
+  ): Promise<AiResult> {
+    return this.run(buildExplainItemPrompt(item, now, me), options);
+  }
+
+  /**
+   * Multi-turn Q&A about one card. `history` is the conversation so far (including the latest
+   * user question). Snapshot + guardrails are rebuilt each call so answers stay fresh.
+   */
+  chatAboutItem(
+    item: AttentionInboxItem,
+    history: PromptMessage[],
+    me: { github: string | null; jira: string | null },
+    now: number,
+    options: AiRunOptions = {},
+  ): Promise<AiResult> {
+    return this.run(buildChatAboutItemPrompt(item, history, me, now), options);
   }
 
   private async run(messages: PromptMessage[], options: AiRunOptions): Promise<AiResult> {

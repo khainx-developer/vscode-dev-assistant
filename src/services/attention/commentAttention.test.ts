@@ -67,6 +67,8 @@ suite('buildCommentAttention', () => {
       makeComment({ authorIdentity: 'Automation for Jira' }),
       makeComment({ authorIdentity: 'aUtOmAtIoN fOr JiRa' }),
       makeComment({ authorIdentity: 'GitHub-Action' }),
+      makeComment({ authorIdentity: 'github-actions[bot]' }),
+      makeComment({ authorIdentity: 'dependabot[bot]' }),
       makeComment({ authorIdentity: 'COPILOT' }),
     ];
 
@@ -78,8 +80,8 @@ suite('buildCommentAttention', () => {
   test('buildCommentAttention_keepsLookalikes', () => {
     const comments = [
       makeComment({ authorIdentity: 'Automation for Jira bot' }),
-      makeComment({ authorIdentity: 'github-actions' }),
       makeComment({ authorIdentity: 'copilot-user' }),
+      makeComment({ authorIdentity: 'release-helper' }),
     ];
 
     const summary = buildCommentAttention(comments, SEEN_AT);

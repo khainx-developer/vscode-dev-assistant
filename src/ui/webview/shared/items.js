@@ -1,8 +1,61 @@
 // Renderers for attention items, pull requests and Jira tickets, shared by the dashboard and
 // the sidebar Home tab. Reason wording comes from the same table the AI prompts use.
+import { isAutomationIdentity } from '../../../services/attention/commentAttention';
 import { REASON_LABELS } from '../../../services/attention/reasonLabels';
 import { attrs, esc, relativeTime } from './dom.js';
 import { icon } from './icons.js';
+import { renderMarkdown } from './markdown.js';
+
+/** Fast triage chips — answered on-card from the snapshot (no PR diff / Jira body). */
+function quickChatSuggestions(item) {
+  const suggestions = [
+    'Why does this need attention?',
+    "What's the next step?",
+    'Whose turn is it?',
+  ];
+  const hasUnread = !!(
+    item.reasons?.includes('pr-unread-comment')
+    || item.prUnreadCount > 0
+    || item.prLatestUnreadComment
+    || item.jiraUnreadCount > 0
+    || item.jiraLatestUnreadComment
+  );
+  if (hasUnread) suggestions.push('Draft a reply to the comment');
+  return suggestions;
+}
+
+/**
+ * Deep work actions — copy a portable editor-chat prompt (MCP how-to included).
+ * These need live PR/Jira data the card snapshot does not have.
+ */
+function deepEditorActions(item) {
+  const actions = [];
+  const pr = item.pr || item.relatedPRs?.[0]?.pr;
+  if (pr) {
+    actions.push({ template: 'review', label: 'Review PR' });
+    actions.push({ template: 'summarize', label: 'Summarize changes' });
+    const failing = item.reasons?.includes('pr-checks-failing')
+      || pr.checkStatus === 'FAILURE'
+      || pr.checkStatus === 'ERROR';
+    if (failing) actions.push({ template: 'fixChecks', label: 'Fix failing checks' });
+    if (item.reasons?.includes('pr-unread-comment') || item.prUnreadCount > 0 || item.prLatestUnreadComment) {
+      actions.push({ template: 'draftReply', label: 'Draft reply (with PR context)' });
+    }
+  }
+  if (item.jiraTask) actions.push({ template: 'planTicket', label: 'Plan this ticket' });
+  if (!actions.length) {
+    actions.push({
+      template: item.jiraTask ? 'planTicket' : 'review',
+      label: 'Copy editor prompt',
+    });
+  }
+  return actions;
+}
+
+/** Free-text questions that need the PR diff / full Jira body should not go to card AI. */
+export function isDeepEditorQuestion(text) {
+  return /\b(summarize|summary of (the )?changes|what changed|diff|code review|review (the )?pr|review this pr|failing checks?|fix (the )?checks?|plan (this|the)? ticket|implement|refactor|pull request body|jira description)\b/i.test(String(text || ''));
+}
 
 const LEGACY_GITHUB_REASONS = {
   new_activity: { label: 'New activity', tone: 'info' },
@@ -166,12 +219,22 @@ export function renderAttentionItem(item, ctx, ui) {
   // Keep Open PR + Open in Jira on one row: when PRs are in related blocks, put the
   // Jira button beside the first Open PR instead of on the secondary actions row.
   const jiraOnRelated = !!(task && related.length);
+  const thread = ui.threads?.[item.key];
+  // Explicit false means the user hid the panel; do not force it open just because a thread exists.
+  const chatOpen = ui.chatOpen?.[item.key] === false
+    ? false
+    : !!(ui.chatOpen?.[item.key] || thread);
   const actions = [
     task && !jiraOnRelated ? jiraButton(task) : '',
     pr ? prButton(pr) : '',
     pr && item.prLatestUnreadComment ? commentButton(pr, item.prLatestUnreadComment) : '',
     ui.snoozable ? snoozeControl(item, ui) : '',
-    `<button type="button" class="ghost"${attrs({ 'data-action': 'explain', 'data-key': item.key, title: 'Ask AI why this is flagged and what to do next' })}>${icon('sparkle', 'sm')}Explain</button>`,
+    `<button type="button" class="ghost"${attrs({
+      'data-action': 'toggleChat',
+      'data-key': item.key,
+      'aria-expanded': chatOpen ? 'true' : 'false',
+      title: 'Ask AI: quick triage on this card. Deep PR/Jira work uses copy-to-editor-chat prompts.',
+    })}>${icon('sparkle', 'sm')}${chatOpen ? 'Hide chat' : 'Ask AI'}</button>`,
     task || (pr && (pr.comments || []).length)
       ? `<button type="button" class="ghost"${attrs({ 'data-action': 'toggleDetail', 'data-key': item.key, 'aria-expanded': expanded ? 'true' : 'false' })}>${icon(expanded ? 'chevronDown' : 'chevronRight', 'sm')}Details</button>`
       : '',
@@ -190,9 +253,105 @@ export function renderAttentionItem(item, ctx, ui) {
       ${comments}
       ${related.length ? `<div class="related-list">${related.map((entry, index) => relatedPrBlock(entry, ctx, index === 0 && jiraOnRelated ? jiraButton(task) : '')).join('')}</div>` : ''}
       <div class="item-actions">${actions}</div>
+      ${chatOpen ? cardChatPanel(item, thread, ui) : ''}
       ${expanded ? `<div class="detail">${task ? renderJiraDetail(task) : renderPrDetail(pr)}</div>` : ''}
     </div>
   </article>`;
+}
+
+function cardChatPanel(item, thread, ui = {}) {
+  const running = thread?.status === 'running';
+  const messages = thread?.messages || [];
+  const deepHint = ui.deepHint?.[item.key] || '';
+  const list = messages.length
+    ? messages.map((message) => {
+      const body = message.role === 'assistant'
+        ? `<div class="markdown">${renderMarkdown(message.text)}${running && message === messages[messages.length - 1] ? '<span class="cursor"></span>' : ''}</div>`
+        : `<p class="card-chat-user">${esc(message.text)}</p>`;
+      return `<div class="card-chat-msg ${message.role}">${body}</div>`;
+    }).join('')
+    : '<p class="muted small">Fast triage from card data (why flagged, whose turn, next step). For diffs and full Jira/PR details, copy a prompt for editor chat below.</p>';
+
+  let status = '';
+  if (thread?.status === 'error') {
+    status = `<div class="banner${thread.setupHint ? '' : ' error'} small">
+      ${icon(thread.setupHint ? 'info' : 'alert', 'sm')}
+      <div class="banner-body">${esc(thread.error || 'The AI request failed.')}</div>
+      ${thread.setupHint ? '<button type="button" class="ghost" data-action="openSetup" data-step="ai">Open Setup</button>' : ''}
+    </div>`;
+  }
+
+  const quickChips = !running
+    ? `<div class="card-chat-section">
+        <p class="muted small card-chat-label">Quick questions</p>
+        <div class="card-chat-chips">${quickChatSuggestions(item).map((text) => `<button type="button" class="ghost chip-btn"${attrs({
+          'data-action': 'chatSend',
+          'data-key': item.key,
+          'data-text': text,
+        })}>${esc(text)}</button>`).join('')}</div>
+      </div>`
+    : '';
+
+  const deepButtons = deepEditorActions(item).map((action) => `<button type="button" class="ghost chip-btn"${attrs({
+    'data-action': 'reviewInChat',
+    'data-key': item.key,
+    'data-template': action.template,
+    title: 'Copy a prompt for Copilot / Cursor / other editor chat (includes MCP how-to)',
+  })}>${icon('copy', 'sm')}${esc(action.label)}</button>`).join('');
+
+  const deepHintBanner = deepHint && !running
+    ? `<div class="banner small" role="status">
+        ${icon('info', 'sm')}
+        <div class="banner-body">
+          <strong>That needs live PR/Jira details.</strong>
+          Card AI can’t see the diff or full description. Copy a sample prompt and paste it into editor chat:
+          <p class="muted small">“${esc(deepHint)}”</p>
+        </div>
+      </div>`
+    : '';
+
+  const deepSection = !running
+    ? `<div class="card-chat-section">
+        <p class="muted small card-chat-label">Deep work — copy prompt for editor chat</p>
+        ${deepHintBanner}
+        <div class="card-chat-chips">${deepButtons}</div>
+      </div>`
+    : '';
+
+  const actions = running
+    ? `<button type="button" class="secondary" data-action="aiCancel">${icon('stop', 'sm')}Stop</button>`
+    : [
+      messages.length ? `<button type="button" class="ghost"${attrs({ 'data-action': 'chatClear', 'data-key': item.key })}>Clear</button>` : '',
+      deepHint
+        ? `<button type="button" class="ghost"${attrs({ 'data-action': 'dismissDeepHint', 'data-key': item.key })}>Dismiss hint</button>`
+        : '',
+    ].join('');
+
+  return `<div class="card-chat" aria-live="polite" aria-busy="${running ? 'true' : 'false'}">
+    <div class="card-chat-head">
+      <strong>Ask AI</strong>
+      ${thread?.modelName ? `<span class="muted small">${esc(thread.modelName)}</span>` : ''}
+      <span class="spacer"></span>
+      ${actions}
+    </div>
+    <div class="card-chat-messages">${list}</div>
+    ${status}
+    ${quickChips}
+    ${deepSection}
+    <div class="card-chat-compose">
+      <input type="text" class="card-chat-input"${attrs({
+        'data-chat-input': item.key,
+        placeholder: 'Quick triage question…',
+        'aria-label': 'Quick triage question about this card',
+        disabled: running ? true : null,
+      })}>
+      <button type="button"${attrs({
+        'data-action': 'chatSend',
+        'data-key': item.key,
+        disabled: running ? true : null,
+      })}>${icon('sparkle', 'sm')}Send</button>
+    </div>
+  </div>`;
 }
 
 /** One-line attention row (sidebar Home). */
@@ -225,7 +384,8 @@ export function renderPrItem(attentionItem, ui) {
   const pr = attentionItem.pr;
   const key = `pr:${pr.repoKey}#${pr.number}`;
   const expanded = !!ui.expanded[key];
-  const latest = (pr.comments || []).reduce((acc, comment) => (!acc || comment.createdAt > acc.createdAt ? comment : acc), null);
+  const comments = humanComments(pr.comments);
+  const latest = comments[0] || null;
   return `<article class="item${attentionItem.reasons.some((reason) => ['pr-changes-requested', 'pr-checks-failing', 'pr-merge-conflict', 'pr-stale'].includes(reason)) ? ' p1' : ''}"${attrs({ 'aria-label': `${pr.repoKey}#${pr.number} ${pr.title}` })}>
     <span class="item-source">${icon('pr')}</span>
     <div class="item-main">
@@ -238,7 +398,7 @@ export function renderPrItem(attentionItem, ui) {
       <div class="chips">${reasonChips(attentionItem.reasons)}${prStatusChips(pr, attentionItem.reasons)}</div>
       <div class="item-actions">
         ${prButton(pr)}
-        ${latest ? `<button type="button" class="ghost"${attrs({ 'data-action': 'toggleDetail', 'data-key': key, 'aria-expanded': expanded ? 'true' : 'false' })}>${icon(expanded ? 'chevronDown' : 'chevronRight', 'sm')}Comments (${pr.comments.length})</button>` : ''}
+        ${latest ? `<button type="button" class="ghost"${attrs({ 'data-action': 'toggleDetail', 'data-key': key, 'aria-expanded': expanded ? 'true' : 'false' })}>${icon(expanded ? 'chevronDown' : 'chevronRight', 'sm')}Comments (${comments.length})</button>` : ''}
       </div>
       ${expanded ? `<div class="detail">${renderPrDetail(pr)}</div>` : ''}
     </div>
@@ -311,8 +471,11 @@ function htmlToText(value) {
     .trim();
 }
 
-function isAutomation(author) {
-  return String(author ?? '').trim().toLowerCase() === 'automation for jira';
+function humanComments(comments) {
+  return (comments || [])
+    .filter((comment) => !isAutomationIdentity(comment.author))
+    .slice()
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
 }
 
 function commentBlock(author, createdAt, body) {
@@ -324,10 +487,7 @@ function commentBlock(author, createdAt, body) {
 }
 
 export function renderJiraDetail(task) {
-  const comments = (task.comments || [])
-    .filter((comment) => !isAutomation(comment.author))
-    .slice()
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+  const comments = humanComments(task.comments);
   const subtasks = task.subtasks || [];
   const linked = task.prLink?.kind === 'linked' ? task.prLink.pr : null;
   return `
@@ -347,7 +507,7 @@ export function renderJiraDetail(task) {
 }
 
 export function renderPrDetail(pr) {
-  const comments = (pr.comments || []).slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const comments = humanComments(pr.comments);
   const reviews = (pr.reviews || []).filter((review) => review.state !== 'PENDING');
   return `
     ${reviews.length ? `<section><h4>Reviews</h4><div class="chips">${reviews.map((review) =>

@@ -23,6 +23,12 @@ export class AiConfigStore {
     return this.read().model;
   }
 
+  /** Custom editor-chat hand-off template; empty means use the built-in default. */
+  getReviewPrompt(): string | undefined {
+    const value = vscode.workspace.getConfiguration(SECTION).get<string>('reviewPrompt', '').trim();
+    return value || undefined;
+  }
+
   async setProvider(provider: AiProvider): Promise<void> {
     await vscode.workspace.getConfiguration(SECTION).update('provider', provider, vscode.ConfigurationTarget.Global);
   }

@@ -7,6 +7,7 @@ DevMate can use either:
 
 - **Ask AI: What should I do next?** turns your inbox into a short, prioritized plan.
 - **Generate Standup Summary** writes Yesterday / Today / Blockers you can paste into chat.
-- **Explain** on any inbox item says why it's flagged and what to do.
+- **Ask AI** on any inbox card opens a chat for fast triage (why flagged, whose turn, next step). Answers use card data only.
+- **Deep work** chips (Review PR, Summarize changes, Plan ticket, …) copy a portable prompt for paste into Copilot, Cursor, or other editor chat — including how to use GitHub/Jira MCP for diffs and live ticket data.
 
 DevMate sends only titles, statuses, reasons and short comment excerpts — never tokens or credentials — and stores no model API keys of its own.
