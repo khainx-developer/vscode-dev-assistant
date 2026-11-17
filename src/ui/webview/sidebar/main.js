@@ -315,7 +315,8 @@ function jiraStepBody() {
 
   return `<div class="connected-row">
       <span class="state-dot ok"></span><span>Connected to <strong>${esc(host)}</strong></span>
-      <span class="spacer"></span>
+    </div>
+    <div class="step-actions">
       <button type="button" class="ghost" data-action="reconnectJira"${reconnecting ? ' disabled' : ''}>${reconnecting ? 'Waiting for browser…' : 'Reconnect'}</button>
       <button type="button" class="ghost" data-action="disconnectJira"${disconnecting || reconnecting ? ' disabled' : ''}>${disconnecting ? 'Disconnecting…' : 'Disconnect'}</button>
     </div>
