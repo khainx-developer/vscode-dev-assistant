@@ -743,7 +743,10 @@ suite('GitHubViewController', () => {
     await controller.handleMessage({ command: 'github.reconnect' });
 
     assert.deepStrictEqual(disconnectCalls, ['github']);
-    assert.deepStrictEqual(getSessionCalls, [{ createIfNone: true, opts: { forceNewSession: true } }]);
+    assert.deepStrictEqual(getSessionCalls, [
+      { createIfNone: true, opts: { forceNewSession: true } },
+      { createIfNone: false, opts: undefined },
+    ]);
     assert.ok(fetchCalls >= 1);
     assert.ok(posted.some((message) => {
       const operationMessage = message as {
@@ -760,7 +763,10 @@ suite('GitHubViewController', () => {
     disconnectCalls.length = 0;
     await controller.handleMessage({ command: 'github.signIn' });
     assert.deepStrictEqual(disconnectCalls, []);
-    assert.deepStrictEqual(getSessionCalls, [{ createIfNone: true, opts: undefined }]);
+    assert.deepStrictEqual(getSessionCalls, [
+      { createIfNone: true, opts: undefined },
+      { createIfNone: false, opts: undefined },
+    ]);
   });
 
   test('handleMessage_addRepo_publishesPendingAndResult', async () => {
