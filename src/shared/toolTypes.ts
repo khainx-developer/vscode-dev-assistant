@@ -1,4 +1,4 @@
-export type ToolCategory = 'generators' | 'encoders' | 'formatters' | 'converters';
+export type ToolCategory = 'code' | 'api' | 'debug';
 
 export interface ToolAction {
   id: string;
@@ -20,9 +20,10 @@ export interface ToolDefinition {
   run: (actionId: string, input: string) => string;
 }
 
+export const CATEGORY_ORDER: ToolCategory[] = ['code', 'api', 'debug'];
+
 export const CATEGORY_LABELS: Record<ToolCategory, string> = {
-  generators: 'Generators',
-  encoders: 'Encoders',
-  formatters: 'Formatters',
-  converters: 'Converters',
+  code: 'Code',
+  api: 'API',
+  debug: 'Debug',
 };

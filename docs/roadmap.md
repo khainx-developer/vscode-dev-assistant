@@ -72,15 +72,14 @@ issue links, Flagged field). Run the **Jira Field Spike** command
    spike output was not provided.
 
 ### Phase 2 — Workflow
-1. Copy ticket / PR as Markdown link, plus copy key and URL
-2. Fetch ticket description; show acceptance criteria
-3. Work item actions menu: copy branch name, commit message, PR description
+1. Fetch ticket description; show acceptance criteria *(needs the Jira spike first)*
+2. Work item actions menu: copy branch name, commit message, PR description
    (acceptance criteria as a checklist)
-4. Current-branch detection, read-only (approved)
+3. Current-branch detection, read-only (approved)
 
 ### Phase 3 — Tools foundation and core
-1. Tools tab: search and category grouping
-2. JWT decoder (with Base64URL)
+1. ✅ Tools tab: category grouping (Code / API / Debug; search already existed)
+2. ✅ JWT decoder (with Base64URL)
 3. Timestamp with time zones
 4. Hash
 5. JSON ↔ YAML
@@ -106,7 +105,7 @@ rules, AI analyze and summaries.
 ## Decisions needed
 
 - Does the Jira MCP adapter return the description and Flagged field? (Still
-  gates Phase 1 #3 Part 2 and Phase 2 #2.) Issue links are now requested for
+  gates Phase 1 #3 Part 2 and Phase 2 #1.) Issue links are now requested for
   `jira-blocked` (`issuelinks`); live shape vs assumed Blocks/`inwardIssue`
   payload still needs a site check. Flagged custom field id differs per site —
   spike not run.
@@ -115,7 +114,7 @@ rules, AI analyze and summaries.
 
 - Languages in use are **TypeScript and .NET (C#)**. JSON → Types generates both,
   and the stack trace parser starts with Node/JS/TypeScript and .NET.
-- **Read-only current-branch detection is approved** (Phase 2 #4), through the
+- **Read-only current-branch detection is approved** (Phase 2 #3), through the
   built-in `vscode.git` API. Branch name only, no writes. A missing git
   extension turns the feature off quietly. In multi-root workspaces use the repo
   of the active editor. The branch name stays local unless the user hands it off.
@@ -127,7 +126,7 @@ rules, AI analyze and summaries.
 REST client, OpenAPI viewer, mock server, generic notes / snippets / bookmarks /
 TODO scanning, text diff, line tools, color converter, Markdown table formatter,
 cron explainer, JSON ↔ CSV, UUID v7 / ULID, HTML entities, number base, Lorem
-ipsum, email integration, any git write, AI commit/PR text from a diff, a
+ipsum, copy ticket/PR as Markdown or Slack link, email integration, any git write, AI commit/PR text from a diff, a
 generic "analyze this error" chat.
 
 ## Docs to update when this ships

@@ -52,9 +52,10 @@ If editor models are empty, Setup can **suggest** Cursor Agent CLI; it never swi
 
 ### Text utilities
 
-Quick transforms from the **Tools** tab, the Command Palette, or the editor right-click menu under **DevMate Kit** (they work on every selection, or the current line):
+Quick transforms from the **Tools** tab (grouped as Code / API / Debug), the Command Palette, or the editor right-click menu under **DevMate Kit** (they work on every selection, or the current line):
 
 - Base64 encode / decode, URL encode / decode
+- JWT decoder (decode only — never verifies the signature)
 - Format JSON, escape text as a JSON string
 - Insert UUID, insert current Unix timestamp, convert a Unix timestamp to an ISO date
 - UPPERCASE, lowercase, camelCase, snake_case, kebab-case

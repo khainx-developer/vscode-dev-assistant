@@ -20,9 +20,10 @@ let inbox = null;
 let status = null;
 let ai = null;
 
-const ui = loadUiState({ tab: boot.initialTab || 'home', openStep: null, toolQuery: '' });
+const ui = loadUiState({ tab: boot.initialTab || 'home', openStep: null, toolQuery: '', toolCollapsed: {} });
 if (boot.initialTab && boot.initialTab !== 'home') ui.tab = boot.initialTab;
 if (boot.initialStep) ui.openStep = boot.initialStep;
+if (!ui.toolCollapsed || typeof ui.toolCollapsed !== 'object') ui.toolCollapsed = {};
 
 // Transient form feedback (not persisted).
 const errors = { repo: '', author: '', jiraSite: '', jiraUser: '', jiraTeam: '', jql: '' };
@@ -194,21 +195,53 @@ function homeTab() {
 
 // ── Tools ─────────────────────────────────────────────────────────────────
 
-function toolsTab() {
-  const query = ui.toolQuery.trim().toLowerCase();
-  const shown = TOOLS.filter((tool) => !query
+const TOOL_CATEGORY_ORDER = ['code', 'api', 'debug'];
+const TOOL_CATEGORY_LABELS = { code: 'Code', api: 'API', debug: 'Debug' };
+
+function toolMatches(tool, query) {
+  return !query
     || tool.title.toLowerCase().includes(query)
     || tool.description.toLowerCase().includes(query)
-    || (tool.tags || []).some((tag) => tag.includes(query)));
+    || (tool.tags || []).some((tag) => tag.includes(query));
+}
+
+function toolRow(tool) {
+  return `<div class="tool" role="button" tabindex="0"${attrs({ 'data-action': 'openTool', 'data-tool': tool.id, title: `Open ${tool.title}` })}>
+    <span class="tool-icon">${icon(tool.icon)}</span>
+    <span class="tool-body"><span class="tool-title">${esc(tool.title)}</span><span class="tool-desc">${esc(tool.description)}</span></span>
+  </div>`;
+}
+
+function toolsTab() {
+  const query = ui.toolQuery.trim().toLowerCase();
+  const searching = !!query;
+  const groups = TOOL_CATEGORY_ORDER.map((id) => {
+    const tools = TOOLS.filter((tool) => tool.category === id && toolMatches(tool, query));
+    return { id, label: TOOL_CATEGORY_LABELS[id], tools };
+  }).filter((group) => group.tools.length > 0);
+
+  const body = groups.length
+    ? groups.map((group) => {
+      const collapsed = searching ? false : !!ui.toolCollapsed[group.id];
+      return `<section class="tool-group${collapsed ? ' collapsed' : ''}">
+        <button type="button" class="tool-group-head"${attrs({
+          'data-action': 'toggleToolGroup',
+          'data-group': group.id,
+          'aria-expanded': collapsed ? 'false' : 'true',
+        })}>
+          <span class="tool-group-chevron">${icon(collapsed ? 'chevronRight' : 'chevronDown', 'sm')}</span>
+          <span class="tool-group-label">${esc(group.label)}</span>
+          <span class="tool-group-count muted small">${group.tools.length}</span>
+        </button>
+        ${collapsed ? '' : `<div class="tool-list">${group.tools.map(toolRow).join('')}</div>`}
+      </section>`;
+    }).join('')
+    : '<p class="muted small">No tools match.</p>';
+
   return `<div class="tools">
     <div class="search">${icon('search', 'sm')}<input type="text" id="toolQuery" data-keep-value placeholder="Filter tools" aria-label="Filter tools" value="${esc(ui.toolQuery)}"></div>
-    <div class="tool-list">
-      ${shown.map((tool) => `<div class="tool" role="button" tabindex="0"${attrs({ 'data-action': 'openTool', 'data-tool': tool.id, title: `Open ${tool.title}` })}>
-        <span class="tool-icon">${icon(tool.icon)}</span>
-        <span class="tool-body"><span class="tool-title">${esc(tool.title)}</span><span class="tool-desc">${esc(tool.description)}</span></span>
-      </div>`).join('') || '<p class="muted small">No tools match.</p>'}
-    </div>
-    <p class="muted small">Tip: select text in the editor and right-click → <strong>DevMate Kit</strong> to transform it in place.</p>
+    <div class="tool-groups">${body}</div>
+    <p class="muted small footnote">Tip: select text in the editor and right-click → <strong>DevMate Kit</strong> to transform it in place.</p>
   </div>`;
 }
 
@@ -525,6 +558,13 @@ delegate(app, {
   openDashboard: () => post({ command: 'nav.openDashboard' }),
   openSettings: () => post({ command: 'nav.openSettings' }),
   openTool: (el) => post({ command: 'nav.openTool', toolId: el.getAttribute('data-tool') }),
+  toggleToolGroup: (el) => {
+    const id = el.getAttribute('data-group');
+    if (!id) return;
+    ui.toolCollapsed = { ...ui.toolCollapsed, [id]: !ui.toolCollapsed[id] };
+    persist();
+    render();
+  },
   openPr: (el) => post({ command: 'github.openPr', repoKey: el.getAttribute('data-repo'), number: Number(el.getAttribute('data-number')), url: el.getAttribute('data-url') }),
   openJira: (el) => post({ command: 'jira.openTask', url: el.getAttribute('data-url') }),
   aiWhatNext: () => post({ command: 'ai.whatNext' }),
