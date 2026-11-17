@@ -316,7 +316,11 @@ export class DashboardSession implements vscode.Disposable {
   private recompute(): void {
     const now = Date.now();
     if (this.githubState && this.jiraState) {
-      this.allItems = buildAttentionInbox(this.jiraState, this.githubState, now);
+      const jiraCfg = vscode.workspace.getConfiguration('devMateKit.jira');
+      this.allItems = buildAttentionInbox(this.jiraState, this.githubState, now, {
+        noPrStatuses: jiraCfg.get<string[]>('noPrStatuses', ['In Progress']),
+        noPrDays: jiraCfg.get<number>('noPrDays', 3),
+      });
       const { active, snoozed } = partitionSnoozed(this.allItems, this.services.attentionPrefs.getSnoozes(now), now);
       this.inboxState = {
         items: active,

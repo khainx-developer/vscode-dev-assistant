@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### New
+- **Tickets without a linked PR** (`jira-no-pr`) — in-progress Jira tickets with no matched PR and no activity for N days appear in Attention Inbox as Waiting on you (`devMateKit.jira.noPrStatuses`, `devMateKit.jira.noPrDays`).
 - **Reconnect** in Setup for GitHub and Jira — force MCP sign-in again when tokens expire or auth fails. Clears stored MCP credentials and runs OAuth again; Jira keeps your site URL and settings. Disconnect remains available for Jira.
 
 ### Improved
