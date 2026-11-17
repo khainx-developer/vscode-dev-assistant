@@ -1,8 +1,8 @@
 const MAX_DATE_MS = 8.64e15;
 const NUMERIC_RE = /^-?\d+(\.\d+)?$/;
-/** ISO-like: YYYY-MM-DD, optional time (T or space), optional Z/offset. */
+/** ISO-like: YYYY-MM-DD, optional time (T or space), optional Z/offset (space before offset OK). */
 const ISO_DATE_RE =
-  /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/i;
+  /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:\s*(?:Z|[+-]\d{2}:?\d{2}))?)?$/i;
 
 export function currentUnixTimestamp(): string {
   return String(Math.floor(Date.now() / 1000));
@@ -85,13 +85,20 @@ function splitZones(part: string): string[] {
     .filter(Boolean);
 }
 
-/** For `now`, a bare IANA zone (whole input) is treated as an extra zone. */
+/**
+ * For `now`, when there is no `in` clause and the value is not digits-only,
+ * treat the whole input as a comma-separated IANA zone list if every part is valid.
+ */
 function resolveNowZones(value: string, zones: string[]): string[] {
   if (zones.length > 0 || !value) {
     return zones;
   }
-  if (isValidZone(value)) {
-    return [value];
+  if (NUMERIC_RE.test(value)) {
+    return zones;
+  }
+  const parts = splitZones(value);
+  if (parts.length > 0 && parts.every(isValidZone)) {
+    return parts;
   }
   return zones;
 }
@@ -147,11 +154,13 @@ function parseDateString(value: string): {
 } {
   if (!ISO_DATE_RE.test(value)) {
     throw new Error(
-      'Not a valid Unix timestamp or ISO 8601 date. Use forms like 2026-11-17, 2026-11-17T10:00:00, or 2026-11-17 10:00:00Z.',
+      'Use a Unix timestamp or an ISO 8601 date, e.g. 2026-11-17T10:00:00Z.',
     );
   }
-  // Normalize space-separated date+time to ISO T form before parsing.
-  const normalized = value.replace(/^(\d{4}-\d{2}-\d{2}) /, '$1T');
+  // Normalize space-separated date+time (and optional space before offset) to ISO form.
+  const normalized = value
+    .replace(/^(\d{4}-\d{2}-\d{2}) /, '$1T')
+    .replace(/\s+(Z|[+-]\d{2}:?\d{2})$/i, '$1');
   const assumedUtc = !hasExplicitOffsetOrZ(normalized);
   let toParse = normalized;
   if (assumedUtc) {
@@ -246,17 +255,17 @@ function formatInZone(ms: number, timeZone: string): string {
   const parts = dtf.formatToParts(new Date(ms));
   const get = (type: Intl.DateTimeFormatPartTypes): string =>
     parts.find((p) => p.type === type)?.value ?? '';
-  const offset = normalizeOffset(get('timeZoneName'));
+  const offset = normalizeOffset(get('timeZoneName'), timeZone);
   return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')} ${offset}  ${timeZone}`;
 }
 
-function normalizeOffset(raw: string): string {
+function normalizeOffset(raw: string, zone: string): string {
   if (!raw || raw === 'UTC' || raw === 'GMT') {
     return '+00:00';
   }
   const match = /GMT([+-])(\d{1,2})(?::?(\d{2}))?/.exec(raw);
   if (!match) {
-    throw new Error(`Unexpected time zone offset format: ${raw}`);
+    throw new Error(`Could not format offset for ${zone}.`);
   }
   const sign = match[1];
   const hours = match[2].padStart(2, '0');

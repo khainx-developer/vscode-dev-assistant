@@ -139,17 +139,30 @@ suite('describeTimestamp', () => {
     assert.ok(out.includes('1794909600 (seconds)'));
   });
 
+  test('convert_spaceSeparatedDateWithOffset', () => {
+    const out = describeTimestamp('2026-11-17 10:00:00 +07:00', 'convert', NOW, LOCAL);
+    assert.ok(!out.includes('Interpreted as UTC'));
+    assert.ok(out.includes('2026-11-17T03:00:00.000Z'));
+  });
+
+  test('convert_spaceSeparatedDateWithZ', () => {
+    const out = describeTimestamp('2026-11-17 10:00:00Z', 'convert', NOW, LOCAL);
+    assert.ok(!out.includes('Interpreted as UTC'));
+    assert.ok(out.includes('2026-11-17T10:00:00.000Z'));
+    assert.ok(out.includes('1794909600 (seconds)'));
+  });
+
   test('convert_nonIsoDateString_rejected', () => {
-    assert.throws(
-      () => describeTimestamp('Nov 17 2026 10:00', 'convert', NOW, LOCAL),
-      /ISO 8601/,
-    );
+    const msg = /Use a Unix timestamp or an ISO 8601 date, e\.g\. 2026-11-17T10:00:00Z\./;
+    assert.throws(() => describeTimestamp('Nov 17 2026 10:00', 'convert', NOW, LOCAL), msg);
+    assert.throws(() => describeTimestamp('tomorrow', 'convert', NOW, LOCAL), msg);
+    assert.throws(() => describeTimestamp('17/11/2026', 'convert', NOW, LOCAL), msg);
   });
 
   test('convert_invalidValue_throws', () => {
     assert.throws(
       () => describeTimestamp('not-a-timestamp', 'convert', NOW, LOCAL),
-      /Not a valid Unix timestamp or ISO 8601 date/,
+      /Use a Unix timestamp or an ISO 8601 date/,
     );
   });
 
@@ -174,6 +187,21 @@ suite('describeTimestamp', () => {
     assert.ok(out.includes('Asia/Tokyo'));
     assert.ok(out.includes('2026-11-17T10:00:00.000Z'));
     assert.ok(out.includes('+09:00  Asia/Tokyo'));
+  });
+
+  test('now_bareCommaSeparatedZones_accepted', () => {
+    const out = describeTimestamp('Asia/Tokyo, Europe/London', 'now', NOW, LOCAL);
+    assert.ok(out.includes('Asia/Tokyo'));
+    assert.ok(out.includes('Europe/London'));
+    assert.ok(out.includes('2026-11-17T10:00:00.000Z'));
+    assert.ok(out.includes('+09:00  Asia/Tokyo'));
+  });
+
+  test('convert_bareCommaSeparatedZones_notTreatedAsZones', () => {
+    assert.throws(
+      () => describeTimestamp('Asia/Tokyo, Europe/London', 'convert', NOW, LOCAL),
+      /Use a Unix timestamp or an ISO 8601 date/,
+    );
   });
 
   test('zoneOrder_utcThenLocalThenRequested', () => {

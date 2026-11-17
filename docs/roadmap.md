@@ -86,7 +86,7 @@ issue links, Flagged field). Run the **Jira Field Spike** command
 6. JSON → Types (TypeScript and C#)
 7. *Run Tool…* Quick Pick command
 8. Recent / pinned tools
-9. ✅ Remove duplicate case transforms (VS Code built-ins: upper/lower long-standing; snake 1.53; kebab 1.69; camel 1.75 — all before `engines.vscode` ^1.90.0)
+9. ✅ Remove duplicate case transforms (VS Code Transform to … commands cover upper/lower, snake, kebab, and camel — all before `engines.vscode` ^1.90.0)
 
 ### Phase 4 — Debug
 1. Redact secrets
