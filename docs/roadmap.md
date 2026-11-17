@@ -80,7 +80,7 @@ issue links, Flagged field). Run the **Jira Field Spike** command
 ### Phase 3 — Tools foundation and core
 1. ✅ Tools tab: category grouping (Code / API / Debug; search already existed)
 2. ✅ JWT decoder (with Base64URL)
-3. Timestamp with time zones
+3. ✅ Timestamp with time zones
 4. Hash
 5. JSON ↔ YAML
 6. JSON → Types (TypeScript and C#)
