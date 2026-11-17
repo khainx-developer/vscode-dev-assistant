@@ -196,6 +196,19 @@ function quote(author, body, prefix = '') {
   return `<div class="item-quote"><strong>${esc(prefix)}${esc(author)}:</strong> ${esc(text.length > 220 ? `${text.slice(0, 220)}…` : text)}</div>`;
 }
 
+/** Small linked keys for issues blocking this ticket (jira-blocked). */
+function blockedByKeys(task) {
+  const blockers = task?.blockedBy || [];
+  if (!blockers.length) return '';
+  const links = blockers.map((blocker) => `<button type="button" class="ghost key"${attrs({
+    'data-action': 'openJira',
+    'data-url': blocker.url,
+    'aria-label': `Open blocking issue ${blocker.key} in Jira`,
+    title: blocker.summary || blocker.key,
+  })}>${esc(blocker.key)}</button>`).join(', ');
+  return `<div class="item-quote muted small">Blocked by ${links}</div>`;
+}
+
 function snoozeControl(item, ui) {
   const key = snoozeKeyOf(item);
   const open = ui.menuKey === key;
@@ -269,6 +282,7 @@ export function renderAttentionItem(item, ctx, ui) {
     jiraCardComment ? quote(jiraCardComment.comment.authorIdentity, jiraCardComment.comment.bodyText, jiraCardComment.prefix) : '',
     prCardComment ? quote(prCardComment.authorIdentity, prCardComment.bodyText) : '',
   ].join('');
+  const blockedByHtml = task ? blockedByKeys(task) : '';
 
   // Keep Open PR + Open in Jira on one row: when PRs are in related blocks, put the
   // Jira button beside the first Open PR instead of on the secondary actions row.
@@ -304,6 +318,7 @@ export function renderAttentionItem(item, ctx, ui) {
       </div>
       <div class="item-meta">${meta}</div>
       ${chips ? `<div class="chips">${chips}</div>` : ''}
+      ${blockedByHtml}
       ${comments}
       ${related.length ? `<div class="related-list">${related.map((entry, index) => relatedPrBlock(entry, ctx, index === 0 && jiraOnRelated ? jiraButton(task) : '')).join('')}</div>` : ''}
       <div class="item-actions">${actions}</div>

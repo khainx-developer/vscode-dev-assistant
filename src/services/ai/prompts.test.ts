@@ -492,6 +492,26 @@ suite('AI prompts', () => {
     assert.doesNotMatch(unavailable, /Additional comment:/);
   });
 
+  test('explain_includesBlockedByKeys_onSingleItemPath', () => {
+    const blocked = item(7, {
+      pr: undefined,
+      jiraTask: task({
+        blockedBy: [
+          { key: 'WEB-1', summary: 'Blocker one', status: 'In Progress', url: 'https://acme.atlassian.net/browse/WEB-1' },
+          { key: 'WEB-2', summary: 'Blocker two', status: 'Open', url: 'https://acme.atlassian.net/browse/WEB-2' },
+        ],
+      }),
+      reasons: ['jira-blocked'],
+      priority: 3,
+    });
+    const prompt = buildExplainItemPrompt(blocked, NOW, ME)[0].content;
+    assert.match(prompt, /Blocked by: WEB-1, WEB-2/);
+    assert.match(prompt, /Blocked:/);
+
+    const multi = buildInboxContext([blocked], NOW);
+    assert.doesNotMatch(multi, /Blocked by:/);
+  });
+
   test('detailedDescriptor_respectsExtraCommentCap', () => {
     const prompt = buildExplainItemPrompt(richPrItem(), NOW, ME)[0].content;
     const additional = [...prompt.matchAll(/Additional comment: <comment /g)];

@@ -2,7 +2,7 @@
   "name": "devmate-kit",
   "displayName": "DevMate Kit",
   "description": "Your daily work radar: GitHub pull requests and Jira tickets that need your attention, right inside VS Code — with optional AI summaries and handy text utilities.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "khainx-developer",
   "license": "MIT",
   "icon": "media/dev-assistant-activity-icon.png",

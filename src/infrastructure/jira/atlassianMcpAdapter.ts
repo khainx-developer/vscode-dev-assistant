@@ -1,6 +1,12 @@
 import type { McpConnectionService } from '../mcp/connectionService';
 import type { McpToolError } from '../../shared/mcpTypes';
-import type { JiraCommentSummary, JiraCommentVisibility, JiraSubtask, JiraTask } from '../../shared/jiraTypes';
+import type {
+  JiraBlockedByIssue,
+  JiraCommentSummary,
+  JiraCommentVisibility,
+  JiraSubtask,
+  JiraTask,
+} from '../../shared/jiraTypes';
 
 type AccessibleResource = { cloudId: string; url: string };
 
@@ -19,6 +25,20 @@ type SearchJqlSubtask = {
   };
 };
 
+type SearchJqlLinkedIssue = {
+  key?: string;
+  fields?: {
+    summary?: string;
+    status?: JiraStatusPayload;
+  };
+};
+
+type SearchJqlIssueLink = {
+  type?: { name?: string; inward?: string; outward?: string };
+  inwardIssue?: SearchJqlLinkedIssue;
+  outwardIssue?: SearchJqlLinkedIssue;
+};
+
 type SearchJqlIssue = {
   key: string;
   fields: {
@@ -28,6 +48,7 @@ type SearchJqlIssue = {
     duedate?: string | null;
     updated: string;
     subtasks?: SearchJqlSubtask[];
+    issuelinks?: SearchJqlIssueLink[];
   };
 };
 
@@ -213,9 +234,9 @@ function mapSubtask(siteUrl: string, subtask: SearchJqlSubtask): JiraSubtask {
 }
 
 function mapStatusCategory(
-  status: JiraStatusPayload,
+  status: JiraStatusPayload | undefined,
 ): JiraTask['statusCategory'] {
-  const category = status.statusCategory;
+  const category = status?.statusCategory;
   if (!category || typeof category !== 'object') {
     return undefined;
   }
@@ -227,8 +248,50 @@ function mapStatusCategory(
   return { key, name };
 }
 
+/**
+ * True for the inward ("is blocked by") side of a Blocks-style link.
+ * Matches via type.inward / type.name wording; does not rely on one exact string.
+ */
+function isBlockedByLink(link: SearchJqlIssueLink): boolean {
+  if (!link.inwardIssue) return false;
+  const inward = typeof link.type?.inward === 'string' ? link.type.inward.trim().toLowerCase() : '';
+  const name = typeof link.type?.name === 'string' ? link.type.name.trim().toLowerCase() : '';
+  if (inward.includes('blocked by')) return true;
+  if (name === 'blocks' || name === 'block') return true;
+  return false;
+}
+
+function mapBlockedByIssue(siteUrl: string, linked: SearchJqlLinkedIssue): JiraBlockedByIssue | null {
+  if (typeof linked.key !== 'string' || !linked.key.trim()) return null;
+  // MCP may trim linked-issue fields; keep the key so the ticket still flags.
+  const summary = typeof linked.fields?.summary === 'string' ? linked.fields.summary : '';
+  const statusName = typeof linked.fields?.status?.name === 'string' ? linked.fields.status.name : '';
+  const statusCategory = mapStatusCategory(linked.fields?.status);
+  return {
+    key: linked.key,
+    summary,
+    status: statusName,
+    ...(statusCategory ? { statusCategory } : {}),
+    url: `${siteUrl}/browse/${linked.key}`,
+  };
+}
+
+/** Missing or malformed issuelinks → empty list; never throws. */
+function mapBlockedBy(siteUrl: string, issuelinks: SearchJqlIssueLink[] | undefined): JiraBlockedByIssue[] {
+  if (!Array.isArray(issuelinks)) return [];
+  const blockers: JiraBlockedByIssue[] = [];
+  for (const link of issuelinks) {
+    if (!link || typeof link !== 'object') continue;
+    if (!isBlockedByLink(link) || !link.inwardIssue) continue;
+    const mapped = mapBlockedByIssue(siteUrl, link.inwardIssue);
+    if (mapped) blockers.push(mapped);
+  }
+  return blockers;
+}
+
 function mapIssue(siteUrl: string, issue: SearchJqlIssue): JiraTask {
   const statusCategory = mapStatusCategory(issue.fields.status);
+  const blockedBy = mapBlockedBy(siteUrl, issue.fields.issuelinks);
   return {
     key: issue.key,
     summary: issue.fields.summary,
@@ -238,6 +301,7 @@ function mapIssue(siteUrl: string, issue: SearchJqlIssue): JiraTask {
     dueDate: issue.fields.duedate ?? null,
     updatedAt: issue.fields.updated,
     subtasks: (issue.fields.subtasks ?? []).map((subtask) => mapSubtask(siteUrl, subtask)),
+    ...(blockedBy.length > 0 ? { blockedBy } : {}),
     url: `${siteUrl}/browse/${issue.key}`,
     prLink: { kind: 'not-available' },
   };
@@ -293,7 +357,7 @@ export const AtlassianMcpAdapter = {
         cloudId: siteId,
         jql,
         maxResults: 50,
-        fields: ['summary', 'status', 'assignee', 'duedate', 'updated', 'subtasks'],
+        fields: ['summary', 'status', 'assignee', 'duedate', 'updated', 'subtasks', 'issuelinks'],
       }),
     );
 

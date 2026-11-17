@@ -957,4 +957,111 @@ suite('buildAttentionInbox', () => {
     assert.deepStrictEqual(inbox[0].reasons, ['jira-unread-comment']);
     assert.strictEqual(inbox[0].reasons.includes('jira-awaiting-reply'), false);
   });
+
+  test('buildAttentionInbox_flagsJiraBlocked_whenAssignedWithOpenBlocker', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'In Progress',
+        blockedBy: [{
+          key: 'APP-9',
+          summary: 'Blocker',
+          status: 'In Progress',
+          statusCategory: { key: 'indeterminate', name: 'In Progress' },
+          url: 'https://example.atlassian.net/browse/APP-9',
+        }],
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox.map((item) => item.reasons), [['jira-blocked']]);
+    assert.strictEqual(inbox[0].priority, 3);
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraBlocked_whenBlockerDone', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'In Progress',
+        blockedBy: [{
+          key: 'APP-9',
+          summary: 'Finished blocker',
+          status: 'Done',
+          statusCategory: { key: 'done', name: 'Done' },
+          url: 'https://example.atlassian.net/browse/APP-9',
+        }],
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraBlocked_whenNotAssigned', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState(
+        [makeTask({
+          assignee: 'teammate',
+          status: 'In Progress',
+          blockedBy: [{
+            key: 'APP-9',
+            summary: 'Blocker',
+            status: 'In Progress',
+            url: 'https://example.atlassian.net/browse/APP-9',
+          }],
+        })],
+        ['teammate'],
+      ),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraBlocked_whenTicketDone', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'Done',
+        statusCategory: { key: 'done', name: 'Done' },
+        blockedBy: [{
+          key: 'APP-9',
+          summary: 'Blocker',
+          status: 'In Progress',
+          url: 'https://example.atlassian.net/browse/APP-9',
+        }],
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraBlocked_whenCurrentUserUnset', () => {
+    const jiraState = makeJiraState([makeTask({
+      status: 'In Progress',
+      blockedBy: [{
+        key: 'APP-9',
+        summary: 'Blocker',
+        status: 'In Progress',
+        url: 'https://example.atlassian.net/browse/APP-9',
+      }],
+    })]);
+    jiraState.currentUser = null;
+
+    const inbox = buildAttentionInbox(jiraState, makeGitHubState(), NOW);
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraBlocked_whenNoLinks', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({ status: 'In Progress', blockedBy: [] })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox, []);
+  });
 });

@@ -17,6 +17,7 @@ export type AttentionReason =
   | 'jira-due-tomorrow'
   | 'jira-unread-comment'
   | 'jira-awaiting-reply'
+  | 'jira-blocked'
   | 'jira-no-pr'
   | 'pr-linked'
   | 'pr-changes-requested'
@@ -93,21 +94,31 @@ const JIRA_AWAITING_REPLY_SKIP_STATUSES = [
   'released',
 ];
 
-function isDoneStatusCategory(task: JiraTask): boolean | undefined {
-  const key = task.statusCategory?.key?.trim().toLowerCase();
-  const name = task.statusCategory?.name?.trim().toLowerCase();
+type JiraStatusFields = {
+  status: string;
+  statusCategory?: JiraTask['statusCategory'];
+};
+
+function isDoneStatusCategory(issue: JiraStatusFields): boolean | undefined {
+  const key = issue.statusCategory?.key?.trim().toLowerCase();
+  const name = issue.statusCategory?.name?.trim().toLowerCase();
   if (!key && !name) {
     return undefined;
   }
   return key === 'done' || name === 'done';
 }
 
-function isJiraAwaitingReplySkippedStatus(task: JiraTask): boolean {
-  const categoryDone = isDoneStatusCategory(task);
+/** Done via statusCategory when present; else terminal status-name list (awaiting-reply / blocked). */
+function isJiraDoneStatus(issue: JiraStatusFields): boolean {
+  const categoryDone = isDoneStatusCategory(issue);
   if (categoryDone !== undefined) {
     return categoryDone;
   }
-  return statusMatchesNoPrList(task.status, JIRA_AWAITING_REPLY_SKIP_STATUSES);
+  return statusMatchesNoPrList(issue.status, JIRA_AWAITING_REPLY_SKIP_STATUSES);
+}
+
+function hasOpenBlocker(task: JiraTask): boolean {
+  return (task.blockedBy ?? []).some((blocker) => !isJiraDoneStatus(blocker));
 }
 
 function isStale(updatedAt: string | undefined, now: number, days: number = JIRA_STALE_WAITING_DAYS): boolean {
@@ -249,6 +260,7 @@ function getPriority(reasons: AttentionReason[]): AttentionInboxItem['priority']
     reason === 'jira-review'
     || reason === 'jira-no-pr'
     || reason === 'jira-awaiting-reply'
+    || reason === 'jira-blocked'
     || reason === 'pr-awaiting-reply'
     || reason === 'pr-waiting-review'
     || reason === 'pr-needs-my-review')) {
@@ -359,10 +371,17 @@ export function buildAttentionInbox(
     if ((task.commentAttention?.unreadCount ?? 0) > 0) jiraReasons.push('jira-unread-comment');
     if (
       isAssignedToCurrentUser(task, jiraState)
-      && !isJiraAwaitingReplySkippedStatus(task)
+      && !isJiraDoneStatus(task)
       && countsAsAwaitingReply(task.commentAttention, ignoreShortReplies)
     ) {
       jiraReasons.push('jira-awaiting-reply');
+    }
+    if (
+      isAssignedToCurrentUser(task, jiraState)
+      && !isJiraDoneStatus(task)
+      && hasOpenBlocker(task)
+    ) {
+      jiraReasons.push('jira-blocked');
     }
     if (dueInfo) jiraReasons.push(dueInfo.reason);
     if (jiraReasons.includes('jira-review') && isStale(task.updatedAt, now)) {
