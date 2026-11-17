@@ -27,9 +27,9 @@ export type AttentionReason =
   | 'jira-stale';
 
 export interface AttentionInboxOptions {
-  /** Jira statuses that count as in-progress for the no-PR rule. Default: `["In Progress"]`. */
+  /** Jira statuses that count as in-progress for the no-open-PR rule (case-insensitive). Default: `["In Progress"]`. */
   noPrStatuses?: string[];
-  /** Days without `updatedAt` activity before flagging no-PR. Default: 3. */
+  /** Days without `updatedAt` activity before flagging no open PR. Default: 3. */
   noPrDays?: number;
 }
 
@@ -63,6 +63,11 @@ interface DueDateInfo {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const JIRA_STALE_WAITING_DAYS = 3;
+
+function statusMatchesNoPrList(status: string, statuses: string[]): boolean {
+  const normalized = status.trim().toLowerCase();
+  return statuses.some((candidate) => candidate.trim().toLowerCase() === normalized);
+}
 
 function isStale(updatedAt: string | undefined, now: number, days: number = JIRA_STALE_WAITING_DAYS): boolean {
   if (!updatedAt) return false;
@@ -304,7 +309,7 @@ export function buildAttentionInbox(
     if (
       task.prLink.kind === 'no-match'
       && relatedPRs.length === 0
-      && noPrStatuses.includes(task.status)
+      && statusMatchesNoPrList(task.status, noPrStatuses)
       && isStale(task.updatedAt, now, noPrDays)
     ) {
       reasons.push('jira-no-pr');

@@ -555,6 +555,21 @@ suite('buildAttentionInbox', () => {
     assert.deepStrictEqual(inbox, []);
   });
 
+  test('buildAttentionInbox_flagsJiraNoPr_whenStatusCasingDiffers', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'In progress',
+        updatedAt: ACTIVITY_STALE,
+        prLink: { kind: 'no-match' },
+      })]),
+      makeGitHubState(),
+      NOW,
+      { noPrStatuses: ['  IN PROGRESS  '] },
+    );
+
+    assert.deepStrictEqual(inbox.map((item) => item.reasons), [['jira-no-pr']]);
+  });
+
   test('buildAttentionInbox_doesNotFlagJiraNoPr_whenPrLinkedByPrLink', () => {
     const pr = makePR({ number: 30, title: 'Unrelated title' });
     const inbox = buildAttentionInbox(

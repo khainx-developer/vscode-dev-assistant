@@ -20,7 +20,7 @@ Everything that needs you, highest priority first:
 |---|---|
 | **Urgent** (red) | Failing checks, changes requested, merge conflicts, overdue tickets, PRs or tickets stale for 3+ days |
 | **New activity** (blue) | Comments on your PRs or tickets you haven't opened yet |
-| **Waiting on you** (orange) | Reviews requested from you, teammates' PRs waiting for review, tickets in Review or due today/tomorrow, in-progress tickets with no linked PR |
+| **Waiting on you** (orange) | Reviews requested from you, teammates' PRs waiting for review, tickets in Review or due today/tomorrow, in-progress tickets with no open PR |
 
 Jira tickets are grouped with the pull requests that reference them (ticket key in the PR **title** or **branch name**), so a ticket and its PR show up as one item. Every item has one-click **Open PR**, **Open in Jira** and **Open comment** actions, expandable details (comments, subtasks, linked PR), and **Snooze** (1 hour, later today, or tomorrow morning) for things you can't act on yet.
 
@@ -91,8 +91,8 @@ There's also a guided walkthrough: **Help → Welcome → Get started with DevMa
 | `devMateKit.jira.currentUser` | `""` | Your Jira display name, exactly as shown in Assignee |
 | `devMateKit.jira.teamMembers` | `[]` | Teammates' Jira display names |
 | `devMateKit.jira.savedQueries` | `[]` | JQL queries that choose which tickets to fetch |
-| `devMateKit.jira.noPrStatuses` | `["In Progress"]` | Statuses that count as in-progress for the no-linked-PR inbox flag |
-| `devMateKit.jira.noPrDays` | `3` | Days without Jira activity before flagging an in-progress ticket with no PR |
+| `devMateKit.jira.noPrStatuses` | `["In Progress"]` | Statuses that count as in-progress for the no-open-PR inbox flag (case-insensitive) |
+| `devMateKit.jira.noPrDays` | `3` | Days without Jira activity before flagging an in-progress ticket with no open PR |
 | `devMateKit.ai.provider` | `none` | `vscodeLm` (editor LM API), `cursorCli` (Cursor Agent CLI ask/print), or `none` |
 | `devMateKit.ai.model` | `""` | Model id; for `vscodeLm` empty picks first Copilot model; for `cursorCli` maps to `--model` |
 | `devMateKit.monitoring.enabled` | `true` | Keep watching GitHub and Jira; turn off to pause all monitoring network activity |

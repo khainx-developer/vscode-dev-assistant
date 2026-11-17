@@ -139,13 +139,13 @@
           "default": [
             "In Progress"
           ],
-          "description": "Jira statuses that count as in-progress for the \"no linked PR\" Attention Inbox flag."
+          "description": "Jira statuses that count as in-progress for the \"no open PR\" Attention Inbox flag (case-insensitive)."
         },
         "devMateKit.jira.noPrDays": {
           "type": "number",
           "default": 3,
           "minimum": 1,
-          "description": "Days without Jira activity before flagging an in-progress ticket that has no linked pull request."
+          "description": "Days without Jira activity before flagging an in-progress ticket that has no open pull request."
         },
         "devMateKit.monitoring.enabled": {
           "type": "boolean",

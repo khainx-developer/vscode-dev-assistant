@@ -10,7 +10,7 @@ Surfaces: card actions, Home, status bar. See `roadmap.md`.
    bar. Manual first; automatic once current-branch detection exists
    (`workflow-backlog.md` #4).
 2. **Follow-up list** — personal checklist built from comments awaiting your reply
-   (`dashboard-backlog.md` #2). Not a general TODO scanner.
+   (`dashboard-backlog.md` #1). Not a general TODO scanner.
 3. **Per-ticket notes** — a short private note on a card, stored locally.
 4. **Worklog text helper** — copy a time-entry line for the ticket you worked on.
    Copy only; no Jira write.

@@ -124,6 +124,12 @@ export class DashboardSession implements vscode.Disposable {
         if (event.affectsConfiguration('devMateKit.ai') || event.affectsConfiguration(NOTIFICATIONS_SETTING)) {
           this.publishStatus();
         }
+        if (
+          event.affectsConfiguration('devMateKit.jira.noPrStatuses')
+          || event.affectsConfiguration('devMateKit.jira.noPrDays')
+        ) {
+          this.recompute();
+        }
       }),
     );
   }

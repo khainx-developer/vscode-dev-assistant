@@ -27,7 +27,7 @@ export const REASON_LABELS: Record<AttentionReason, ReasonLabel> = {
   'jira-due-today': { label: 'Due today', tone: 'warning', explanation: 'The ticket is due today.' },
   'jira-due-tomorrow': { label: 'Due tomorrow', tone: 'warning', explanation: 'The ticket is due tomorrow.' },
   'jira-unread-comment': { label: 'Unread comment', tone: 'info', explanation: 'There are new Jira comments you have not opened yet.' },
-  'jira-no-pr': { label: 'No PR linked', tone: 'warning', explanation: 'In progress with no pull request linked yet.' },
+  'jira-no-pr': { label: 'No open PR', tone: 'warning', explanation: 'In progress with no open pull request linked.' },
   'jira-stale': { label: 'Stale', tone: 'danger', explanation: 'In review for 3 or more days with no movement.' },
 };
 

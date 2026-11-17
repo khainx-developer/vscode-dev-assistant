@@ -53,10 +53,15 @@ description); the `ui/` layer only renders.
 ## Phases (in order)
 
 ### Phase 1 — Dashboard gaps
-Prerequisite: check what the Jira MCP adapter returns (description, issue links,
-Flagged field).
-1. Tickets without a linked PR (`jira-no-pr`)
-2. Comments awaiting your reply
+Prerequisite for #3 only: check what the Jira MCP adapter returns (description,
+issue links, Flagged field). Run the **Jira Field Spike** command
+(`src/app/jiraFieldSpike.ts`, committed) and record the answer here.
+1. ✅ Tickets without an open PR (`jira-no-pr`) — **done**. Label "No open PR";
+   settings `devMateKit.jira.noPrStatuses` (case-insensitive) and
+   `devMateKit.jira.noPrDays`. Follow-ups: per-label opt-out (needs the `labels`
+   field); tickets still In Progress after their PR merged are flagged too, since
+   only open PRs are fetched.
+2. Comments awaiting your reply — **next**
 3. Jira blockers
 
 ### Phase 2 — Workflow
@@ -94,7 +99,7 @@ rules, AI analyze and summaries.
 ## Decisions needed
 
 - Does the Jira MCP adapter return the description, issue links and Flagged
-  field? (Gates Phase 1 #3 and Phase 2 #2.) The adapter currently requests only
+  field? (Gates Phase 1 #3 and Phase 2 #2; Phase 1 #1 did not need it.) The adapter currently requests only
   `summary, status, assignee, duedate, updated, subtasks`; a spike against a
   real site is needed.
 
@@ -119,6 +124,7 @@ generic "analyze this error" chat.
 
 ## Docs to update when this ships
 
-- `BACKLOG.md` ~line 43: replace the "secondary job" positioning.
-- `README.md`: intro, features and text-utilities section.
+- `README.md`: intro (still radar-only; add the "developer toolkit" positioning),
+  features and text-utilities section. (`BACKLOG.md` was removed, so there is no
+  positioning text to fix there.)
 - `CHANGELOG.md` per release.
