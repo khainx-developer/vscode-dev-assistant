@@ -20,7 +20,7 @@ Everything that needs you, highest priority first:
 |---|---|
 | **Urgent** (red) | Failing checks, changes requested, merge conflicts, overdue tickets, PRs or tickets stale for 3+ days |
 | **New activity** (blue) | Comments on your PRs or tickets you haven't opened yet |
-| **Waiting on you** (orange) | Reviews requested from you, teammates' PRs waiting for review, tickets in Review or due today/tomorrow, in-progress tickets with no open PR, comments on your PRs or tickets awaiting your reply |
+| **Waiting on you** (orange) | Reviews requested from you, teammates' PRs waiting for review, tickets in Review or due today/tomorrow, in-progress tickets with no open PR, comments on your PRs or tickets awaiting your reply, assigned tickets blocked by another open issue |
 
 Jira tickets are grouped with the pull requests that reference them (ticket key in the PR **title** or **branch name**), so a ticket and its PR show up as one item. Every item has one-click **Open PR**, **Open in Jira** and **Open comment** actions, expandable details (comments, subtasks, linked PR), and **Snooze** (1 hour, later today, or tomorrow morning) for things you can't act on yet.
 

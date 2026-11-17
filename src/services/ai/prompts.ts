@@ -227,6 +227,12 @@ function describeReasonExplanations(item: AttentionInboxItem): string[] {
   ];
 }
 
+function describeBlockedBy(item: AttentionInboxItem): string[] {
+  const blockers = item.jiraTask?.blockedBy;
+  if (!blockers?.length) return [];
+  return [`   Blocked by: ${blockers.map((blocker) => blocker.key).join(', ')}`];
+}
+
 /**
  * Single-item Explain / card-chat descriptor: compact facts plus allow-listed reviewers,
  * non-PENDING reviews, labels, flag explanations, unread counts when >1, and a capped set of
@@ -238,6 +244,7 @@ export function describeInboxItemDetailed(item: AttentionInboxItem, index: numbe
     lines.push(...describePrLabels(item.pr));
     lines.push(...describeReviewFacts(item.pr));
   }
+  lines.push(...describeBlockedBy(item));
   lines.push(...describeReasonExplanations(item));
   lines.push(...describeUnreadCount(item));
   lines.push(...describeExtraCommentExcerpts(item));

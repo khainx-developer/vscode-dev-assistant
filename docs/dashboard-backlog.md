@@ -21,28 +21,27 @@ needs you. Surfaces: Home tab, dashboard panel, status bar. See `roadmap.md`.
   latest non-bot comment on your PR or assigned ticket is from someone else and
   you have not replied since. Waiting on you; independent of unread/`seenAt`.
   Optional `devMateKit.attention.ignoreShortReplies`. Team PRs you only reviewed
-  are not flagged. Follow-up: GitHub inline/review comments are not fetched yet.
+  are not flagged.
+- **Jira blockers** (`jira-blocked`): assigned tickets with an open *is blocked by*
+  issue link. Waiting on you; label "Blocked"; cards show blocking keys. Part 2
+  (Flagged / Impediment field) deferred — no spike output yet. Jira only.
 
 ## Add (in priority order)
 
-Prerequisite for 1: check what the Jira MCP adapter returns. Run the Jira Field
-Spike command and record the result in `roadmap.md`.
-
-1. **Jira blockers**
-   - Flagged / Impediment field and *is blocked by* issue links; new reason
-     `jira-blocked`. The Flagged field's custom id differs per site.
-   - Jira only at first.
-2. **Auto-pause outside working hours** — schedule for the existing Sleep/Wake
+1. **Auto-pause outside working hours** — schedule for the existing Sleep/Wake
    monitoring (e.g. Mon–Fri 09:00–18:00).
-3. **@mention detection** — mentions of you become an attention reason; sharpens
+2. **@mention detection** — mentions of you become an attention reason; sharpens
    awaiting-reply.
-4. **Inbox filters** — by repo, priority, PR vs ticket.
-5. **Custom attention rules** — ignore drafts, ignore or boost by label,
+3. **Inbox filters** — by repo, priority, PR vs ticket.
+4. **Custom attention rules** — ignore drafts, ignore or boost by label,
    configurable stale threshold (fixed at 3 days today).
-6. **Review-load view** — reviews you owe, oldest first.
-7. **Reports** — copy merged PRs / done tickets from the last N days as Markdown;
+5. **Review-load view** — reviews you owe, oldest first.
+6. **Reports** — copy merged PRs / done tickets from the last N days as Markdown;
    Slack-style and plain-text standup output; weekly report (AI).
-8. **Multiple GitHub orgs / Jira sites.**
+7. **Multiple GitHub orgs / Jira sites.**
+
+Follow-up (was Part 2 of Jira blockers): Flagged / Impediment field — needs spike
+for the site-specific custom field id; not started.
 
 ## Not planned
 

@@ -64,8 +64,12 @@ issue links, Flagged field). Run the **Jira Field Spike** command
 2. ✅ Comments awaiting your reply (`jira-awaiting-reply`, `pr-awaiting-reply`) — **done**.
    Stays until you comment after the latest non-bot comment from someone else; independent of
    unread/`seenAt`. Setting `devMateKit.attention.ignoreShortReplies` (default false). Own PRs
-   and assigned tickets only. Follow-up: GitHub inline/review comments are not in the adapter yet.
-3. Jira blockers
+   and assigned tickets only.
+3. ✅ Jira blockers (`jira-blocked`) — **done (Part 1 only)**. Assigned tickets with an
+   open *is blocked by* issue link (inward Blocks link; blocker not done via
+   `statusCategory` or terminal status names). Waiting on you; label "Blocked";
+   cards show blocking keys. **Part 2 (Flagged / Impediment field) deferred** —
+   spike output was not provided.
 
 ### Phase 2 — Workflow
 1. Copy ticket / PR as Markdown link, plus copy key and URL
@@ -101,10 +105,11 @@ rules, AI analyze and summaries.
 
 ## Decisions needed
 
-- Does the Jira MCP adapter return the description, issue links and Flagged
-  field? (Gates Phase 1 #3 and Phase 2 #2; Phase 1 #1 did not need it.) The adapter currently requests only
-  `summary, status, assignee, duedate, updated, subtasks`; a spike against a
-  real site is needed.
+- Does the Jira MCP adapter return the description and Flagged field? (Still
+  gates Phase 1 #3 Part 2 and Phase 2 #2.) Issue links are now requested for
+  `jira-blocked` (`issuelinks`); live shape vs assumed Blocks/`inwardIssue`
+  payload still needs a site check. Flagged custom field id differs per site —
+  spike not run.
 
 ## Decided
 

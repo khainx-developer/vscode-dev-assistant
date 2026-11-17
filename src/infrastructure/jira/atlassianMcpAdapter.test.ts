@@ -231,10 +231,160 @@ suite('AtlassianMcpAdapter', () => {
         cloudId: 'cloud-1',
         jql: 'project = ABC',
         maxResults: 50,
-        fields: ['summary', 'status', 'assignee', 'duedate', 'updated', 'subtasks'],
+        fields: ['summary', 'status', 'assignee', 'duedate', 'updated', 'subtasks', 'issuelinks'],
       },
     });
     assert.strictEqual(result[0].updatedAt, '2026-11-03T12:30:00Z');
+  });
+
+  test('fetchIssues_mapsBlockedBy_fromIsBlockedByLink', async () => {
+    const service = makeConnectionService(() =>
+      Promise.resolve(
+        toolResult({
+          data: {
+            issues: [{
+              key: 'ABC-10',
+              fields: {
+                summary: 'Blocked task',
+                status: { name: 'In Progress', statusCategory: { key: 'indeterminate', name: 'In Progress' } },
+                assignee: { displayName: 'Alice' },
+                updated: '2026-11-03T10:00:00Z',
+                issuelinks: [{
+                  type: { name: 'Blocks', inward: 'is blocked by', outward: 'blocks' },
+                  inwardIssue: {
+                    key: 'ABC-9',
+                    fields: {
+                      summary: 'Blocker',
+                      status: { name: 'In Progress', statusCategory: { key: 'indeterminate', name: 'In Progress' } },
+                    },
+                  },
+                }],
+              },
+            }],
+          },
+        }),
+      ),
+    );
+
+    const result = await AtlassianMcpAdapter.fetchIssues(service, 'cloud-1', 'project = ABC', 'https://example.atlassian.net');
+
+    assert.deepStrictEqual(result[0].blockedBy, [{
+      key: 'ABC-9',
+      summary: 'Blocker',
+      status: 'In Progress',
+      statusCategory: { key: 'indeterminate', name: 'In Progress' },
+      url: 'https://example.atlassian.net/browse/ABC-9',
+    }]);
+  });
+
+  test('fetchIssues_mapsBlockedBy_whenBlockerDone', async () => {
+    const service = makeConnectionService(() =>
+      Promise.resolve(
+        toolResult({
+          data: {
+            issues: [{
+              key: 'ABC-11',
+              fields: {
+                summary: 'Was blocked',
+                status: { name: 'In Progress' },
+                assignee: null,
+                updated: '2026-11-03T10:00:00Z',
+                issuelinks: [{
+                  type: { name: 'Blocks', inward: 'is blocked by', outward: 'blocks' },
+                  inwardIssue: {
+                    key: 'ABC-8',
+                    fields: {
+                      summary: 'Finished blocker',
+                      status: { name: 'Done', statusCategory: { key: 'done', name: 'Done' } },
+                    },
+                  },
+                }],
+              },
+            }],
+          },
+        }),
+      ),
+    );
+
+    const result = await AtlassianMcpAdapter.fetchIssues(service, 'cloud-1', 'project = ABC', 'https://example.atlassian.net');
+
+    assert.deepStrictEqual(result[0].blockedBy, [{
+      key: 'ABC-8',
+      summary: 'Finished blocker',
+      status: 'Done',
+      statusCategory: { key: 'done', name: 'Done' },
+      url: 'https://example.atlassian.net/browse/ABC-8',
+    }]);
+  });
+
+  test('fetchIssues_missingIssuelinks_omitsBlockedBy', async () => {
+    const service = makeConnectionService(() =>
+      Promise.resolve(
+        toolResult({
+          data: {
+            issues: [{
+              key: 'ABC-12',
+              fields: {
+                summary: 'No links field',
+                status: { name: 'To Do' },
+                assignee: null,
+                updated: '2026-11-03T10:00:00Z',
+              },
+            }],
+          },
+        }),
+      ),
+    );
+
+    const result = await AtlassianMcpAdapter.fetchIssues(service, 'cloud-1', 'project = ABC', 'https://example.atlassian.net');
+
+    assert.strictEqual(result[0].blockedBy, undefined);
+  });
+
+  test('fetchIssues_relatesToLink_ignoredForBlockedBy', async () => {
+    const service = makeConnectionService(() =>
+      Promise.resolve(
+        toolResult({
+          data: {
+            issues: [{
+              key: 'ABC-13',
+              fields: {
+                summary: 'Related only',
+                status: { name: 'To Do' },
+                assignee: null,
+                updated: '2026-11-03T10:00:00Z',
+                issuelinks: [{
+                  type: { name: 'Relates', inward: 'relates to', outward: 'relates to' },
+                  inwardIssue: {
+                    key: 'ABC-14',
+                    fields: { summary: 'Related', status: { name: 'Open' } },
+                  },
+                }, {
+                  type: { name: 'Blocks', inward: 'is blocked by', outward: 'blocks' },
+                  outwardIssue: {
+                    key: 'ABC-15',
+                    fields: { summary: 'I block this', status: { name: 'Open' } },
+                  },
+                }, {
+                  type: { name: 'Blocks', inward: 'blocked by', outward: 'blocks' },
+                  inwardIssue: { key: 'ABC-16' },
+                }],
+              },
+            }],
+          },
+        }),
+      ),
+    );
+
+    const result = await AtlassianMcpAdapter.fetchIssues(service, 'cloud-1', 'project = ABC', 'https://example.atlassian.net');
+
+    // Key-only linked issue (trimmed MCP fields) still maps; relates-to / outward ignored.
+    assert.deepStrictEqual(result[0].blockedBy, [{
+      key: 'ABC-16',
+      summary: '',
+      status: '',
+      url: 'https://example.atlassian.net/browse/ABC-16',
+    }]);
   });
 
   test('fetchIssueComments_callsNamedToolWithExactArguments', async () => {

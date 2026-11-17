@@ -42,6 +42,18 @@ export interface JiraStatusCategory {
   name?: string;
 }
 
+/** Issue that blocks this ticket via an "is blocked by" / Blocks inward link. */
+export interface JiraBlockedByIssue {
+  key: string;
+  /** May be empty when the MCP trims linked-issue fields. */
+  summary: string;
+  /** May be empty when the MCP trims linked-issue fields; treat unknown as not done. */
+  status: string;
+  /** Prefer this over status name for terminal-state checks when present. */
+  statusCategory?: JiraStatusCategory | null;
+  url: string;
+}
+
 export interface JiraTask {
   key: string;
   summary: string;
@@ -57,6 +69,8 @@ export interface JiraTask {
   commentState?: JiraCommentState;
   commentFailure?: JiraFailure;
   subtasks?: JiraSubtask[];
+  /** Issues that block this ticket (inward "is blocked by" links). Absent or empty when none. */
+  blockedBy?: JiraBlockedByIssue[];
   url: string;
   prLink: JiraPrLinkState;
 }
