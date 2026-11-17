@@ -1,5 +1,8 @@
 const MAX_DATE_MS = 8.64e15;
 const NUMERIC_RE = /^-?\d+(\.\d+)?$/;
+/** ISO-like: YYYY-MM-DD, optional time (T or space), optional Z/offset. */
+const ISO_DATE_RE =
+  /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/i;
 
 export function currentUnixTimestamp(): string {
   return String(Math.floor(Date.now() / 1000));
@@ -33,12 +36,17 @@ export function describeTimestamp(
   localZone: string = Intl.DateTimeFormat().resolvedOptions().timeZone,
 ): string {
   const { value, zones } = parseInput(input);
-  for (const zone of zones) {
-    assertValidZone(zone);
-  }
 
   if (action === 'now') {
-    return formatDescription(nowMs, zones, localZone, null, false);
+    const effectiveZones = resolveNowZones(value, zones);
+    for (const zone of effectiveZones) {
+      assertValidZone(zone);
+    }
+    return formatDescription(nowMs, effectiveZones, localZone, null, false);
+  }
+
+  for (const zone of zones) {
+    assertValidZone(zone);
   }
 
   if (action === 'convert') {
@@ -77,11 +85,31 @@ function splitZones(part: string): string[] {
     .filter(Boolean);
 }
 
-function assertValidZone(zone: string): void {
+/** For `now`, a bare IANA zone (whole input) is treated as an extra zone. */
+function resolveNowZones(value: string, zones: string[]): string[] {
+  if (zones.length > 0 || !value) {
+    return zones;
+  }
+  if (isValidZone(value)) {
+    return [value];
+  }
+  return zones;
+}
+
+function isValidZone(zone: string): boolean {
   try {
     new Intl.DateTimeFormat(undefined, { timeZone: zone });
+    return true;
   } catch {
-    throw new Error(`Unknown time zone: ${zone}`);
+    return false;
+  }
+}
+
+function assertValidZone(zone: string): void {
+  if (!isValidZone(zone)) {
+    throw new Error(
+      `Unknown time zone: ${zone}. Use IANA names such as America/Los_Angeles.`,
+    );
   }
 }
 
@@ -117,10 +145,17 @@ function parseDateString(value: string): {
   assumedUnit: null;
   assumedUtc: boolean;
 } {
-  const assumedUtc = !hasExplicitOffsetOrZ(value);
-  let toParse = value;
-  if (assumedUtc && /^\d{4}-\d{2}-\d{2}/.test(value)) {
-    toParse = /T\d/i.test(value) ? `${value}Z` : `${value}T00:00:00Z`;
+  if (!ISO_DATE_RE.test(value)) {
+    throw new Error(
+      'Not a valid Unix timestamp or ISO 8601 date. Use forms like 2026-11-17, 2026-11-17T10:00:00, or 2026-11-17 10:00:00Z.',
+    );
+  }
+  // Normalize space-separated date+time to ISO T form before parsing.
+  const normalized = value.replace(/^(\d{4}-\d{2}-\d{2}) /, '$1T');
+  const assumedUtc = !hasExplicitOffsetOrZ(normalized);
+  let toParse = normalized;
+  if (assumedUtc) {
+    toParse = /T\d/i.test(normalized) ? `${normalized}Z` : `${normalized}T00:00:00Z`;
   }
   const ms = Date.parse(toParse);
   if (Number.isNaN(ms)) {
@@ -221,7 +256,7 @@ function normalizeOffset(raw: string): string {
   }
   const match = /GMT([+-])(\d{1,2})(?::?(\d{2}))?/.exec(raw);
   if (!match) {
-    return '+00:00';
+    throw new Error(`Unexpected time zone offset format: ${raw}`);
   }
   const sign = match[1];
   const hours = match[2].padStart(2, '0');

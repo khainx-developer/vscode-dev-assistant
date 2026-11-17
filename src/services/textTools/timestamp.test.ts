@@ -90,7 +90,7 @@ suite('describeTimestamp', () => {
   test('convert_invalidZone_namesOffendingZone', () => {
     assert.throws(
       () => describeTimestamp('1700000000 in Not/AZone', 'convert', NOW, LOCAL),
-      /Unknown time zone: Not\/AZone/,
+      /Unknown time zone: Not\/AZone.*IANA names such as America\/Los_Angeles/,
     );
   });
 
@@ -132,10 +132,24 @@ suite('describeTimestamp', () => {
     assert.ok(out.includes('2026-11-17T10:00:00.000Z'));
   });
 
+  test('convert_spaceSeparatedDate_treatedAsUtc', () => {
+    const out = describeTimestamp('2026-11-17 10:00:00', 'convert', NOW, LOCAL);
+    assert.ok(out.includes('Interpreted as UTC (no offset in input).'));
+    assert.ok(out.includes('2026-11-17T10:00:00.000Z'));
+    assert.ok(out.includes('1794909600 (seconds)'));
+  });
+
+  test('convert_nonIsoDateString_rejected', () => {
+    assert.throws(
+      () => describeTimestamp('Nov 17 2026 10:00', 'convert', NOW, LOCAL),
+      /ISO 8601/,
+    );
+  });
+
   test('convert_invalidValue_throws', () => {
     assert.throws(
       () => describeTimestamp('not-a-timestamp', 'convert', NOW, LOCAL),
-      /Not a valid Unix timestamp or date/,
+      /Not a valid Unix timestamp or ISO 8601 date/,
     );
   });
 
@@ -153,6 +167,13 @@ suite('describeTimestamp', () => {
     assert.ok(out.includes('Asia/Tokyo'));
     assert.ok(out.includes('Europe/London'));
     assert.ok(out.includes('2026-11-17T10:00:00.000Z'));
+  });
+
+  test('now_bareIanaZone_accepted', () => {
+    const out = describeTimestamp('Asia/Tokyo', 'now', NOW, LOCAL);
+    assert.ok(out.includes('Asia/Tokyo'));
+    assert.ok(out.includes('2026-11-17T10:00:00.000Z'));
+    assert.ok(out.includes('+09:00  Asia/Tokyo'));
   });
 
   test('zoneOrder_utcThenLocalThenRequested', () => {

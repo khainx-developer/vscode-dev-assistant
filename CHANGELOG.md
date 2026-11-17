@@ -11,7 +11,7 @@
 - Timestamp → ISO (editor command) now returns a friendly error for out-of-range values instead of a raw `RangeError`.
 
 ### Changed
-- Removed the DevMate Kit case transforms (UPPERCASE, lowercase, camelCase, snake_case, kebab-case) from the Tools tab, Command Palette and right-click menu. VS Code has covered these since before our minimum (`^1.90.0`): upper/lower (long-standing), snake (1.53), kebab (1.69), camel (1.75). If you bound a key to `devMateKit.toUpperCase`, `devMateKit.toLowerCase`, `devMateKit.toCamelCase`, `devMateKit.toSnakeCase` or `devMateKit.toKebabCase`, rebind it to `editor.action.transformToUppercase`, `editor.action.transformToLowercase`, `editor.action.transformToCamelcase`, `editor.action.transformToSnakecase` or `editor.action.transformToKebabcase`.
+- Removed the DevMate Kit case transforms (UPPERCASE, lowercase, camelCase, snake_case, kebab-case) from the Tools tab, Command Palette and right-click menu. VS Code has covered these since before our minimum (`^1.90.0`): upper/lower, snake, kebab, and camel case transforms. If you bound a key to `devMateKit.toUpperCase`, `devMateKit.toLowerCase`, `devMateKit.toCamelCase`, `devMateKit.toSnakeCase` or `devMateKit.toKebabCase`, rebind it to `editor.action.transformToUppercase`, `editor.action.transformToLowercase`, `editor.action.transformToCamelcase`, `editor.action.transformToSnakecase` or `editor.action.transformToKebabcase`.
 
 ## 0.3.0
 
