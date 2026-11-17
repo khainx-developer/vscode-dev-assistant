@@ -6,14 +6,17 @@ export function base64Decode(text: string): string {
   return Buffer.from(text, 'base64').toString('utf8');
 }
 
-const BASE64URL_PATTERN = /^[A-Za-z0-9_-]*$/;
+const BASE64_ALPHABET = /^[A-Za-z0-9+/]*={0,2}$/;
 
-/** Decode a Base64URL string (JWT-style: `-`/`_`, optional padding). */
+/**
+ * Decode a Base64URL (or plain Base64) string.
+ * Accepts `-`/`_` or `+/`, with or without `=` padding — common when pasting JWTs.
+ */
 export function base64UrlDecode(text: string): string {
-  if (!BASE64URL_PATTERN.test(text)) {
+  let padded = text.replace(/-/g, '+').replace(/_/g, '/');
+  if (!BASE64_ALPHABET.test(padded)) {
     throw new Error('Invalid Base64URL.');
   }
-  let padded = text.replace(/-/g, '+').replace(/_/g, '/');
   const rem = padded.length % 4;
   if (rem) {
     padded += '='.repeat(4 - rem);

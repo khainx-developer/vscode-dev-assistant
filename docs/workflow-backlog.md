@@ -15,26 +15,24 @@ Rule: no git writes. Everything generated is copy-to-clipboard.
 
 ## Add (in priority order)
 
-1. **Copy ticket / PR as Markdown link**, plus copy key and URL; Slack format
-   (`<url|text>`) as an option. No dependencies; do first.
-2. **Fetch ticket description; show acceptance criteria**
+1. **Fetch ticket description; show acceptance criteria**
    - `JiraTask` has no description today; add it.
    - Parse an "Acceptance criteria" heading or section; fall back to the full
      description. Handle Atlassian document format.
    - Apply the credential scan and length trimming before any text goes to an AI.
-   - Check what the Jira MCP adapter returns first. Items 3, 6 depend on this.
-3. **Work item actions menu** (copy only)
+   - Check what the Jira MCP adapter returns first. Items 2 and 5 depend on this.
+2. **Work item actions menu** (copy only)
    - Copy branch name, e.g. `feature/PROJ-123-short-title`
    - Copy commit message, e.g. `PROJ-123: summary`
    - Copy PR description: ticket link, summary, acceptance criteria as a checklist
    - Settings: branch-name pattern and slug rules; commit/PR templates
-4. **Current-branch detection (read-only)** — approved
+3. **Current-branch detection (read-only)** — approved
    - Read HEAD through the built-in `vscode.git` API; no writes.
    - Show the matching ticket key in the status bar; pre-select it for the menu.
    - Gives an automatic "now working on" (see `productivity-backlog.md`).
-5. **Markdown ↔ Jira wiki markup** — for ticket comments and descriptions.
-6. **Summarize a PR or ticket comment thread** (AI, uses existing snapshot data).
-7. **Open PR source files** (low priority) — list the PR's changed files; mapping
+4. **Markdown ↔ Jira wiki markup** — for ticket comments and descriptions.
+5. **Summarize a PR or ticket comment thread** (AI, uses existing snapshot data).
+6. **Open PR source files** (low priority) — list the PR's changed files; mapping
    to local files is fragile and the editor-chat hand-off covers most of it.
 
 ## Not planned
@@ -42,6 +40,8 @@ Rule: no git writes. Everything generated is copy-to-clipboard.
 - AI commit message or PR description generated from a git diff.
 - Looking up local branches.
 - Creating, switching or deleting branches.
+- Copy ticket / PR as a Markdown or Slack link, key or URL (dropped: not useful
+  enough to justify card UI).
 
 ## Open questions
 

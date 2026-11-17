@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { DashboardSession, SessionSurface } from '../../app/dashboardSession';
 import { tools } from '../../services/toolRegistry';
 import type { HostEvent, SidebarTab, WebviewCommand } from '../../shared/messages';
+import { CATEGORY_LABELS, CATEGORY_ORDER } from '../../shared/toolTypes';
 import type { SetupStepId } from '../../services/session/setupStatus';
 import { renderWebviewHtml, webviewAssetRoot } from '../webview/html';
 import { routeWebviewCommand } from '../webview/router';
@@ -38,6 +39,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         initialTab: this.pendingTab ?? 'home',
         initialStep: this.pendingStep ?? null,
         tools: tools.map(({ id, title, description, icon, category, tags }) => ({ id, title, description, icon, category, tags })),
+        // Single source of truth from shared/toolTypes — webview must not hardcode labels/order.
+        toolCategories: CATEGORY_ORDER.map((id) => ({ id, label: CATEGORY_LABELS[id] })),
       },
     });
     this.pendingTab = undefined;

@@ -35,6 +35,30 @@ suite('decodeJwt', () => {
     assert.ok(out.includes('"b": 2'));
   });
 
+  test('paddedBase64url_stillDecodes', () => {
+    const header = Buffer.from(JSON.stringify(HEADER), 'utf8').toString('base64url');
+    const payload = Buffer.from(JSON.stringify({ pad: true }), 'utf8').toString('base64url');
+    // Node's base64url encoding omits padding; re-add it to mimic a padded paste.
+    const pad = (s: string) => s + '='.repeat((4 - (s.length % 4)) % 4);
+    const out = decodeJwt(`${pad(header)}.${pad(payload)}.sig`, NOW);
+    assert.ok(out.includes('"pad": true'));
+  });
+
+  test('standardBase64Alphabet_stillDecodes', () => {
+    // Force +/ into the alphabet (and keep padding) instead of -_ .
+    const header = Buffer.from(JSON.stringify(HEADER), 'utf8').toString('base64');
+    const payload = Buffer.from(JSON.stringify({ plus: true }), 'utf8').toString('base64');
+    const out = decodeJwt(`${header}.${payload}.sig`, NOW);
+    assert.ok(out.includes('"plus": true'));
+  });
+
+  test('whitespaceInsideToken_isStripped', () => {
+    const jwt = token(HEADER, { wrap: true });
+    const wrapped = `${jwt.slice(0, 20)}\n${jwt.slice(20, 40)} ${jwt.slice(40)}`;
+    const out = decodeJwt(wrapped, NOW);
+    assert.ok(out.includes('"wrap": true'));
+  });
+
   test('bearerPrefix_isAccepted', () => {
     const jwt = token(HEADER, { sub: 'x' });
     const out = decodeJwt(`  Bearer ${jwt}  `, NOW);

@@ -51,12 +51,14 @@ function claimLine(name: string, value: unknown, nowMs: number): string | null {
 
 /**
  * Decode a JWT (header + payload). Never verifies the signature and never
- * contacts the network. Accepts optional surrounding whitespace and a Bearer prefix.
+ * contacts the network. Strips all whitespace (wrapped terminal pastes), accepts
+ * an optional Bearer prefix, and tolerates Base64 padding / standard `+/` alphabet.
  */
 export function decodeJwt(input: string, nowMs: number = Date.now()): string {
-  let token = input.trim();
-  if (/^Bearer\s+/i.test(token)) {
-    token = token.replace(/^Bearer\s+/i, '').trim();
+  // Remove every whitespace char first so line-wrapped copies still parse.
+  let token = input.replace(/\s+/g, '');
+  if (/^Bearer/i.test(token)) {
+    token = token.slice(6); // length of "Bearer"
   }
   if (!token) {
     throw new Error('Paste a JWT to decode.');

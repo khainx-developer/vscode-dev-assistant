@@ -8,7 +8,7 @@ Surfaces: card actions, Home, status bar. See `roadmap.md`.
 
 1. **"Now working on" pin** — pin one ticket or PR; show its key in the status
    bar. Manual first; automatic once current-branch detection exists
-   (`workflow-backlog.md` #4).
+   (`workflow-backlog.md` #3).
 2. **Follow-up list** — personal checklist built from comments awaiting your reply
    (Attention Inbox `jira-awaiting-reply` / `pr-awaiting-reply`; see
    `dashboard-backlog.md` Already built). Not a general TODO scanner.

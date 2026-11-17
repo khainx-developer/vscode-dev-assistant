@@ -8,6 +8,9 @@ import { renderCompactItem } from '../shared/items.js';
 const boot = readBootData();
 const app = document.getElementById('app');
 const TOOLS = boot.tools || [];
+const TOOL_CATEGORIES = Array.isArray(boot.toolCategories) && boot.toolCategories.length
+  ? boot.toolCategories
+  : [{ id: 'code', label: 'Code' }, { id: 'api', label: 'API' }, { id: 'debug', label: 'Debug' }];
 const HOME_LIMIT = 5;
 const PRESET_JQL = {
   label: 'My open tickets',
@@ -195,9 +198,6 @@ function homeTab() {
 
 // ── Tools ─────────────────────────────────────────────────────────────────
 
-const TOOL_CATEGORY_ORDER = ['code', 'api', 'debug'];
-const TOOL_CATEGORY_LABELS = { code: 'Code', api: 'API', debug: 'Debug' };
-
 function toolMatches(tool, query) {
   return !query
     || tool.title.toLowerCase().includes(query)
@@ -212,13 +212,31 @@ function toolRow(tool) {
   </div>`;
 }
 
+/** Build category groups from boot.toolCategories; unknown categories still appear (do not drop tools). */
+function toolGroups(query) {
+  const knownIds = new Set(TOOL_CATEGORIES.map((cat) => cat.id));
+  const groups = TOOL_CATEGORIES.map((cat) => ({
+    id: cat.id,
+    label: cat.label,
+    tools: TOOLS.filter((tool) => tool.category === cat.id && toolMatches(tool, query)),
+  }));
+
+  const unknownById = new Map();
+  for (const tool of TOOLS) {
+    if (knownIds.has(tool.category) || !toolMatches(tool, query)) continue;
+    if (!unknownById.has(tool.category)) unknownById.set(tool.category, []);
+    unknownById.get(tool.category).push(tool);
+  }
+  for (const [id, tools] of unknownById) {
+    groups.push({ id, label: id, tools });
+  }
+  return groups.filter((group) => group.tools.length > 0);
+}
+
 function toolsTab() {
   const query = ui.toolQuery.trim().toLowerCase();
   const searching = !!query;
-  const groups = TOOL_CATEGORY_ORDER.map((id) => {
-    const tools = TOOLS.filter((tool) => tool.category === id && toolMatches(tool, query));
-    return { id, label: TOOL_CATEGORY_LABELS[id], tools };
-  }).filter((group) => group.tools.length > 0);
+  const groups = toolGroups(query);
 
   const body = groups.length
     ? groups.map((group) => {

@@ -98,7 +98,7 @@ export const tools: ToolDefinition[] = [
     id: 'jwt-decoder',
     title: 'JWT Decoder',
     description: 'Decode a JWT header and payload. Decode only — never verifies the signature.',
-    icon: 'lock',
+    icon: 'key',
     category: 'api',
     tags: ['jwt', 'token', 'auth', 'decode'],
     needsInput: true,

@@ -30,7 +30,7 @@ data (logs, traces, releases) this gives a hypothesis, not a root cause.
 4. **Recent-PR regression hint** — recent merged PRs in monitored repos that
    touched those files. Shown as a hint; hidden if not connected.
 5. **Stack traces in Jira tickets** — detect in descriptions and comments (needs
-   the description fetch in `workflow-backlog.md` #2); copy the result back as a
+   the description fetch in `workflow-backlog.md` #1); copy the result back as a
    Markdown comment.
 6. **JSON log pretty-printer** — format NDJSON / JSON log lines.
 7. **SQL formatter** — needs a dependency; by demand.
