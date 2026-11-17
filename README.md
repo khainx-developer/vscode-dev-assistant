@@ -58,7 +58,8 @@ Quick transforms from the **Tools** tab (grouped as Code / API / Debug), the Com
 - JWT decoder (decode only — never verifies the signature)
 - Format JSON, escape text as a JSON string
 - Insert UUID, insert current Unix timestamp, convert a Unix timestamp to an ISO date
-- UPPERCASE, lowercase, camelCase, snake_case, kebab-case
+
+For case transforms (UPPERCASE, lowercase, camelCase, snake_case, kebab-case), use VS Code's built-in **Transform to …** commands.
 
 ## Getting started
 

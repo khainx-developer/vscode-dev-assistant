@@ -6,6 +6,9 @@
 - **Tools tab grouping** — tools listed under collapsible Code / API / Debug sections (search already filtered the flat list).
 - **JWT Decoder** — decode header and payload offline (optional `Bearer` prefix); never verifies the signature. Includes Base64URL support.
 
+### Changed
+- Removed duplicate case transforms (UPPERCASE, lowercase, camelCase, snake_case, kebab-case). Use VS Code's built-in **Transform to …** commands instead.
+
 ## 0.3.0
 
 ### New

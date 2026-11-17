@@ -14,6 +14,8 @@ Tool logic: pure functions in `src/services/textTools/`, registered once in
 - Tools tab search
 - Tools tab category grouping (Code / API / Debug)
 - JWT decoder (API) — decode only, never verify or send; includes Base64URL
+- Removed duplicate case transforms — use VS Code **Transform to Uppercase /
+  Lowercase / Camel Case / Snake Case / Kebab Case**
 
 ## Keep as is
 
@@ -44,19 +46,13 @@ Later, by demand
 14. Regex tester (Code) — only if requested; needs a two-input contract
     (.NET and JavaScript regex flavours differ; pick one or offer both)
 
-## Remove
-
-1. UPPERCASE
-2. lowercase
-3. camelCase, snake_case, kebab-case — after checking VS Code's built-in
-   *Transform to …* commands cover them
-
 ## Not planned
 
 - **API group extras:** REST client (Thunder Client, REST Client, httpyac exist),
   OpenAPI viewer, mock server.
 - **Covered by VS Code or other extensions:** text diff, line tools (sort,
-  dedupe, trim), color converter, Markdown table formatter.
+  dedupe, trim), color converter, Markdown table formatter, case transforms
+  (built-in *Transform to …*).
 - **Rarely used:** cron explainer, JSON ↔ CSV, UUID v7 / ULID / nanoid, HTML
   entities, number base, Lorem ipsum.
 - AI regex / cron generation.
@@ -66,4 +62,3 @@ Later, by demand
 - Bundle-size budget is set: under about +100 KB combined for toolkit
   dependencies, loaded on demand (see `roadmap.md`). Measure the YAML library
   before adding it.
-- Verify VS Code's built-in transform and sort commands before removing tools.

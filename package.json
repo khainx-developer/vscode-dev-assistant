@@ -281,26 +281,6 @@
         "title": "DevMate Kit: Insert Current Unix Timestamp"
       },
       {
-        "command": "devMateKit.toUpperCase",
-        "title": "DevMate Kit: Transform to UPPERCASE"
-      },
-      {
-        "command": "devMateKit.toLowerCase",
-        "title": "DevMate Kit: Transform to lowercase"
-      },
-      {
-        "command": "devMateKit.toCamelCase",
-        "title": "DevMate Kit: Transform to camelCase"
-      },
-      {
-        "command": "devMateKit.toSnakeCase",
-        "title": "DevMate Kit: Transform to snake_case"
-      },
-      {
-        "command": "devMateKit.toKebabCase",
-        "title": "DevMate Kit: Transform to kebab-case"
-      },
-      {
         "command": "devMateKit.urlEncode",
         "title": "DevMate Kit: URL Encode Selection"
       },
@@ -337,21 +317,6 @@
         },
         {
           "command": "devMateKit.dateToUnixTimestamp"
-        },
-        {
-          "command": "devMateKit.toUpperCase"
-        },
-        {
-          "command": "devMateKit.toLowerCase"
-        },
-        {
-          "command": "devMateKit.toCamelCase"
-        },
-        {
-          "command": "devMateKit.toSnakeCase"
-        },
-        {
-          "command": "devMateKit.toKebabCase"
         },
         {
           "command": "devMateKit.urlEncode"

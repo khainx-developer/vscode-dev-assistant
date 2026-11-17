@@ -2,7 +2,6 @@ import { ToolDefinition } from '../shared/toolTypes';
 import { base64Encode, base64Decode } from './textTools/base64';
 import { urlEncode, urlDecode } from './textTools/url';
 import { formatJson, jsonEscapeString } from './textTools/json';
-import { toUpperCase, toLowerCase, toCamelCase, toSnakeCase, toKebabCase } from './textTools/caseTransform';
 import { generateUuid } from './textTools/uuid';
 import { currentUnixTimestamp, unixTimestampToIso } from './textTools/timestamp';
 import { decodeJwt } from './textTools/jwt';
@@ -56,39 +55,6 @@ export const tools: ToolDefinition[] = [
       { id: 'escape', label: 'Escape as String' },
     ],
     run: (action, input) => (action === 'format' ? formatJson(input) : jsonEscapeString(input)),
-  },
-  {
-    id: 'case-converter',
-    title: 'Case Converter',
-    description: 'Convert text between UPPERCASE, lowercase, camelCase, snake_case and kebab-case.',
-    icon: 'case',
-    category: 'code',
-    tags: ['case', 'text', 'transform'],
-    needsInput: true,
-    inputPlaceholder: 'Enter text to convert...',
-    actions: [
-      { id: 'upper', label: 'UPPERCASE' },
-      { id: 'lower', label: 'lowercase' },
-      { id: 'camel', label: 'camelCase' },
-      { id: 'snake', label: 'snake_case' },
-      { id: 'kebab', label: 'kebab-case' },
-    ],
-    run: (action, input) => {
-      switch (action) {
-        case 'upper':
-          return toUpperCase(input);
-        case 'lower':
-          return toLowerCase(input);
-        case 'camel':
-          return toCamelCase(input);
-        case 'snake':
-          return toSnakeCase(input);
-        case 'kebab':
-          return toKebabCase(input);
-        default:
-          throw new Error(`Unknown action: ${action}`);
-      }
-    },
   },
   {
     id: 'base64-tool',
