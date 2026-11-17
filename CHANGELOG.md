@@ -3,10 +3,16 @@
 ## Unreleased
 
 ### New
+- **Tickets without an open PR** (`jira-no-pr`) — in-progress Jira tickets with no matched open PR and no activity for N days appear in Attention Inbox as Waiting on you (`devMateKit.jira.noPrStatuses`, `devMateKit.jira.noPrDays`).
 - **Reconnect** in Setup for GitHub and Jira — force MCP sign-in again when tokens expire or auth fails. Clears stored MCP credentials and runs OAuth again; Jira keeps your site URL and settings. Disconnect remains available for Jira.
 
 ### Improved
 - **AI backend by host** — In VS Code, Setup only offers **Editor language models** (Cursor Agent CLI is hidden). In Cursor, both backends appear and Cursor Agent CLI is recommended while Off. Enabling AI from Off uses the host default; a Cursor-only provider saved from Cursor is reset to Editor LM when opened in VS Code.
+
+### Fixed
+- `jira-no-pr` label says **No open PR** (adapter only sees open PRs; merged PRs looked like “no PR”).
+- `jira-no-pr` status matching is case-insensitive / trimmed against `devMateKit.jira.noPrStatuses`.
+- Changing `devMateKit.jira.noPrStatuses` or `noPrDays` recomputes the Attention Inbox immediately.
 
 ## 0.2.0
 

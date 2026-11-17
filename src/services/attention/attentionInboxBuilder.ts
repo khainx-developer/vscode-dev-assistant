@@ -15,6 +15,7 @@ export type AttentionReason =
   | 'jira-due-today'
   | 'jira-due-tomorrow'
   | 'jira-unread-comment'
+  | 'jira-no-pr'
   | 'pr-linked'
   | 'pr-changes-requested'
   | 'pr-checks-failing'
@@ -24,6 +25,16 @@ export type AttentionReason =
   | 'pr-merge-conflict'
   | 'pr-stale'
   | 'jira-stale';
+
+export interface AttentionInboxOptions {
+  /** Jira statuses that count as in-progress for the no-open-PR rule (case-insensitive). Default: `["In Progress"]`. */
+  noPrStatuses?: string[];
+  /** Days without `updatedAt` activity before flagging no open PR. Default: 3. */
+  noPrDays?: number;
+}
+
+const DEFAULT_NO_PR_STATUSES = ['In Progress'];
+const DEFAULT_NO_PR_DAYS = 3;
 
 export interface AttentionInboxItem {
   key: string;
@@ -53,11 +64,16 @@ interface DueDateInfo {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const JIRA_STALE_WAITING_DAYS = 3;
 
-function isStale(updatedAt: string | undefined, now: number): boolean {
+function statusMatchesNoPrList(status: string, statuses: string[]): boolean {
+  const normalized = status.trim().toLowerCase();
+  return statuses.some((candidate) => candidate.trim().toLowerCase() === normalized);
+}
+
+function isStale(updatedAt: string | undefined, now: number, days: number = JIRA_STALE_WAITING_DAYS): boolean {
   if (!updatedAt) return false;
   const parsed = Date.parse(updatedAt);
   if (!Number.isFinite(parsed)) return false;
-  return (now - parsed) / DAY_MS >= JIRA_STALE_WAITING_DAYS;
+  return (now - parsed) / DAY_MS >= days;
 }
 
 function getDueDateInfo(dueDate: string | null, now: number): DueDateInfo | null {
@@ -162,7 +178,10 @@ function getPriority(reasons: AttentionReason[]): AttentionInboxItem['priority']
     return 2;
   }
   if (reasons.some((reason) =>
-    reason === 'jira-review' || reason === 'pr-waiting-review' || reason === 'pr-needs-my-review')) {
+    reason === 'jira-review'
+    || reason === 'jira-no-pr'
+    || reason === 'pr-waiting-review'
+    || reason === 'pr-needs-my-review')) {
     return 3;
   }
   return 4;
@@ -222,7 +241,10 @@ export function buildAttentionInbox(
   jiraState: JiraViewState,
   githubState: GitHubViewState,
   now: number,
+  options: AttentionInboxOptions = {},
 ): AttentionInboxItem[] {
+  const noPrStatuses = options.noPrStatuses ?? DEFAULT_NO_PR_STATUSES;
+  const noPrDays = options.noPrDays ?? DEFAULT_NO_PR_DAYS;
   const tasksByKey = new Map<string, JiraTask>();
   if (jiraState.connected) {
     for (const tasks of Object.values(jiraState.tasksByQuery)) {
@@ -284,6 +306,14 @@ export function buildAttentionInbox(
       ...jiraReasons,
       ...relatedPRs.flatMap((relatedPR) => relatedPR.reasons),
     ])];
+    if (
+      task.prLink.kind === 'no-match'
+      && relatedPRs.length === 0
+      && statusMatchesNoPrList(task.status, noPrStatuses)
+      && isStale(task.updatedAt, now, noPrDays)
+    ) {
+      reasons.push('jira-no-pr');
+    }
     if (reasons.length === 0 && relatedPRs.length > 0) reasons.push('pr-linked');
     if (reasons.length > 0) {
       items.push(createInboxItem(task, undefined, reasons, githubState, relatedPRs));

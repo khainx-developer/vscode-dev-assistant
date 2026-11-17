@@ -525,4 +525,137 @@ suite('buildAttentionInbox', () => {
     assert.deepStrictEqual(inbox[0].reasons, ['pr-merge-conflict', 'pr-stale']);
     assert.strictEqual(inbox[0].priority, 1);
   });
+
+  test('buildAttentionInbox_flagsJiraNoPr_whenInProgressNoMatchAndStale', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'In Progress',
+        updatedAt: ACTIVITY_STALE,
+        prLink: { kind: 'no-match' },
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox.map((item) => item.reasons), [['jira-no-pr']]);
+    assert.strictEqual(inbox[0].priority, 3);
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraNoPr_whenStatusNotListed', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'Open',
+        updatedAt: ACTIVITY_STALE,
+        prLink: { kind: 'no-match' },
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
+  test('buildAttentionInbox_flagsJiraNoPr_whenStatusCasingDiffers', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'In progress',
+        updatedAt: ACTIVITY_STALE,
+        prLink: { kind: 'no-match' },
+      })]),
+      makeGitHubState(),
+      NOW,
+      { noPrStatuses: ['  IN PROGRESS  '] },
+    );
+
+    assert.deepStrictEqual(inbox.map((item) => item.reasons), [['jira-no-pr']]);
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraNoPr_whenPrLinkedByPrLink', () => {
+    const pr = makePR({ number: 30, title: 'Unrelated title' });
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'In Progress',
+        updatedAt: ACTIVITY_STALE,
+        prLink: { kind: 'linked', pr },
+      })]),
+      makeGitHubState({ myPRs: [makeAttentionItem(pr, [])] }),
+      NOW,
+    );
+
+    assert.strictEqual(inbox.length, 1);
+    assert.strictEqual(inbox[0].reasons.includes('jira-no-pr'), false);
+    assert.deepStrictEqual(inbox[0].reasons, ['pr-linked']);
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraNoPr_whenPrMatchedByTitleOrBranch', () => {
+    const pr = makePR({ number: 31, title: 'APP-1 implement feature' });
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'In Progress',
+        updatedAt: ACTIVITY_STALE,
+        prLink: { kind: 'no-match' },
+      })]),
+      makeGitHubState({ myPRs: [makeAttentionItem(pr, [])] }),
+      NOW,
+    );
+
+    assert.strictEqual(inbox.length, 1);
+    assert.strictEqual(inbox[0].reasons.includes('jira-no-pr'), false);
+    assert.deepStrictEqual(inbox[0].reasons, ['pr-linked']);
+    assert.deepStrictEqual(inbox[0].relatedPRs.map((item) => item.pr.number), [31]);
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraNoPr_whenPrLinkNotAvailable', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'In Progress',
+        updatedAt: ACTIVITY_STALE,
+        prLink: { kind: 'not-available' },
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraNoPr_whenUpdatedWithinThreshold', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'In Progress',
+        updatedAt: ACTIVITY_OLDER,
+        prLink: { kind: 'no-match' },
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
+  test('buildAttentionInbox_respectsCustomNoPrStatusesAndDays', () => {
+    const flagged = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'Doing',
+        updatedAt: ACTIVITY_STALE,
+        prLink: { kind: 'no-match' },
+      })]),
+      makeGitHubState(),
+      NOW,
+      { noPrStatuses: ['Doing'], noPrDays: 1 },
+    );
+    const skipped = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'In Progress',
+        updatedAt: ACTIVITY_STALE,
+        prLink: { kind: 'no-match' },
+      })]),
+      makeGitHubState(),
+      NOW,
+      { noPrStatuses: ['Doing'], noPrDays: 1 },
+    );
+
+    assert.deepStrictEqual(flagged.map((item) => item.reasons), [['jira-no-pr']]);
+    assert.deepStrictEqual(skipped, []);
+  });
 });

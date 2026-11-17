@@ -131,6 +131,22 @@
           "default": [],
           "description": "Saved JQL queries used to fetch Jira tasks."
         },
+        "devMateKit.jira.noPrStatuses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "In Progress"
+          ],
+          "description": "Jira statuses that count as in-progress for the \"no open PR\" Attention Inbox flag (case-insensitive)."
+        },
+        "devMateKit.jira.noPrDays": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "description": "Days without Jira activity before flagging an in-progress ticket that has no open pull request."
+        },
         "devMateKit.monitoring.enabled": {
           "type": "boolean",
           "default": true,
@@ -173,6 +189,10 @@
       ]
     },
     "commands": [
+      {
+        "command": "devMateKit.dev.jiraFieldSpike",
+        "title": "DevMate Kit (Dev): Jira Field Spike"
+      },
       {
         "command": "devMateKit.openDashboard",
         "title": "DevMate Kit: Open Daily Tasks Dashboard",
