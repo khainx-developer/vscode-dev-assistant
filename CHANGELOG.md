@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### New
+- **Reconnect** in Setup for GitHub and Jira — force MCP sign-in again when tokens expire or auth fails. Clears stored MCP credentials and runs OAuth again; Jira keeps your site URL and settings. Disconnect remains available for Jira.
+
 ## 0.2.0
 
 ### New
