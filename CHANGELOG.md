@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### New
+- **Comments awaiting your reply** (`jira-awaiting-reply`, `pr-awaiting-reply`) — stays until you comment after the latest non-bot comment from someone else on your PR or assigned ticket; independent of unread. Includes GitHub conversation and inline/review comments (`get_review_comments`); unread (`pr-unread-comment`) and notifications also cover those inline comments. Resolved and outdated review threads are skipped. Cards show the comment excerpt and Draft reply even without an unread reason. Skips Jira tickets in a Done status category (falls back to Done/Closed/Resolved/Cancelled/Won't Do/Released by name when category is missing). Optional `devMateKit.attention.ignoreShortReplies`.
 - **Tickets without an open PR** (`jira-no-pr`) — in-progress Jira tickets with no matched open PR and no activity for N days appear in Attention Inbox as Waiting on you (`devMateKit.jira.noPrStatuses`, `devMateKit.jira.noPrDays`).
 - **Reconnect** in Setup for GitHub and Jira — force MCP sign-in again when tokens expire or auth fails. Clears stored MCP credentials and runs OAuth again; Jira keeps your site URL and settings. Disconnect remains available for Jira.
 

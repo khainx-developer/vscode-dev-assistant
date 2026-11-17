@@ -147,6 +147,11 @@
           "minimum": 1,
           "description": "Days without Jira activity before flagging an in-progress ticket that has no open pull request."
         },
+        "devMateKit.attention.ignoreShortReplies": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, a latest non-bot comment under about 15 characters does not count as \"awaiting your reply\" in the Attention Inbox."
+        },
         "devMateKit.monitoring.enabled": {
           "type": "boolean",
           "default": true,

@@ -127,6 +127,7 @@ export class DashboardSession implements vscode.Disposable {
         if (
           event.affectsConfiguration('devMateKit.jira.noPrStatuses')
           || event.affectsConfiguration('devMateKit.jira.noPrDays')
+          || event.affectsConfiguration('devMateKit.attention.ignoreShortReplies')
         ) {
           this.recompute();
         }
@@ -323,9 +324,11 @@ export class DashboardSession implements vscode.Disposable {
     const now = Date.now();
     if (this.githubState && this.jiraState) {
       const jiraCfg = vscode.workspace.getConfiguration('devMateKit.jira');
+      const attentionCfg = vscode.workspace.getConfiguration('devMateKit.attention');
       this.allItems = buildAttentionInbox(this.jiraState, this.githubState, now, {
         noPrStatuses: jiraCfg.get<string[]>('noPrStatuses', ['In Progress']),
         noPrDays: jiraCfg.get<number>('noPrDays', 3),
+        ignoreShortReplies: attentionCfg.get<boolean>('ignoreShortReplies', false),
       });
       const { active, snoozed } = partitionSnoozed(this.allItems, this.services.attentionPrefs.getSnoozes(now), now);
       this.inboxState = {

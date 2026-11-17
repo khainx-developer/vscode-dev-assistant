@@ -47,6 +47,33 @@ function extractHeadRef(source: HeadRefSource): string | undefined {
 }
 type PullRequestReview = { user: RestUser; state: string; submitted_at: string };
 type PullRequestComment = { id: number | string; user: RestUser; body: string; created_at: string; html_url: string };
+/** `pull_request_read`/`get_review_comments` returns threaded GraphQL-shaped review comments (not a bare array). */
+type MinimalReviewComment = {
+  body?: string;
+  path?: string;
+  author?: string;
+  created_at?: string;
+  updated_at?: string;
+  html_url?: string;
+};
+type MinimalReviewThread = {
+  id?: string;
+  is_resolved?: boolean;
+  is_outdated?: boolean;
+  is_collapsed?: boolean;
+  comments?: MinimalReviewComment[];
+  total_count?: number;
+};
+type ReviewThreadsPage = {
+  review_threads?: MinimalReviewThread[];
+  totalCount?: number;
+  pageInfo?: {
+    hasNextPage?: boolean;
+    hasPreviousPage?: boolean;
+    startCursor?: string;
+    endCursor?: string;
+  };
+};
 type CachedPullRequestDetails = {
   updatedAt: string;
   detail: PullRequestDetail;
@@ -56,7 +83,8 @@ type CachedPullRequestDetails = {
 type CheckRun = { status: string; conclusion: string | null };
 // GitHub's real "list check runs for a ref" REST endpoint returns `{total_count, check_runs:
 // [...]}`, not a bare array — confirmed live ("checkRuns.some is not a function"), unlike
-// list_pull_requests/get_reviews/get_comments, which the MCP server does return as bare arrays.
+// list_pull_requests/get_reviews/get_comments (bare arrays). get_review_comments is different
+// again: `{ review_threads, totalCount, pageInfo }` with cursor pagination via `after`.
 type CheckRunsResponse = CheckRun[] | { check_runs?: CheckRun[] };
 
 const pullRequestDetailsCache = new Map<string, CachedPullRequestDetails>();
@@ -375,7 +403,7 @@ export const GithubMcpAdapter = {
   },
 }
 
-async function fetchAllPullRequestComments(
+async function fetchConversationComments(
   connectionService: McpConnectionService,
   repo: MonitoredRepo,
   session: GitHubSession,
@@ -402,6 +430,104 @@ async function fetchAllPullRequestComments(
       return comments;
     }
   }
+}
+
+function mapReviewComment(comment: MinimalReviewComment): PullRequestComment {
+  const author = comment.author ?? '';
+  const body = comment.body ?? '';
+  const createdAt = comment.created_at ?? '';
+  const htmlUrl = comment.html_url ?? '';
+  // Review-thread comments have no numeric id in the MCP minimal shape — use the permalink, or a stable composite.
+  const id = htmlUrl
+    || `review:${author}:${createdAt}:${comment.path ?? ''}:${body.slice(0, 64)}`;
+  return {
+    id,
+    user: { login: author },
+    body,
+    created_at: createdAt,
+    html_url: htmlUrl,
+  };
+}
+
+function flattenReviewThreadsPage(payload: ReviewThreadsPage | PullRequestComment[] | unknown): {
+  comments: PullRequestComment[];
+  hasNextPage: boolean;
+  endCursor: string | undefined;
+} {
+  // Tests and older stubs may return []; treat as empty threads (not conversation comments).
+  if (Array.isArray(payload)) {
+    return { comments: [], hasNextPage: false, endCursor: undefined };
+  }
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('GitHub MCP get_review_comments result must be an object with review_threads.');
+  }
+  const page = payload as ReviewThreadsPage;
+  const threads = page.review_threads;
+  if (threads !== undefined && !Array.isArray(threads)) {
+    throw new Error('GitHub MCP get_review_comments review_threads must be an array.');
+  }
+  const comments = (threads ?? [])
+    .filter((thread) => thread.is_resolved !== true && thread.is_outdated !== true)
+    .flatMap((thread) => (thread.comments ?? []).map(mapReviewComment));
+  return {
+    comments,
+    hasNextPage: page.pageInfo?.hasNextPage === true,
+    endCursor: typeof page.pageInfo?.endCursor === 'string' ? page.pageInfo.endCursor : undefined,
+  };
+}
+
+async function fetchReviewComments(
+  connectionService: McpConnectionService,
+  repo: MonitoredRepo,
+  session: GitHubSession,
+  pullNumber: number,
+): Promise<PullRequestComment[]> {
+  const comments: PullRequestComment[] = [];
+  let after: string | undefined;
+  for (;;) {
+    const args: Record<string, unknown> = {
+      owner: repo.owner,
+      repo: repo.repo,
+      pullNumber,
+      method: 'get_review_comments',
+      perPage: 100,
+    };
+    if (after) {
+      args.after = after;
+    }
+    const payload = parseToolResultText<ReviewThreadsPage | PullRequestComment[]>(
+      await callWithSessionFallback(connectionService, session, 'pull_request_read', args),
+    );
+    const page = flattenReviewThreadsPage(payload);
+    comments.push(...page.comments);
+    // Stop when pagination claims another page but the cursor does not advance (avoids infinite loops).
+    if (!page.hasNextPage || !page.endCursor || page.endCursor === after) {
+      return comments;
+    }
+    after = page.endCursor;
+  }
+}
+
+/** Conversation (`get_comments`) + inline/review (`get_review_comments`), same pipeline for attention. */
+async function fetchAllPullRequestComments(
+  connectionService: McpConnectionService,
+  repo: MonitoredRepo,
+  session: GitHubSession,
+  pullNumber: number,
+): Promise<PullRequestComment[]> {
+  const conversationPromise = fetchConversationComments(connectionService, repo, session, pullNumber);
+  const reviewPromise = fetchReviewComments(connectionService, repo, session, pullNumber).then(
+    (comments) => comments,
+    (error: unknown) => {
+      console.warn(
+        '[GithubMcpAdapter] get_review_comments failed; continuing with conversation comments only.',
+        error,
+      );
+      return [] as PullRequestComment[];
+    },
+  );
+  const [conversation, review] = await Promise.all([conversationPromise, reviewPromise]);
+  return [...conversation, ...review];
 }
 
 async function fetchOpenPullRequestsImpl(

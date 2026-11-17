@@ -11,8 +11,10 @@ function item(key: string, overrides: Partial<AttentionInboxItem> = {}): Attenti
     latestRelevantAt: null,
     jiraUnreadCount: 0,
     jiraLatestUnreadComment: null,
+    jiraLatestAwaitingComment: null,
     prUnreadCount: 0,
     prLatestUnreadComment: null,
+    prLatestAwaitingComment: null,
     ...overrides,
   };
 }

@@ -61,7 +61,10 @@ issue links, Flagged field). Run the **Jira Field Spike** command
    `devMateKit.jira.noPrDays`. Follow-ups: per-label opt-out (needs the `labels`
    field); tickets still In Progress after their PR merged are flagged too, since
    only open PRs are fetched.
-2. Comments awaiting your reply — **next**
+2. ✅ Comments awaiting your reply (`jira-awaiting-reply`, `pr-awaiting-reply`) — **done**.
+   Stays until you comment after the latest non-bot comment from someone else; independent of
+   unread/`seenAt`. Setting `devMateKit.attention.ignoreShortReplies` (default false). Own PRs
+   and assigned tickets only. Follow-up: GitHub inline/review comments are not in the adapter yet.
 3. Jira blockers
 
 ### Phase 2 — Workflow

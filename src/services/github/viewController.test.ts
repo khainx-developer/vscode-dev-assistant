@@ -396,6 +396,50 @@ suite('GitHubViewController', () => {
     assert.ok(state.attention.myPRs[0].reasons.includes('pr-unread-comment'));
   });
 
+  test('refresh_awaitingReply_considersConversationAndInlineReviewComments', async () => {
+    // Fake adapter already merged conversation + inline into pr.comments (adapter unit covers fetch).
+    const pr = makePr({
+      repoKey: 'o/r',
+      number: 9,
+      author: 'me',
+      comments: [
+        {
+          id: '10',
+          author: 'me',
+          body: 'Thanks for reviewing',
+          createdAt: BEFORE,
+          url: 'https://github.com/o/r/pull/9#issuecomment-10',
+        },
+        {
+          id: 'https://github.com/o/r/pull/9#discussion_r99',
+          author: 'reviewer',
+          body: 'Please fix this line',
+          createdAt: AFTER,
+          url: 'https://github.com/o/r/pull/9#discussion_r99',
+        },
+      ],
+    });
+    const sourceKey = githubCommentSourceKey(pr.repoKey, pr.number);
+    const { view } = makeView();
+    const controller = new GitHubViewController(
+      makeContext(),
+      view,
+      makeAuthService(SESSION),
+      makeConfigStore({ monitoredRepos: [{ owner: 'o', repo: 'r' }], monitoredAuthors: [] }),
+      makeClient(async () => [pr]),
+      new LastSeenStore(makeContext()),
+      makeCommentReadStateStore(),
+      new PullRequestCache(),
+    );
+
+    await controller.refresh();
+
+    const attention = controller.getState().commentAttentionBySource[sourceKey];
+    assert.strictEqual(attention.awaitingReply, true);
+    assert.strictEqual(attention.latestAwaitingComment?.id, 'https://github.com/o/r/pull/9#discussion_r99');
+    assert.strictEqual(attention.latestAwaitingComment?.authorIdentity, 'reviewer');
+  });
+
   test('refresh_firstSuccessfulCommentFetchBaselinesWithoutUnread', async () => {
     const pr = makePr({
       repoKey: 'o/r',
