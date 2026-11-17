@@ -1,49 +1,123 @@
-# Dev Utilities
+# DevMate Kit
 
-A private VS Code extension bundling handy developer utilities. Not published to the Marketplace — built and shared internally as a `.vsix` file.
+**Your daily work radar.** DevMate Kit shows the GitHub pull requests and Jira tickets that need *your* attention — right inside VS Code — and can turn them into a prioritized plan or a standup update with the AI models your editor already has.
+
+> What should I do next? Open the sidebar and you'll know.
+
+## Why
+
+Knowing what to work on usually means checking GitHub for reviews you owe, Jira for ticket status and due dates, and notifications for comments on both. Each switch costs focus, and the one review a teammate is blocked on is easy to miss.
+
+DevMate Kit pulls those signals into one **Attention Inbox**, sorted by priority, so you can act without leaving the editor.
 
 ## Features
 
-All commands work on the current selection(s) (or the current line if nothing is selected), available via the Command Palette (`Ctrl+Shift+P`) and the editor right-click menu under **Dev Utilities**:
+### Attention Inbox
 
-- Base64 Encode / Decode
-- URL Encode / Decode
-- Format JSON / Escape as JSON string
-- Insert UUID
-- Insert current Unix timestamp / Convert Unix timestamp to ISO date
-- Case transforms: UPPERCASE, lowercase, camelCase, snake_case, kebab-case
+Everything that needs you, highest priority first:
 
-## Project layout
+| Priority | What lands here |
+|---|---|
+| **Urgent** (red) | Failing checks, changes requested, merge conflicts, overdue tickets, PRs or tickets stale for 3+ days |
+| **New activity** (blue) | Comments on your PRs or tickets you haven't opened yet |
+| **Waiting on you** (orange) | Reviews requested from you, teammates' PRs waiting for review, tickets in Review or due today/tomorrow, in-progress tickets with no open PR, comments on your PRs or tickets awaiting your reply, assigned tickets blocked by another open issue |
 
-- `src/extension.ts` — activation, registers every command in `src/commands`.
-- `src/commands/*.ts` — one file per feature group; each exports a list of `DevUtilityCommand`.
-- `src/utils/textEdit.ts` — shared helpers for editing the active editor's selections.
+Jira tickets are grouped with the pull requests that reference them (ticket key in the PR **title** or **branch name**), so a ticket and its PR show up as one item. Every item has one-click **Open PR**, **Open in Jira** and **Open comment** actions, expandable details (comments, subtasks, linked PR), and **Snooze** (1 hour, later today, or tomorrow morning) for things you can't act on yet.
 
-To add a new utility: create (or extend) a file in `src/commands/`, export its `DevUtilityCommand` entries, add it to `src/commands/index.ts`, and declare the command id + title in `package.json` (`contributes.commands`, and optionally the context menu).
+### Daily Tasks dashboard
 
-## Development
+The full dashboard opens on the Attention Inbox. Stat tiles — *Needs attention*, *My PRs*, *Team PRs*, *My Jira* — switch the main list, and everything else stays one click away. If GitHub or Jira can't be reached, a banner says so and the rest of the dashboard keeps working.
 
-```bash
-npm install
-npm run watch     # esbuild in watch mode
-```
+### Always in view
 
-Press `F5` in VS Code to launch an Extension Development Host with the extension loaded.
+- **Status bar** — `🔔 3` shows how many items need you; click to open the dashboard.
+- **Activity bar badge** on the DevMate Kit icon.
+- **Notifications** when a background refresh finds something new. Several new items are batched into one message, and VS Code's Do Not Disturb mode silences them.
+- **Pause monitoring** — turn off at night or when you are away. DevMate stops refreshing and connecting to GitHub/Jira; your sign-in is kept. Resume from Setup, the dashboard banner, or the Command Palette.
 
-## Building & sharing the .vsix
+### AI assistant (optional)
 
-```bash
-npm install
-npm run package
-```
+DevMate can use either:
 
-This produces `dev-utilities-<version>.vsix` in the project root. Share that file with teammates.
+- **Editor language models** through the VS Code Language Model API — GitHub Copilot, Claude when Copilot or another installed provider offers it, or any other registered model.
+- **Cursor Agent CLI** (`agent` / `cursor-agent` on your PATH) in ask/print-only mode — a real subprocess backend, not a fake editor model. Useful when the host exposes no `vscode.lm` models (including Cursor IDE and VS Code without Copilot). Install the CLI, run `agent login` (or set `CURSOR_API_KEY` in the environment). DevMate never stores Anthropic or other vendor API keys.
 
-Each teammate installs it via:
+- **Ask AI: What should I do next?** — a 3–7 step plan with one "start here" recommendation.
+- **Generate Standup Summary** — Yesterday / Today / Blockers in Markdown, ready to copy.
+- **Explain** on any inbox item — why it's flagged and the next human action.
 
-- VS Code UI: Extensions view → `...` menu → **Install from VSIX...**
-- or CLI: `code --install-extension dev-utilities-<version>.vsix`
+Only titles, keys, statuses, reasons, dates and short comment excerpts are sent to the model. Access tokens, OAuth secrets, URLs and raw API payloads are never included, and comment excerpts are scanned for anything that looks like a credential.
 
-## Bumping the version
+If editor models are empty, Setup can **suggest** Cursor Agent CLI; it never switches provider automatically.
 
-Edit `version` in `package.json` before packaging a new build so teammates can tell builds apart.
+### Text utilities
+
+Quick transforms from the **Tools** tab (grouped as Code / API / Debug), the Command Palette, or the editor right-click menu under **DevMate Kit** (they work on every selection, or the current line):
+
+- Base64 encode / decode, URL encode / decode
+- JWT decoder (decode only — never verifies the signature)
+- Format JSON, escape text as a JSON string
+- Insert UUID, insert current Unix timestamp, convert a Unix timestamp to an ISO date
+
+For case transforms (UPPERCASE, lowercase, camelCase, snake_case, kebab-case), use VS Code's built-in **Transform to …** commands.
+
+## Getting started
+
+1. Open **DevMate Kit** from the activity bar.
+2. **Setup → Sign in to GitHub.** DevMate uses your VS Code GitHub account.
+3. **Add repositories** (`owner/repo`) and, optionally, **teammates** by GitHub username.
+4. *Optional:* **Connect Jira** — enter your site URL, approve access in the browser, type your name exactly as it appears in the Assignee field, and add a JQL query (DevMate suggests one).
+5. *Optional:* turn on **AI** and pick a model.
+
+There's also a guided walkthrough: **Help → Welcome → Get started with DevMate Kit**.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| DevMate Kit: Open Daily Tasks Dashboard | Opens the full dashboard |
+| DevMate Kit: Refresh Attention Inbox | Refreshes GitHub and Jira now |
+| DevMate Kit: Open Setup | Opens the setup checklist |
+| DevMate Kit: Ask AI — What should I do next? | Prioritized plan from your inbox |
+| DevMate Kit: Generate Standup Summary | Yesterday / Today / Blockers in a new editor |
+| DevMate Kit: Select AI Model | Pick from the models this editor offers |
+| DevMate Kit: Sign in to GitHub | Signs in with your VS Code GitHub account |
+
+## Settings
+
+| Setting | Default | Description |
+|---|---|---|
+| `devMateKit.github.monitoredRepos` | `[]` | Repositories to watch, as `owner/repo` |
+| `devMateKit.github.monitoredAuthors` | `[]` | Teammates' GitHub usernames (Team PRs) |
+| `devMateKit.jira.siteUrl` | `""` | Your Jira Cloud site, set by Setup |
+| `devMateKit.jira.currentUser` | `""` | Your Jira display name, exactly as shown in Assignee |
+| `devMateKit.jira.teamMembers` | `[]` | Teammates' Jira display names |
+| `devMateKit.jira.savedQueries` | `[]` | JQL queries that choose which tickets to fetch |
+| `devMateKit.jira.noPrStatuses` | `["In Progress"]` | Statuses that count as in-progress for the no-open-PR inbox flag (case-insensitive) |
+| `devMateKit.jira.noPrDays` | `3` | Days without Jira activity before flagging an in-progress ticket with no open PR |
+| `devMateKit.attention.ignoreShortReplies` | `false` | When true, a latest non-bot comment under about 15 characters does not count as awaiting your reply |
+| `devMateKit.ai.provider` | `none` | `vscodeLm` (editor LM API), `cursorCli` (Cursor Agent CLI ask/print), or `none` |
+| `devMateKit.ai.model` | `""` | Model id; for `vscodeLm` empty picks first Copilot model; for `cursorCli` maps to `--model` |
+| `devMateKit.monitoring.enabled` | `true` | Keep watching GitHub and Jira; turn off to pause all monitoring network activity |
+| `devMateKit.notifications.enabled` | `true` | Notify when new items need attention |
+| `devMateKit.refresh.background` | `true` | Refresh every 10 minutes even when no DevMate view is open |
+| `devMateKit.statusBar.enabled` | `true` | Show the attention count in the status bar |
+
+## Privacy
+
+- GitHub access uses VS Code's built-in GitHub authentication; Jira access uses Atlassian's OAuth through their official MCP server. Tokens are kept in VS Code's secret storage.
+- DevMate only reads data. It never comments, approves, merges or changes Jira tickets on your behalf.
+- AI requests go only to the backend you chose (`vscode.lm` or Cursor Agent CLI ask/print), with the curated summary described above.
+
+## Roadmap
+
+- **Inline quick actions** (approve, comment, merge, change Jira status) — planned once they can be offered with explicit confirmation through the existing GitHub and Atlassian integrations.
+- Automatic detection of your Jira display name.
+
+## Installing
+
+Install **DevMate Kit** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=khainx-developer.devmate-kit).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for building from source, project layout, and publishing.

@@ -1,151 +1,437 @@
 {
-  "name": "dev-utilities",
-  "displayName": "Dev Utilities",
-  "description": "A collection of handy developer utilities for VS Code (private/internal use).",
-  "version": "0.0.1",
-  "publisher": "internal",
-  "private": true,
+  "name": "devmate-kit",
+  "displayName": "DevMate Kit",
+  "description": "Your daily work radar: GitHub pull requests and Jira tickets that need your attention, right inside VS Code — with optional AI summaries and handy text utilities.",
+  "version": "0.3.0",
+  "publisher": "khainx-developer",
+  "license": "MIT",
+  "icon": "media/dev-assistant-activity-icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/khainx-developer/vscode-dev-assistant.git"
+  },
+  "bugs": {
+    "url": "https://github.com/khainx-developer/vscode-dev-assistant/issues"
+  },
+  "homepage": "https://github.com/khainx-developer/vscode-dev-assistant#readme",
+  "keywords": [
+    "github",
+    "pull requests",
+    "jira",
+    "attention",
+    "inbox",
+    "dashboard",
+    "standup",
+    "copilot",
+    "ai",
+    "productivity",
+    "base64",
+    "json",
+    "uuid"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization",
+    "AI"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "DevMate Kit",
+      "properties": {
+        "devMateKit.ai.provider": {
+          "type": "string",
+          "enum": [
+            "none",
+            "vscodeLm",
+            "cursorCli",
+            "githubCopilot"
+          ],
+          "enumDescriptions": [
+            "AI features are off.",
+            "Use language models available in this editor through the VS Code Language Model API (GitHub Copilot, Claude via Copilot or another provider, …).",
+            "Use the Cursor Agent CLI on your PATH (`agent` / `cursor-agent`) in ask/print-only mode. Real subprocess backend — not a fake editor model.",
+            "Deprecated: same as vscodeLm. Kept so existing settings keep working."
+          ],
+          "default": "none",
+          "markdownDescription": "AI runtime for DevMate Kit. `vscodeLm` uses host chat models via the Language Model API; `cursorCli` spawns the Cursor Agent CLI (ask/print only). DevMate never stores Anthropic/OpenAI API keys."
+        },
+        "devMateKit.ai.model": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Model id. For `vscodeLm`, leave empty to use the first GitHub Copilot model (or the first available). For `cursorCli`, mapped to the CLI `--model` flag when non-empty. Pick from the live list with **DevMate Kit: Select AI Model**."
+        },
+        "devMateKit.ai.reviewPrompt": {
+          "type": "string",
+          "default": "Review PR #{number} in {repo}: {title}\n{url}\n\n## How to work this request\nYou are an editor coding agent with workspace access and (when available) GitHub/Jira MCP tools.\nDevMate only supplied a short triage snapshot. Do not invent a PR diff, check log, or Jira description from that snapshot.\n\n### Always do this first\n1. Identify GitHub targets (PR URL or owner/repo#number) and Jira targets (browse URL or issue key like WEB-123).\n2. Fetch live data with MCP (or equivalent tools) before answering.\n3. If a needed tool is missing or fails, say which one and what to enable — do not fabricate the missing content.\n\n### GitHub (when a PR is in scope)\nUse GitHub MCP / PR tools to load as needed: PR metadata and description, file diffs, check runs, reviews, and comments.\nBase review, summary, failing-check analysis, or draft replies on that live data.\n\n### Jira (when a ticket is in scope)\nUse Jira MCP / issue tools to load as needed: description, status, assignee, due date, comments, linked issues/PRs.\nIf a linked PR is present and the answer depends on code, also fetch that PR from GitHub.\n\n### If this prompt includes \"Conversation so far\"\nTreat it as prior DevMate Ask AI triage. Continue from the latest user goal, but prefer live MCP facts over snapshot guesses in that transcript.\n\n### Output\nBe concrete and actionable. Separate facts (from tools) from recommendations. Keep comment drafts short enough to paste.\n\n### This task\nStart by fetching this PR (diff + checks + comments), then review for correctness, risky changes, and missing tests.\nStatus: {status}",
+          "markdownDescription": "Prompt template for **Continue in editor chat** (clipboard hand-off). Placeholders: `{number}`, `{repo}`, `{title}`, `{url}`, `{status}`. Keep portable MCP how-to in the template so paste works in Copilot, Cursor, and other editor chats — not sent to the in-dashboard AI."
+        },
+        "devMateKit.github.monitoredRepos": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "GitHub repositories to monitor, as \"owner/repo\"."
+        },
+        "devMateKit.github.monitoredAuthors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "GitHub usernames whose pull requests are tracked as Team PRs."
+        },
+        "devMateKit.jira.siteUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Jira Cloud site URL, e.g. https://yoursite.atlassian.net."
+        },
+        "devMateKit.jira.siteId": {
+          "type": "string",
+          "default": "",
+          "description": "Internal: the Jira site's Atlassian cloud ID, set automatically after connecting."
+        },
+        "devMateKit.jira.currentUser": {
+          "type": "string",
+          "default": "",
+          "description": "Your Jira display name, exactly as it appears on your issues (e.g. the \"assignee\" name). Used to filter \"My Jira Tasks\" on the Daily Tasks dashboard."
+        },
+        "devMateKit.jira.teamMembers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Jira display names of teammates to include in team task monitoring."
+        },
+        "devMateKit.jira.savedQueries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "jql": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "jql"
+            ]
+          },
+          "default": [],
+          "description": "Saved JQL queries used to fetch Jira tasks."
+        },
+        "devMateKit.jira.noPrStatuses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "In Progress"
+          ],
+          "description": "Jira statuses that count as in-progress for the \"no open PR\" Attention Inbox flag (case-insensitive)."
+        },
+        "devMateKit.jira.noPrDays": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "description": "Days without Jira activity before flagging an in-progress ticket that has no open pull request."
+        },
+        "devMateKit.attention.ignoreShortReplies": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, a latest non-bot comment under about 15 characters does not count as \"awaiting your reply\" in the Attention Inbox."
+        },
+        "devMateKit.monitoring.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep watching GitHub and Jira. Turn off to pause all monitoring network activity (no refresh, no connections) while keeping your sign-in."
+        },
+        "devMateKit.notifications.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a notification when a background refresh finds new items that need your attention."
+        },
+        "devMateKit.refresh.background": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep refreshing GitHub and Jira every 10 minutes even when no DevMate view is open (powers the status bar count and notifications)."
+        },
+        "devMateKit.statusBar.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the attention count in the status bar."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "devUtilitiesContainer",
-          "title": "Dev Utilities",
-          "icon": "media/activity-icon.svg"
+          "id": "devMateKitContainer",
+          "title": "DevMate Kit",
+          "icon": "media/dev-assistant-activity-icon.png"
         }
       ]
     },
     "views": {
-      "devUtilitiesContainer": [
+      "devMateKitContainer": [
         {
-          "id": "devUtilities.sidebar",
-          "name": "Tools",
-          "type": "webview"
+          "id": "devMateKit.sidebar",
+          "name": "DevMate Kit",
+          "type": "webview",
+          "contextualTitle": "DevMate Kit"
         }
       ]
     },
     "commands": [
       {
-        "command": "devUtilities.base64Encode",
-        "title": "Dev Utilities: Base64 Encode Selection"
+        "command": "devMateKit.dev.jiraFieldSpike",
+        "title": "DevMate Kit (Dev): Jira Field Spike"
       },
       {
-        "command": "devUtilities.base64Decode",
-        "title": "Dev Utilities: Base64 Decode Selection"
+        "command": "devMateKit.openDashboard",
+        "title": "DevMate Kit: Open Daily Tasks Dashboard",
+        "icon": "$(dashboard)"
       },
       {
-        "command": "devUtilities.generateUuid",
-        "title": "Dev Utilities: Insert UUID"
+        "command": "devMateKit.refresh",
+        "title": "DevMate Kit: Refresh Attention Inbox",
+        "icon": "$(refresh)"
       },
       {
-        "command": "devUtilities.formatJson",
-        "title": "Dev Utilities: Format JSON Selection"
+        "command": "devMateKit.pauseMonitoring",
+        "title": "DevMate Kit: Pause Monitoring"
       },
       {
-        "command": "devUtilities.toJsonEscapedString",
-        "title": "Dev Utilities: Escape Selection as JSON String"
+        "command": "devMateKit.resumeMonitoring",
+        "title": "DevMate Kit: Resume Monitoring"
       },
       {
-        "command": "devUtilities.unixTimestampToDate",
-        "title": "Dev Utilities: Convert Unix Timestamp to Date"
+        "command": "devMateKit.toggleMonitoring",
+        "title": "DevMate Kit: Toggle Monitoring"
       },
       {
-        "command": "devUtilities.dateToUnixTimestamp",
-        "title": "Dev Utilities: Insert Current Unix Timestamp"
+        "command": "devMateKit.openSetup",
+        "title": "DevMate Kit: Open Setup",
+        "icon": "$(gear)"
       },
       {
-        "command": "devUtilities.toUpperCase",
-        "title": "Dev Utilities: Transform to UPPERCASE"
+        "command": "devMateKit.openTools",
+        "title": "DevMate Kit: Open Text Tools",
+        "icon": "$(tools)"
       },
       {
-        "command": "devUtilities.toLowerCase",
-        "title": "Dev Utilities: Transform to lowercase"
+        "command": "devMateKit.githubSignIn",
+        "title": "DevMate Kit: Sign in to GitHub"
       },
       {
-        "command": "devUtilities.toCamelCase",
-        "title": "Dev Utilities: Transform to camelCase"
+        "command": "devMateKit.ai.whatNext",
+        "title": "DevMate Kit: Ask AI — What should I do next?",
+        "icon": "$(sparkle)"
       },
       {
-        "command": "devUtilities.toSnakeCase",
-        "title": "Dev Utilities: Transform to snake_case"
+        "command": "devMateKit.ai.standup",
+        "title": "DevMate Kit: Generate Standup Summary",
+        "icon": "$(checklist)"
       },
       {
-        "command": "devUtilities.toKebabCase",
-        "title": "Dev Utilities: Transform to kebab-case"
+        "command": "devMateKit.ai.selectModel",
+        "title": "DevMate Kit: Select AI Model"
       },
       {
-        "command": "devUtilities.urlEncode",
-        "title": "Dev Utilities: URL Encode Selection"
+        "command": "devMateKit.openTool",
+        "title": "DevMate Kit: Open Tool"
       },
       {
-        "command": "devUtilities.urlDecode",
-        "title": "Dev Utilities: URL Decode Selection"
+        "command": "devMateKit.base64Encode",
+        "title": "DevMate Kit: Base64 Encode Selection"
+      },
+      {
+        "command": "devMateKit.base64Decode",
+        "title": "DevMate Kit: Base64 Decode Selection"
+      },
+      {
+        "command": "devMateKit.generateUuid",
+        "title": "DevMate Kit: Insert UUID"
+      },
+      {
+        "command": "devMateKit.formatJson",
+        "title": "DevMate Kit: Format JSON Selection"
+      },
+      {
+        "command": "devMateKit.toJsonEscapedString",
+        "title": "DevMate Kit: Escape Selection as JSON String"
+      },
+      {
+        "command": "devMateKit.unixTimestampToDate",
+        "title": "DevMate Kit: Convert Unix Timestamp to Date"
+      },
+      {
+        "command": "devMateKit.dateToUnixTimestamp",
+        "title": "DevMate Kit: Insert Current Unix Timestamp"
+      },
+      {
+        "command": "devMateKit.urlEncode",
+        "title": "DevMate Kit: URL Encode Selection"
+      },
+      {
+        "command": "devMateKit.urlDecode",
+        "title": "DevMate Kit: URL Decode Selection"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "submenu": "devUtilities.submenu",
+          "submenu": "devMateKit.submenu",
           "group": "9_dev_utilities"
         }
       ],
-      "devUtilities.submenu": [
+      "devMateKit.submenu": [
         {
-          "command": "devUtilities.base64Encode"
+          "command": "devMateKit.base64Encode"
         },
         {
-          "command": "devUtilities.base64Decode"
+          "command": "devMateKit.base64Decode"
         },
         {
-          "command": "devUtilities.generateUuid"
+          "command": "devMateKit.generateUuid"
         },
         {
-          "command": "devUtilities.formatJson"
+          "command": "devMateKit.formatJson"
         },
         {
-          "command": "devUtilities.toJsonEscapedString"
+          "command": "devMateKit.toJsonEscapedString"
         },
         {
-          "command": "devUtilities.unixTimestampToDate"
+          "command": "devMateKit.unixTimestampToDate"
         },
         {
-          "command": "devUtilities.dateToUnixTimestamp"
+          "command": "devMateKit.dateToUnixTimestamp"
         },
         {
-          "command": "devUtilities.toUpperCase"
+          "command": "devMateKit.urlEncode"
         },
         {
-          "command": "devUtilities.toLowerCase"
+          "command": "devMateKit.urlDecode"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "devMateKit.refresh",
+          "when": "view == devMateKit.sidebar",
+          "group": "navigation@1"
         },
         {
-          "command": "devUtilities.toCamelCase"
+          "command": "devMateKit.openDashboard",
+          "when": "view == devMateKit.sidebar",
+          "group": "navigation@2"
         },
         {
-          "command": "devUtilities.toSnakeCase"
+          "command": "devMateKit.ai.whatNext",
+          "when": "view == devMateKit.sidebar",
+          "group": "navigation@3"
         },
         {
-          "command": "devUtilities.toKebabCase"
+          "command": "devMateKit.openSetup",
+          "when": "view == devMateKit.sidebar",
+          "group": "1_setup@1"
         },
         {
-          "command": "devUtilities.urlEncode"
+          "command": "devMateKit.ai.standup",
+          "when": "view == devMateKit.sidebar",
+          "group": "2_ai@1"
         },
         {
-          "command": "devUtilities.urlDecode"
+          "command": "devMateKit.ai.selectModel",
+          "when": "view == devMateKit.sidebar",
+          "group": "2_ai@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "devMateKit.openTool",
+          "when": "false"
         }
       ]
     },
     "submenus": [
       {
-        "id": "devUtilities.submenu",
-        "label": "Dev Utilities"
+        "id": "devMateKit.submenu",
+        "label": "DevMate Kit"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "devMateKit.gettingStarted",
+        "title": "Get started with DevMate Kit",
+        "description": "See the pull requests and Jira tickets that need you — without leaving VS Code.",
+        "steps": [
+          {
+            "id": "signInGitHub",
+            "title": "Sign in to GitHub",
+            "description": "DevMate uses your VS Code GitHub account to read pull requests.\n[Sign in to GitHub](command:devMateKit.githubSignIn)",
+            "media": {
+              "markdown": "media/walkthrough/github.md"
+            },
+            "completionEvents": [
+              "onCommand:devMateKit.githubSignIn"
+            ]
+          },
+          {
+            "id": "chooseRepos",
+            "title": "Choose repositories and teammates",
+            "description": "Tell DevMate which repositories and teammates to watch.\n[Open Setup](command:devMateKit.openSetup)",
+            "media": {
+              "markdown": "media/walkthrough/monitoring.md"
+            },
+            "completionEvents": [
+              "onSettingChanged:devMateKit.github.monitoredRepos"
+            ]
+          },
+          {
+            "id": "connectJira",
+            "title": "Connect Jira (optional)",
+            "description": "Add your Jira tickets and due dates to the inbox.\n[Connect Jira](command:devMateKit.openSetup)",
+            "media": {
+              "markdown": "media/walkthrough/jira.md"
+            },
+            "completionEvents": [
+              "onSettingChanged:devMateKit.jira.siteUrl"
+            ]
+          },
+          {
+            "id": "turnOnAi",
+            "title": "Ask AI what to do next (optional)",
+            "description": "Use editor language models (e.g. GitHub Copilot) or the Cursor Agent CLI.\n[Select a model](command:devMateKit.ai.selectModel)",
+            "media": {
+              "markdown": "media/walkthrough/ai.md"
+            },
+            "completionEvents": [
+              "onSettingChanged:devMateKit.ai.provider"
+            ]
+          },
+          {
+            "id": "openDashboard",
+            "title": "Open Daily Tasks",
+            "description": "Your Attention Inbox, sorted by priority.\n[Open Daily Tasks](command:devMateKit.openDashboard)",
+            "media": {
+              "markdown": "media/walkthrough/dashboard.md"
+            },
+            "completionEvents": [
+              "onCommand:devMateKit.openDashboard"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -158,15 +444,19 @@
     "package": "npm run build && vsce package",
     "test": "vscode-test"
   },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2"
+  },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.90.0",
-    "@typescript-eslint/eslint-plugin": "^7.14.1",
-    "@typescript-eslint/parser": "^7.14.1",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
     "@vscode/test-cli": "^0.0.9",
     "@vscode/test-electron": "^2.4.0",
-    "@vscode/vsce": "^2.29.0",
-    "esbuild": "^0.21.5",
+    "@vscode/vsce": "^4.1.0",
+    "esbuild": "^0.28.2",
     "eslint": "^8.57.0",
     "typescript": "^5.5.2"
   },

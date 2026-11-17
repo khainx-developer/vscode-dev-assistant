@@ -1,12 +1,57 @@
 import * as vscode from 'vscode';
-import { allCommands } from './commands';
-import { getActiveEditorOrWarn } from './utils/textEdit';
-import { SidebarProvider } from './views/SidebarProvider';
-import { ToolPanel } from './panels/ToolPanel';
+import { createContainer } from './app/container';
+import { runJiraFieldSpike } from './app/jiraFieldSpike';
+import { allCommands } from './ui/commands/index';
+import { getActiveEditorOrWarn } from './ui/textEdit';
+import { SIDEBAR_VIEW_ID, SidebarProvider } from './ui/views/SidebarProvider';
+import { ToolPanel } from './ui/panels/ToolPanel';
+import { DashboardPanel } from './ui/panels/DashboardPanel';
+import { AttentionStatusBar } from './ui/statusBar';
+import { AttentionNotifier } from './ui/notifications';
+import type { SetupStepId } from './services/session/setupStatus';
 
 export function activate(context: vscode.ExtensionContext): void {
+  registerTextCommands(context);
+
+  // The AI coordinator needs to reveal UI that is built from the session it receives, so the
+  // hooks resolve the surfaces lazily.
+  const surfaces: { sidebar?: SidebarProvider } = {};
+  const { session, ai, services } = createContainer(context, {
+    revealDashboard: () => DashboardPanel.createOrShow(context.extensionUri, session),
+    revealSetup: () => void surfaces.sidebar?.showTab('setup', 'ai'),
+  });
+
+  const sidebar = new SidebarProvider(context.extensionUri, session);
+  surfaces.sidebar = sidebar;
+  context.subscriptions.push(
+    sidebar,
+    vscode.window.registerWebviewViewProvider(SIDEBAR_VIEW_ID, sidebar, { webviewOptions: { retainContextWhenHidden: true } }),
+    new AttentionStatusBar(session),
+    new AttentionNotifier(session, () => DashboardPanel.isFocused()),
+  );
+
+  const register = (id: string, handler: (...args: never[]) => unknown): void => {
+    context.subscriptions.push(vscode.commands.registerCommand(id, handler));
+  };
+
+  register('devMateKit.openDashboard', () => DashboardPanel.createOrShow(context.extensionUri, session));
+  register('devMateKit.openSetup', (step?: SetupStepId) => sidebar.showTab('setup', step));
+  register('devMateKit.openTools', () => sidebar.showTab('tools'));
+  register('devMateKit.openTool', (toolId: string) => ToolPanel.createOrShow(context.extensionUri, toolId));
+  register('devMateKit.refresh', () => session.handleCommand({ command: 'session.refreshAll' }));
+  register('devMateKit.pauseMonitoring', () => void session.setMonitoringEnabled(false));
+  register('devMateKit.resumeMonitoring', () => void session.setMonitoringEnabled(true));
+  register('devMateKit.toggleMonitoring', () => void session.setMonitoringEnabled(!session.isMonitoringEnabled()));
+  register('devMateKit.githubSignIn', () => session.handleCommand({ command: 'github.signIn' }));
+  register('devMateKit.ai.whatNext', () => ai.whatShouldIDoNext());
+  register('devMateKit.ai.standup', () => ai.standup());
+  register('devMateKit.ai.selectModel', () => ai.pickModel());
+  register('devMateKit.dev.jiraFieldSpike', () => runJiraFieldSpike(services));
+}
+
+function registerTextCommands(context: vscode.ExtensionContext): void {
   for (const command of allCommands) {
-    const disposable = vscode.commands.registerCommand(command.id, async () => {
+    context.subscriptions.push(vscode.commands.registerCommand(command.id, async () => {
       const editor = getActiveEditorOrWarn();
       if (!editor) {
         return;
@@ -14,22 +59,10 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         await command.handler(editor, context);
       } catch (err) {
-        vscode.window.showErrorMessage(`Dev Utilities: ${(err as Error).message}`);
+        vscode.window.showErrorMessage(`DevMate Kit: ${(err as Error).message}`);
       }
-    });
-    context.subscriptions.push(disposable);
+    }));
   }
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('devUtilities.openTool', (toolId: string) => {
-      ToolPanel.createOrShow(context.extensionUri, toolId);
-    })
-  );
-
-  const sidebarProvider = new SidebarProvider(context.extensionUri);
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('devUtilities.sidebar', sidebarProvider)
-  );
 }
 
 export function deactivate(): void {}

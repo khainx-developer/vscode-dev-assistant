@@ -1,0 +1,25 @@
+@import '../shared/tokens.css';
+@import '../shared/components.css';
+
+body { background: var(--vscode-editor-background); }
+#app { max-width: 820px; padding: 20px 24px 32px; }
+
+.tool-header { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 8px; }
+.tool-header h1 { font-size: 1.3em; font-weight: 600; margin: 0 0 2px; }
+.tool-header p { margin: 0; }
+.tool-icon {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--dm-radius-lg);
+  border: 1px solid var(--dm-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dm-info);
+}
+.actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.output-head { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 6px; }
+.output-head .field-label { margin-bottom: 3px; }
+textarea { font-size: var(--vscode-editor-font-size, 13px); }
+.field-error { min-height: 1.2em; }
