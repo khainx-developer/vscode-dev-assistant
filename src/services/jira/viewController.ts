@@ -104,6 +104,13 @@ export class JiraViewController {
           return result;
         });
         return;
+      case 'jira.reconnect':
+        await this.runOperation(msg.command, async () => {
+          const result = await this.connectionStore.reconnectConnection();
+          await this.performRefresh();
+          return result;
+        });
+        return;
       case 'jira.disconnect':
         await this.runOperation(msg.command, async () => {
           await this.connectionStore.clearConnection();

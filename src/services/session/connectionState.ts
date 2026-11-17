@@ -48,7 +48,12 @@ function isRealJiraFailure(failure: JiraFailure): boolean {
 
 export function deriveGitHubConnection(state: GitHubViewState | null): GitHubConnectionState {
   if (!state) return { kind: 'unknown' };
-  if (state.pendingOperations['github.signIn']?.pending) return { kind: 'signingIn' };
+  if (
+    state.pendingOperations['github.signIn']?.pending
+    || state.pendingOperations['github.reconnect']?.pending
+  ) {
+    return { kind: 'signingIn' };
+  }
 
   const failures = state.failures.filter(isRealGitHubFailure);
   const rateLimit = failures.find((failure) => failure.category === 'rate-limited');
@@ -72,7 +77,12 @@ export function deriveGitHubConnection(state: GitHubViewState | null): GitHubCon
 
 export function deriveJiraConnection(state: JiraViewState | null): JiraConnectionState {
   if (!state) return { kind: 'unknown' };
-  if (state.pendingOperations['jira.saveConnection']?.pending) return { kind: 'connecting' };
+  if (
+    state.pendingOperations['jira.saveConnection']?.pending
+    || state.pendingOperations['jira.reconnect']?.pending
+  ) {
+    return { kind: 'connecting' };
+  }
 
   const failures = state.failures.filter(isRealJiraFailure);
   if (!state.connected) {

@@ -708,6 +708,61 @@ suite('GitHubViewController', () => {
     assert.strictEqual(fetchCalls >= 0, true);
   });
 
+  test('githubViewController_reconnect_disconnectsMcp_forcesSession_refreshes', async () => {
+    const { view, posted } = makeView();
+    const disconnectCalls: string[] = [];
+    const getSessionCalls: Array<{ createIfNone: boolean; opts?: { forceNewSession?: boolean } }> = [];
+    let fetchCalls = 0;
+    const authService = {
+      getSession: async (createIfNone: boolean, opts?: { forceNewSession?: boolean }) => {
+        getSessionCalls.push({ createIfNone, opts });
+        return SESSION;
+      },
+    } as unknown as GitHubAuthService;
+    const connectionService = {
+      disconnect: async (serverId: string) => {
+        disconnectCalls.push(serverId);
+      },
+    } as unknown as McpConnectionService;
+    GithubMcpAdapter.fetchOpenPullRequests = async () => {
+      fetchCalls += 1;
+      return [];
+    };
+    const config: GitHubExtensionConfig = { monitoredRepos: [{ owner: 'o', repo: 'r' }], monitoredAuthors: [] };
+    const controller = new GitHubViewController(
+      makeContext(),
+      view,
+      authService,
+      makeConfigStore(config),
+      connectionService,
+      new LastSeenStore(makeContext()),
+      makeCommentReadStateStore(),
+      new PullRequestCache(),
+    );
+
+    await controller.handleMessage({ command: 'github.reconnect' });
+
+    assert.deepStrictEqual(disconnectCalls, ['github']);
+    assert.deepStrictEqual(getSessionCalls, [{ createIfNone: true, opts: { forceNewSession: true } }]);
+    assert.ok(fetchCalls >= 1);
+    assert.ok(posted.some((message) => {
+      const operationMessage = message as {
+        command?: string;
+        operationId?: string;
+        result?: { ok?: boolean };
+      };
+      return operationMessage.command === 'github.operationResult'
+        && operationMessage.operationId === 'github.reconnect'
+        && operationMessage.result?.ok === true;
+    }));
+
+    getSessionCalls.length = 0;
+    disconnectCalls.length = 0;
+    await controller.handleMessage({ command: 'github.signIn' });
+    assert.deepStrictEqual(disconnectCalls, []);
+    assert.deepStrictEqual(getSessionCalls, [{ createIfNone: true, opts: undefined }]);
+  });
+
   test('handleMessage_addRepo_publishesPendingAndResult', async () => {
     const { view, posted } = makeView();
     const config: GitHubExtensionConfig = { monitoredRepos: [], monitoredAuthors: [] };

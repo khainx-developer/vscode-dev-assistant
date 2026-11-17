@@ -82,6 +82,7 @@ export interface JiraViewState {
 
 export type JiraIncomingMessage =
   | { command: 'jira.saveConnection'; siteUrl: string }
+  | { command: 'jira.reconnect' }
   | { command: 'jira.disconnect' }
   | { command: 'jira.setCurrentUser'; displayName: string }
   | { command: 'jira.addTeamMember'; displayName: string }

@@ -67,7 +67,7 @@ function createController(options: {
   pullRequestCache?: PullRequestCache;
   seenAtBySource?: Map<string, number>;
   connectionStoreOverrides?: Partial<
-    Pick<JiraConnectionStore, 'getConnection' | 'saveConnection' | 'clearConnection'>
+    Pick<JiraConnectionStore, 'getConnection' | 'saveConnection' | 'clearConnection' | 'reconnectConnection'>
   >;
   configStoreOverrides?: Partial<
     Pick<
@@ -334,6 +334,50 @@ suite('JiraViewController', () => {
     await controller.handleMessage({ command: 'jira.disconnect' });
 
     assert.strictEqual(cleared, true);
+  });
+
+  test('jiraViewController_reconnect_runsStoreThenRefresh', async () => {
+    let reconnectCalls = 0;
+    let clearCalls = 0;
+    let fetchCalls = 0;
+    const { controller, posted } = createController({
+      connectionStoreOverrides: {
+        reconnectConnection: async () => {
+          reconnectCalls += 1;
+          return { ok: true };
+        },
+        clearConnection: async () => {
+          clearCalls += 1;
+        },
+      },
+      fetchIssues: async () => {
+        fetchCalls += 1;
+        return [];
+      },
+      queries: [{ label: 'Tasks', jql: 'project = APP' }],
+    });
+
+    const operation = controller.handleMessage({ command: 'jira.reconnect' });
+    assert.ok(posted.some((message) => {
+      return message.command === 'jira.state'
+        && message.state.pendingOperations['jira.reconnect']?.pending === true;
+    }));
+
+    await operation;
+
+    assert.strictEqual(reconnectCalls, 1);
+    assert.strictEqual(clearCalls, 0);
+    assert.ok(fetchCalls >= 1);
+    assert.strictEqual(controller.getState().pendingOperations['jira.reconnect']?.pending, false);
+    assert.ok(posted.some((message) => {
+      return message.command === 'jira.operationResult'
+        && message.operationId === 'jira.reconnect'
+        && message.result.ok === true;
+    }));
+
+    await controller.handleMessage({ command: 'jira.disconnect' });
+    assert.strictEqual(clearCalls, 1);
+    assert.strictEqual(reconnectCalls, 1);
   });
 
   test('refresh_buildsTasksByQuery_fromAdapter', async () => {

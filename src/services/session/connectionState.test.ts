@@ -58,6 +58,14 @@ suite('connectionState', () => {
     assert.strictEqual(deriveGitHubConnection(state).kind, 'signingIn');
   });
 
+  test('deriveGitHubConnection_pendingReconnect_isSigningIn', () => {
+    const state = github({
+      authenticated: true,
+      pendingOperations: { 'github.reconnect': { operationId: 'github.reconnect', pending: true } },
+    });
+    assert.strictEqual(deriveGitHubConnection(state).kind, 'signingIn');
+  });
+
   test('github_lifecycle_signedIn_refreshing_ready', () => {
     assert.deepStrictEqual(deriveGitHubConnection(github({ lastRefreshAt: null })), { kind: 'signedIn', user: 'octocat' });
     assert.deepStrictEqual(deriveGitHubConnection(github({ isRefreshing: true })), { kind: 'refreshing', user: 'octocat' });
@@ -95,6 +103,13 @@ suite('connectionState', () => {
     );
     assert.deepStrictEqual(deriveJiraConnection(jira({ lastRefreshAt: null })), { kind: 'connected', siteUrl: 'https://acme.atlassian.net' });
     assert.deepStrictEqual(deriveJiraConnection(jira()), { kind: 'ready', siteUrl: 'https://acme.atlassian.net' });
+  });
+
+  test('deriveJiraConnection_pendingReconnect_isConnecting', () => {
+    const state = jira({
+      pendingOperations: { 'jira.reconnect': { operationId: 'jira.reconnect', pending: true } },
+    });
+    assert.strictEqual(deriveJiraConnection(state).kind, 'connecting');
   });
 
   test('jira_error_keepsConnectionAndReportsQueryLabel', () => {

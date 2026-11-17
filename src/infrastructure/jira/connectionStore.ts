@@ -58,4 +58,28 @@ export class JiraConnectionStore {
     await this.connectionService.disconnect('atlassian');
     await this.context.secrets.delete(LEGACY_SECRET_KEY);
   }
+
+  async reconnectConnection(): Promise<{ ok: true } | { ok: false; reason: string }> {
+    const connection = await this.getConnection();
+    if (!connection) {
+      return { ok: false, reason: 'Not connected. Connect to a Jira site first.' };
+    }
+
+    try {
+      await this.connectionService.reconnect('atlassian');
+    } catch (error) {
+      const detail = (error as { detail?: string })?.detail || (error as Error)?.message;
+      return { ok: false, reason: detail || 'Could not authorize with Atlassian.' };
+    }
+
+    const result = await AtlassianMcpAdapter.validateConnection(
+      this.connectionService,
+      connection.siteUrl,
+    );
+    if (!result.ok) {
+      return { ok: false, reason: result.reason };
+    }
+
+    return { ok: true };
+  }
 }

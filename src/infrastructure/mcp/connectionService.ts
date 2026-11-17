@@ -101,6 +101,15 @@ export class McpConnectionService {
     return this.doDisconnect(serverId);
   }
 
+  /**
+   * Force re-auth: always disconnect (clear authSessions + secret store) before connect.
+   * `connect` early-returns when already connected, so renew must clear first.
+   */
+  async reconnect(serverId: McpServerId, opts?: { extraHeaders?: Record<string, string> }): Promise<void> {
+    await this.doDisconnect(serverId);
+    await this.connect(serverId, opts);
+  }
+
   isConnected(serverId: McpServerId): boolean {
     return this.connectedClients.has(serverId);
   }
