@@ -190,6 +190,10 @@
     },
     "commands": [
       {
+        "command": "devMateKit.dev.jiraFieldSpike",
+        "title": "DevMate Kit (Dev): Jira Field Spike"
+      },
+      {
         "command": "devMateKit.openDashboard",
         "title": "DevMate Kit: Open Daily Tasks Dashboard",
         "icon": "$(dashboard)"
