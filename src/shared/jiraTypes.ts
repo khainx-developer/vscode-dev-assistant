@@ -36,10 +36,18 @@ export interface JiraSubtask {
   url: string;
 }
 
+/** Jira status category when the issue payload exposes it (`new` | `indeterminate` | `done`). */
+export interface JiraStatusCategory {
+  key?: string;
+  name?: string;
+}
+
 export interface JiraTask {
   key: string;
   summary: string;
   status: string;
+  /** Prefer this over status name for terminal-state checks when present. */
+  statusCategory?: JiraStatusCategory | null;
   assignee: string | null;
   dueDate: string | null;
   updatedAt?: string;

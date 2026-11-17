@@ -71,8 +71,10 @@ function item(index: number, overrides: Partial<AttentionInboxItem> = {}): Atten
     latestRelevantAt: null,
     jiraUnreadCount: 0,
     jiraLatestUnreadComment: null,
+    jiraLatestAwaitingComment: null,
     prUnreadCount: 0,
     prLatestUnreadComment: null,
+    prLatestAwaitingComment: null,
     ...overrides,
   };
 }
@@ -568,6 +570,7 @@ suite('AI prompts', () => {
         reasons: ['pr-linked'],
         unreadCount: 0,
         latestUnreadComment: null,
+        latestAwaitingComment: null,
       }],
     });
     const explain = buildExplainItemPrompt(relatedOnly, NOW, ME)[0].content;

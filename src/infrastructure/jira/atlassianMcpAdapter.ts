@@ -6,11 +6,16 @@ type AccessibleResource = { cloudId: string; url: string };
 
 type AccessibleResourcesResult = { data: { resources: AccessibleResource[] } };
 
+type JiraStatusPayload = {
+  name: string;
+  statusCategory?: { key?: string; name?: string } | null;
+};
+
 type SearchJqlSubtask = {
   key: string;
   fields: {
     summary: string;
-    status: { name: string };
+    status: JiraStatusPayload;
   };
 };
 
@@ -18,7 +23,7 @@ type SearchJqlIssue = {
   key: string;
   fields: {
     summary: string;
-    status: { name: string };
+    status: JiraStatusPayload;
     assignee: { displayName: string } | null;
     duedate?: string | null;
     updated: string;
@@ -207,11 +212,28 @@ function mapSubtask(siteUrl: string, subtask: SearchJqlSubtask): JiraSubtask {
   };
 }
 
+function mapStatusCategory(
+  status: JiraStatusPayload,
+): JiraTask['statusCategory'] {
+  const category = status.statusCategory;
+  if (!category || typeof category !== 'object') {
+    return undefined;
+  }
+  const key = typeof category.key === 'string' ? category.key : undefined;
+  const name = typeof category.name === 'string' ? category.name : undefined;
+  if (!key && !name) {
+    return undefined;
+  }
+  return { key, name };
+}
+
 function mapIssue(siteUrl: string, issue: SearchJqlIssue): JiraTask {
+  const statusCategory = mapStatusCategory(issue.fields.status);
   return {
     key: issue.key,
     summary: issue.fields.summary,
     status: issue.fields.status.name,
+    ...(statusCategory ? { statusCategory } : {}),
     assignee: issue.fields.assignee?.displayName ?? null,
     dueDate: issue.fields.duedate ?? null,
     updatedAt: issue.fields.updated,

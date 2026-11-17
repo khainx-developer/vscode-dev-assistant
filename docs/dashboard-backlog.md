@@ -17,30 +17,32 @@ needs you. Surfaces: Home tab, dashboard panel, status bar. See `roadmap.md`.
   activity for `devMateKit.jira.noPrDays`. Waiting on you, label "No open PR".
   Follow-ups: per-label opt-out (needs the `labels` field); a ticket still In
   Progress after its PR merged is flagged too, since only open PRs are fetched.
+- **Comments awaiting your reply** (`jira-awaiting-reply`, `pr-awaiting-reply`):
+  latest non-bot comment on your PR or assigned ticket is from someone else and
+  you have not replied since. Waiting on you; independent of unread/`seenAt`.
+  Optional `devMateKit.attention.ignoreShortReplies`. Team PRs you only reviewed
+  are not flagged. Follow-up: GitHub inline/review comments are not fetched yet.
 
 ## Add (in priority order)
 
-Prerequisite for 1 (partly) and 2: check what the Jira MCP adapter returns. Run
-the Jira Field Spike command and record the result in `roadmap.md`.
+Prerequisite for 1: check what the Jira MCP adapter returns. Run the Jira Field
+Spike command and record the result in `roadmap.md`.
 
-1. **Comments awaiting your reply** (next)
-   - Latest comment on your PR or ticket is from someone else and you haven't
-     replied since. Replaces "unread" as the "needs my response" signal.
-   - Ignore bots (existing filter) and optionally very short comments.
-2. **Jira blockers**
+1. **Jira blockers**
    - Flagged / Impediment field and *is blocked by* issue links; new reason
      `jira-blocked`. The Flagged field's custom id differs per site.
    - Jira only at first.
-3. **Auto-pause outside working hours** — schedule for the existing Sleep/Wake
+2. **Auto-pause outside working hours** — schedule for the existing Sleep/Wake
    monitoring (e.g. Mon–Fri 09:00–18:00).
-4. **@mention detection** — mentions of you become an attention reason; sharpens #1.
-5. **Inbox filters** — by repo, priority, PR vs ticket.
-6. **Custom attention rules** — ignore drafts, ignore or boost by label,
+3. **@mention detection** — mentions of you become an attention reason; sharpens
+   awaiting-reply.
+4. **Inbox filters** — by repo, priority, PR vs ticket.
+5. **Custom attention rules** — ignore drafts, ignore or boost by label,
    configurable stale threshold (fixed at 3 days today).
-7. **Review-load view** — reviews you owe, oldest first.
-8. **Reports** — copy merged PRs / done tickets from the last N days as Markdown;
+6. **Review-load view** — reviews you owe, oldest first.
+7. **Reports** — copy merged PRs / done tickets from the last N days as Markdown;
    Slack-style and plain-text standup output; weekly report (AI).
-9. **Multiple GitHub orgs / Jira sites.**
+8. **Multiple GitHub orgs / Jira sites.**
 
 ## Not planned
 
@@ -51,5 +53,5 @@ the Jira Field Spike command and record the result in `roadmap.md`.
 ## Open questions
 
 - Is "In Progress" the right default for `noPrStatuses` in your Jira workflow?
-- Should "awaiting your reply" cover team PRs you reviewed, or only your own
-  PRs and tickets?
+- ~~Should "awaiting your reply" cover team PRs you reviewed, or only your own
+  PRs and tickets?~~ Decided: own PRs and assigned tickets only.

@@ -59,6 +59,59 @@ function makePullRequestComment(id: number): {
   };
 }
 
+function emptyReviewThreadsPage(endCursor = ''): {
+  review_threads: unknown[];
+  totalCount: number;
+  pageInfo: { hasNextPage: boolean; hasPreviousPage: boolean; endCursor: string };
+} {
+  return {
+    review_threads: [],
+    totalCount: 0,
+    pageInfo: { hasNextPage: false, hasPreviousPage: false, endCursor },
+  };
+}
+
+function makeReviewThreadsPage(
+  comments: Array<{ author: string; body: string; created_at: string; html_url: string; path?: string }>,
+  pageInfo: { hasNextPage?: boolean; endCursor?: string } = {},
+  threadFlags: { is_resolved?: boolean; is_outdated?: boolean } = {},
+): unknown {
+  return makeReviewThreadsPayload([{
+    is_resolved: threadFlags.is_resolved,
+    is_outdated: threadFlags.is_outdated,
+    comments,
+  }], pageInfo);
+}
+
+function makeReviewThreadsPayload(
+  threads: Array<{
+    is_resolved?: boolean;
+    is_outdated?: boolean;
+    comments: Array<{ author: string; body: string; created_at: string; html_url: string; path?: string }>;
+  }>,
+  pageInfo: { hasNextPage?: boolean; endCursor?: string } = {},
+): unknown {
+  return {
+    review_threads: threads.map((thread, index) => ({
+      id: `PRRT_${index}`,
+      is_resolved: thread.is_resolved ?? false,
+      is_outdated: thread.is_outdated ?? false,
+      is_collapsed: false,
+      comments: thread.comments.map((comment) => ({
+        path: comment.path ?? 'src/app.ts',
+        ...comment,
+      })),
+      total_count: thread.comments.length,
+    })),
+    totalCount: threads.length,
+    pageInfo: {
+      hasNextPage: pageInfo.hasNextPage ?? false,
+      hasPreviousPage: false,
+      endCursor: pageInfo.endCursor ?? '',
+    },
+  };
+}
+
 suite('GithubMcpAdapter', () => {
   test('fetchOpenPullRequests_sessionBearerPath_succeedsWithoutCallingConnect', async () => {
     let connectCount = 0;
@@ -149,6 +202,9 @@ suite('GithubMcpAdapter', () => {
           }
           if (typedArgs.method === 'get_comments') {
             return toolResult([{ id: 10, user: { login: 'erin' }, body: 'Looks good to me', created_at: '2026-01-02T02:00:00Z', html_url: 'https://github.com/acme/widgets/pull/1#issuecomment-10' }]);
+          }
+          if (typedArgs.method === 'get_review_comments') {
+            return toolResult(emptyReviewThreadsPage());
           }
           if (typedArgs.method === 'get_check_runs') {
             // Real shape is `{total_count, check_runs: [...]}`, not a bare array.
@@ -330,6 +386,80 @@ suite('GithubMcpAdapter', () => {
     assert.deepStrictEqual(result[0].comments, []);
   });
 
+  test('fetchOpenPullRequests_mergesConversationAndInlineReviewComments', async () => {
+    const repo = { owner: 'comment-pages', repo: 'inline-merge' };
+    const reviewCalls: unknown[] = [];
+    const { service } = makeConnectionService({
+      callTool: async (_serverId, name, args) => {
+        if (name === 'list_pull_requests') {
+          return toolResult([makeListedPullRequest(repo.owner, repo.repo, 200)]);
+        }
+        if (name === 'pull_request_read') {
+          const typedArgs = args as Record<string, unknown>;
+          if (typedArgs.method === 'get') return toolResult({ mergeable: true });
+          if (typedArgs.method === 'get_comments') {
+            return toolResult([{
+              id: 10,
+              user: { login: 'me' },
+              body: 'Thanks for reviewing',
+              created_at: '2026-01-02T02:00:00Z',
+              html_url: `https://github.com/${repo.owner}/${repo.repo}/pull/200#issuecomment-10`,
+            }]);
+          }
+          if (typedArgs.method === 'get_review_comments') {
+            reviewCalls.push(args);
+            if (typedArgs.after === 'cursor-1') {
+              return toolResult(makeReviewThreadsPage([{
+                author: 'reviewer',
+                body: 'Please fix this line',
+                created_at: '2026-01-02T03:00:00Z',
+                html_url: `https://github.com/${repo.owner}/${repo.repo}/pull/200#discussion_r99`,
+              }]));
+            }
+            return toolResult(makeReviewThreadsPage([{
+              author: 'alice',
+              body: 'Nit: rename this',
+              created_at: '2026-01-02T02:30:00Z',
+              html_url: `https://github.com/${repo.owner}/${repo.repo}/pull/200#discussion_r88`,
+            }], { hasNextPage: true, endCursor: 'cursor-1' }));
+          }
+          return toolResult([]);
+        }
+        throw new Error(`unexpected tool call: ${name}`);
+      },
+    });
+
+    const result = await GithubMcpAdapter.fetchOpenPullRequests(service, repo, SESSION);
+
+    assert.deepStrictEqual(
+      result[0].comments.map((comment) => ({ id: comment.id, author: comment.author, body: comment.body })),
+      [
+        { id: '10', author: 'me', body: 'Thanks for reviewing' },
+        {
+          id: `https://github.com/${repo.owner}/${repo.repo}/pull/200#discussion_r88`,
+          author: 'alice',
+          body: 'Nit: rename this',
+        },
+        {
+          id: `https://github.com/${repo.owner}/${repo.repo}/pull/200#discussion_r99`,
+          author: 'reviewer',
+          body: 'Please fix this line',
+        },
+      ],
+    );
+    assert.deepStrictEqual(reviewCalls, [
+      { owner: repo.owner, repo: repo.repo, pullNumber: 200, method: 'get_review_comments', perPage: 100 },
+      {
+        owner: repo.owner,
+        repo: repo.repo,
+        pullNumber: 200,
+        method: 'get_review_comments',
+        perPage: 100,
+        after: 'cursor-1',
+      },
+    ]);
+  });
+
   test('fetchOpenPullRequests_getComments_failureUsesExistingErrorPath', async () => {
     const repo = { owner: 'comment-pages', repo: 'failure' };
     const { service } = makeConnectionService({
@@ -342,6 +472,9 @@ suite('GithubMcpAdapter', () => {
           if (typedArgs.method === 'get') return toolResult({ mergeable: true });
           if (typedArgs.method === 'get_comments') {
             throw { serverId: 'github', category: 'network', detail: 'comments unavailable' };
+          }
+          if (typedArgs.method === 'get_review_comments') {
+            return toolResult(emptyReviewThreadsPage());
           }
           return toolResult([]);
         }
@@ -356,6 +489,148 @@ suite('GithubMcpAdapter', () => {
         assert.strictEqual(error.message, 'comments unavailable');
         return true;
       },
+    );
+  });
+
+  test('fetchOpenPullRequests_reviewCommentsFailure_keepsConversationComments', async () => {
+    const repo = { owner: 'comment-pages', repo: 'review-fail' };
+    const { service } = makeConnectionService({
+      callTool: async (_serverId, name, args) => {
+        if (name === 'list_pull_requests') {
+          return toolResult([makeListedPullRequest(repo.owner, repo.repo, 201)]);
+        }
+        if (name === 'pull_request_read') {
+          const typedArgs = args as Record<string, unknown>;
+          if (typedArgs.method === 'get') return toolResult({ mergeable: true });
+          if (typedArgs.method === 'get_comments') {
+            return toolResult([{
+              id: 42,
+              user: { login: 'reviewer' },
+              body: 'Conversation still available',
+              created_at: '2026-01-02T02:00:00Z',
+              html_url: `https://github.com/${repo.owner}/${repo.repo}/pull/201#issuecomment-42`,
+            }]);
+          }
+          if (typedArgs.method === 'get_review_comments') {
+            throw { serverId: 'github', category: 'network', detail: 'review comments unavailable' };
+          }
+          return toolResult([]);
+        }
+        throw new Error(`unexpected tool call: ${name}`);
+      },
+    });
+
+    const result = await GithubMcpAdapter.fetchOpenPullRequests(service, repo, SESSION);
+
+    assert.deepStrictEqual(
+      result[0].comments.map((comment) => ({ id: comment.id, author: comment.author, body: comment.body })),
+      [{ id: '42', author: 'reviewer', body: 'Conversation still available' }],
+    );
+  });
+
+  test('fetchOpenPullRequests_skipsResolvedAndOutdatedReviewThreads', async () => {
+    const repo = { owner: 'comment-pages', repo: 'resolved-threads' };
+    const { service } = makeConnectionService({
+      callTool: async (_serverId, name, args) => {
+        if (name === 'list_pull_requests') {
+          return toolResult([makeListedPullRequest(repo.owner, repo.repo, 202)]);
+        }
+        if (name === 'pull_request_read') {
+          const typedArgs = args as Record<string, unknown>;
+          if (typedArgs.method === 'get') return toolResult({ mergeable: true });
+          if (typedArgs.method === 'get_comments') {
+            return toolResult([{
+              id: 11,
+              user: { login: 'me' },
+              body: 'Conversation comment',
+              created_at: '2026-01-02T02:00:00Z',
+              html_url: `https://github.com/${repo.owner}/${repo.repo}/pull/202#issuecomment-11`,
+            }]);
+          }
+          if (typedArgs.method === 'get_review_comments') {
+            return toolResult(makeReviewThreadsPayload([
+              {
+                is_resolved: true,
+                comments: [{
+                  author: 'alice',
+                  body: 'Resolved nit',
+                  created_at: '2026-01-02T02:10:00Z',
+                  html_url: `https://github.com/${repo.owner}/${repo.repo}/pull/202#discussion_r1`,
+                }],
+              },
+              {
+                is_outdated: true,
+                comments: [{
+                  author: 'bob',
+                  body: 'Outdated suggestion',
+                  created_at: '2026-01-02T02:20:00Z',
+                  html_url: `https://github.com/${repo.owner}/${repo.repo}/pull/202#discussion_r2`,
+                }],
+              },
+              {
+                comments: [{
+                  author: 'carol',
+                  body: 'Open review comment',
+                  created_at: '2026-01-02T03:00:00Z',
+                  html_url: `https://github.com/${repo.owner}/${repo.repo}/pull/202#discussion_r3`,
+                }],
+              },
+            ]));
+          }
+          return toolResult([]);
+        }
+        throw new Error(`unexpected tool call: ${name}`);
+      },
+    });
+
+    const result = await GithubMcpAdapter.fetchOpenPullRequests(service, repo, SESSION);
+
+    assert.deepStrictEqual(
+      result[0].comments.map((comment) => ({ id: comment.id, author: comment.author, body: comment.body })),
+      [
+        { id: '11', author: 'me', body: 'Conversation comment' },
+        {
+          id: `https://github.com/${repo.owner}/${repo.repo}/pull/202#discussion_r3`,
+          author: 'carol',
+          body: 'Open review comment',
+        },
+      ],
+    );
+  });
+
+  test('fetchOpenPullRequests_reviewComments_stopsOnNonProgressingCursor', async () => {
+    const repo = { owner: 'comment-pages', repo: 'stuck-cursor' };
+    let reviewCalls = 0;
+    const { service } = makeConnectionService({
+      callTool: async (_serverId, name, args) => {
+        if (name === 'list_pull_requests') {
+          return toolResult([makeListedPullRequest(repo.owner, repo.repo, 203)]);
+        }
+        if (name === 'pull_request_read') {
+          const typedArgs = args as Record<string, unknown>;
+          if (typedArgs.method === 'get') return toolResult({ mergeable: true });
+          if (typedArgs.method === 'get_comments') return toolResult([]);
+          if (typedArgs.method === 'get_review_comments') {
+            reviewCalls += 1;
+            return toolResult(makeReviewThreadsPage([{
+              author: 'reviewer',
+              body: reviewCalls === 1 ? 'First page' : 'Should not fetch forever',
+              created_at: '2026-01-02T03:00:00Z',
+              html_url: `https://github.com/${repo.owner}/${repo.repo}/pull/203#discussion_r${reviewCalls}`,
+            }], { hasNextPage: true, endCursor: 'stuck-cursor' }));
+          }
+          return toolResult([]);
+        }
+        throw new Error(`unexpected tool call: ${name}`);
+      },
+    });
+
+    const result = await GithubMcpAdapter.fetchOpenPullRequests(service, repo, SESSION);
+
+    assert.strictEqual(reviewCalls, 2);
+    assert.deepStrictEqual(
+      result[0].comments.map((comment) => comment.body),
+      ['First page', 'Should not fetch forever'],
     );
   });
 
@@ -401,6 +676,7 @@ suite('GithubMcpAdapter', () => {
     assert.strictEqual(calls.get('get'), 2);
     assert.strictEqual(calls.get('get_reviews'), 2);
     assert.strictEqual(calls.get('get_comments'), 2);
+    assert.strictEqual(calls.get('get_review_comments'), 2);
     assert.strictEqual(calls.get('get_check_runs'), 3);
     assert.strictEqual(calls.get('get_label'), 1);
   });

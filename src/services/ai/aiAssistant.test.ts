@@ -172,8 +172,10 @@ suite('AiAssistant', () => {
       latestRelevantAt: null,
       jiraUnreadCount: 0,
       jiraLatestUnreadComment: null,
+      jiraLatestAwaitingComment: null,
       prUnreadCount: 0,
       prLatestUnreadComment: null,
+      prLatestAwaitingComment: null,
     };
     const result = await assistant.chatAboutItem(
       item as never,

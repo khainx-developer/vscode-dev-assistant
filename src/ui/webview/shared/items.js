@@ -6,6 +6,45 @@ import { attrs, esc, relativeTime } from './dom.js';
 import { icon } from './icons.js';
 import { renderMarkdown } from './markdown.js';
 
+function hasUnreadCommentSignal(item) {
+  return !!(
+    item.reasons?.includes('pr-unread-comment')
+    || item.reasons?.includes('jira-unread-comment')
+    || item.prUnreadCount > 0
+    || item.prLatestUnreadComment
+    || item.jiraUnreadCount > 0
+    || item.jiraLatestUnreadComment
+  );
+}
+
+function hasAwaitingReplySignal(item) {
+  return !!(
+    item.reasons?.includes('pr-awaiting-reply')
+    || item.reasons?.includes('jira-awaiting-reply')
+    || item.prLatestAwaitingComment
+    || item.jiraLatestAwaitingComment
+  );
+}
+
+/** Prefer unread excerpt when both apply; otherwise show the awaiting-reply excerpt. */
+function jiraCommentForCard(item) {
+  if (item.jiraLatestUnreadComment) return { comment: item.jiraLatestUnreadComment, prefix: 'Jira · ' };
+  if (item.jiraLatestAwaitingComment) return { comment: item.jiraLatestAwaitingComment, prefix: 'Jira · ' };
+  return null;
+}
+
+function prCommentForCard(item) {
+  if (item.prLatestUnreadComment) return item.prLatestUnreadComment;
+  if (item.prLatestAwaitingComment) return item.prLatestAwaitingComment;
+  return null;
+}
+
+function relatedCommentForCard(related) {
+  if (related.latestUnreadComment) return related.latestUnreadComment;
+  if (related.latestAwaitingComment) return related.latestAwaitingComment;
+  return null;
+}
+
 /** Fast triage chips — answered on-card from the snapshot (no PR diff / Jira body). */
 function quickChatSuggestions(item) {
   const suggestions = [
@@ -13,14 +52,9 @@ function quickChatSuggestions(item) {
     "What's the next step?",
     'Whose turn is it?',
   ];
-  const hasUnread = !!(
-    item.reasons?.includes('pr-unread-comment')
-    || item.prUnreadCount > 0
-    || item.prLatestUnreadComment
-    || item.jiraUnreadCount > 0
-    || item.jiraLatestUnreadComment
-  );
-  if (hasUnread) suggestions.push('Draft a reply to the comment');
+  if (hasUnreadCommentSignal(item) || hasAwaitingReplySignal(item)) {
+    suggestions.push('Draft a reply to the comment');
+  }
   return suggestions;
 }
 
@@ -38,7 +72,13 @@ function deepEditorActions(item) {
       || pr.checkStatus === 'FAILURE'
       || pr.checkStatus === 'ERROR';
     if (failing) actions.push({ template: 'fixChecks', label: 'Fix failing checks' });
-    if (item.reasons?.includes('pr-unread-comment') || item.prUnreadCount > 0 || item.prLatestUnreadComment) {
+    if (
+      item.reasons?.includes('pr-unread-comment')
+      || item.prUnreadCount > 0
+      || item.prLatestUnreadComment
+      || item.reasons?.includes('pr-awaiting-reply')
+      || item.prLatestAwaitingComment
+    ) {
       actions.push({ template: 'draftReply', label: 'Draft reply (with PR context)' });
     }
   }
@@ -175,10 +215,22 @@ function snoozeControl(item, ui) {
   </span>`;
 }
 
+function relatedCommentExtras(related) {
+  const comment = relatedCommentForCard(related);
+  if (!comment) {
+    return { quoteHtml: '', actionHtml: '' };
+  }
+  return {
+    quoteHtml: quote(comment.authorIdentity, comment.bodyText),
+    actionHtml: commentButton(related.pr, comment),
+  };
+}
+
 function relatedPrBlock(related, ctx, extraActions = '') {
   const pr = related.pr;
   const sourceKey = `github:${pr.repoKey}#${pr.number}`;
   const commentState = ctx.githubState?.commentStatusBySource?.[sourceKey];
+  const { quoteHtml, actionHtml } = relatedCommentExtras(related);
   return `<div class="related">
     <div class="row wrap">
       ${icon('pr', 'sm')}
@@ -186,8 +238,8 @@ function relatedPrBlock(related, ctx, extraActions = '') {
       <span class="muted small">by ${esc(pr.author)}</span>
     </div>
     <div class="chips">${reasonChips(related.reasons, { 'pr-unread-comment': related.unreadCount })}${prStatusChips(pr, related.reasons)}${commentStateChip(commentState, 'PR')}</div>
-    ${related.latestUnreadComment ? quote(related.latestUnreadComment.authorIdentity, related.latestUnreadComment.bodyText) : ''}
-    <div class="item-actions">${prButton(pr)}${extraActions}${related.latestUnreadComment ? commentButton(pr, related.latestUnreadComment) : ''}</div>
+    ${quoteHtml}
+    <div class="item-actions">${prButton(pr)}${extraActions}${actionHtml}</div>
   </div>`;
 }
 
@@ -211,9 +263,11 @@ export function renderAttentionItem(item, ctx, ui) {
     + (pr ? prStatusChips(pr, visibleReasons) + commentStateChip(ctx.githubState?.commentStatusBySource?.[sourceKey], 'PR') : '')
     + (task ? commentStateChip(task.commentState, 'Jira') : '');
 
+  const jiraCardComment = jiraCommentForCard(item);
+  const prCardComment = related.length === 0 ? prCommentForCard(item) : null;
   const comments = [
-    item.jiraLatestUnreadComment ? quote(item.jiraLatestUnreadComment.authorIdentity, item.jiraLatestUnreadComment.bodyText, 'Jira · ') : '',
-    item.prLatestUnreadComment && related.length === 0 ? quote(item.prLatestUnreadComment.authorIdentity, item.prLatestUnreadComment.bodyText) : '',
+    jiraCardComment ? quote(jiraCardComment.comment.authorIdentity, jiraCardComment.comment.bodyText, jiraCardComment.prefix) : '',
+    prCardComment ? quote(prCardComment.authorIdentity, prCardComment.bodyText) : '',
   ].join('');
 
   // Keep Open PR + Open in Jira on one row: when PRs are in related blocks, put the
@@ -227,7 +281,7 @@ export function renderAttentionItem(item, ctx, ui) {
   const actions = [
     task && !jiraOnRelated ? jiraButton(task) : '',
     pr ? prButton(pr) : '',
-    pr && item.prLatestUnreadComment ? commentButton(pr, item.prLatestUnreadComment) : '',
+    pr && prCardComment ? commentButton(pr, prCardComment) : '',
     ui.snoozable ? snoozeControl(item, ui) : '',
     `<button type="button" class="ghost"${attrs({
       'data-action': 'toggleChat',

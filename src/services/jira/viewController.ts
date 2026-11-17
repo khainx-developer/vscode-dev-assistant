@@ -35,6 +35,8 @@ const EMPTY_COMMENT_ATTENTION: CommentAttentionSummary = {
   unreadCount: 0,
   latestUnreadAt: null,
   latestUnreadComment: null,
+  awaitingReply: false,
+  latestAwaitingComment: null,
 };
 
 function jiraSourceKey(siteId: string, issueKey: string): string {
@@ -323,6 +325,7 @@ export class JiraViewController {
         attention: buildCommentAttention(
           this.toProviderComments(comments, sourceKey, currentUser),
           seenAt,
+          { enableAwaitingReply: Boolean(currentUser) },
         ),
       };
     });
@@ -504,6 +507,7 @@ export class JiraViewController {
             commentAttention: buildCommentAttention(
               this.toProviderComments(task.comments ?? [], sourceKey, currentUser),
               seenAt,
+              { enableAwaitingReply: Boolean(currentUser) },
             ),
           }
           : task),

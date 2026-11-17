@@ -31,11 +31,19 @@ function makeCommentAttention(
   sourceKey: string,
   unreadCount = 0,
   createdAt = ACTIVITY_NEWER,
+  awaiting: { awaitingReply?: boolean; bodyText?: string } = {},
 ): CommentAttentionSummary {
+  const awaitingReply = awaiting.awaitingReply ?? false;
+  const preview = makePreview(sourceKey, createdAt);
+  if (awaiting.bodyText !== undefined) {
+    preview.bodyText = awaiting.bodyText;
+  }
   return {
     unreadCount,
     latestUnreadAt: unreadCount === 0 ? null : Date.parse(createdAt),
-    latestUnreadComment: unreadCount === 0 ? null : makePreview(sourceKey, createdAt),
+    latestUnreadComment: unreadCount === 0 ? null : preview,
+    awaitingReply,
+    latestAwaitingComment: awaitingReply ? preview : null,
   };
 }
 
@@ -657,5 +665,296 @@ suite('buildAttentionInbox', () => {
 
     assert.deepStrictEqual(flagged.map((item) => item.reasons), [['jira-no-pr']]);
     assert.deepStrictEqual(skipped, []);
+  });
+
+  test('buildAttentionInbox_flagsJiraAwaitingReply_forMyTicket', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        commentAttention: makeCommentAttention('jira:cloud-1:APP-1', 0, ACTIVITY_NEWER, {
+          awaitingReply: true,
+        }),
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox.map((item) => item.reasons), [['jira-awaiting-reply']]);
+    assert.strictEqual(inbox[0].priority, 3);
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraAwaitingReply_forTeamTicket', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState(
+        [makeTask({
+          assignee: 'teammate',
+          commentAttention: makeCommentAttention('jira:cloud-1:APP-1', 0, ACTIVITY_NEWER, {
+            awaitingReply: true,
+          }),
+        })],
+        ['teammate'],
+      ),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraAwaitingReply_whenCurrentUserUnset', () => {
+    const jiraState = makeJiraState(
+      [makeTask({
+        assignee: 'teammate',
+        status: 'Review',
+        commentAttention: makeCommentAttention('jira:cloud-1:APP-1', 0, ACTIVITY_NEWER, {
+          awaitingReply: true,
+        }),
+      })],
+      ['teammate'],
+    );
+    jiraState.currentUser = '';
+
+    const inbox = buildAttentionInbox(jiraState, makeGitHubState(), NOW);
+
+    assert.deepStrictEqual(inbox.map((item) => item.reasons), [['jira-review']]);
+    assert.strictEqual(inbox[0].reasons.includes('jira-awaiting-reply'), false);
+  });
+
+  test('buildAttentionInbox_flagsPrAwaitingReply_onlyForMyPRs', () => {
+    const myPr = makePR({ number: 40, author: 'me' });
+    const teamPr = makePR({ number: 41, author: 'teammate' });
+    const myKey = `github:${myPr.repoKey}#${myPr.number}`;
+    const teamKey = `github:${teamPr.repoKey}#${teamPr.number}`;
+
+    const inbox = buildAttentionInbox(
+      makeJiraState([]),
+      makeGitHubState({
+        myPRs: [makeAttentionItem(myPr, [])],
+        teamPRs: [makeAttentionItem(teamPr, [])],
+        attentionInbox: [
+          makeAttentionItem(myPr, ['pr-waiting-review']),
+          makeAttentionItem(teamPr, ['pr-needs-my-review']),
+        ],
+        commentAttentionBySource: {
+          [myKey]: makeCommentAttention(myKey, 0, ACTIVITY_NEWER, { awaitingReply: true }),
+          [teamKey]: makeCommentAttention(teamKey, 0, ACTIVITY_NEWER, { awaitingReply: true }),
+        },
+      }),
+      NOW,
+    );
+
+    const byNumber = new Map(inbox.map((item) => [item.pr?.number, item.reasons]));
+    assert.ok(byNumber.get(40)?.includes('pr-awaiting-reply'));
+    assert.strictEqual(byNumber.get(41)?.includes('pr-awaiting-reply'), false);
+    assert.ok(byNumber.get(41)?.includes('pr-needs-my-review'));
+  });
+
+  test('buildAttentionInbox_flagsPrAwaitingReply_whenMyPrAbsentFromGithubInbox', () => {
+    const myPr = makePR({ number: 42, author: 'me' });
+    const sourceKey = `github:${myPr.repoKey}#${myPr.number}`;
+
+    const inbox = buildAttentionInbox(
+      makeJiraState([]),
+      makeGitHubState({
+        myPRs: [makeAttentionItem(myPr, [])],
+        attentionInbox: [],
+        commentAttentionBySource: {
+          [sourceKey]: makeCommentAttention(sourceKey, 0, ACTIVITY_NEWER, { awaitingReply: true }),
+        },
+      }),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox.map((item) => item.reasons), [['pr-awaiting-reply']]);
+    assert.strictEqual(inbox[0].pr?.number, 42);
+    assert.strictEqual(inbox[0].priority, 3);
+  });
+
+  test('buildAttentionInbox_ignoreShortReplies_suppressesAwaitingReply', () => {
+    const shortBody = 'ok';
+    const task = makeTask({
+      commentAttention: makeCommentAttention('jira:cloud-1:APP-1', 0, ACTIVITY_NEWER, {
+        awaitingReply: true,
+        bodyText: shortBody,
+      }),
+    });
+
+    const withSetting = buildAttentionInbox(
+      makeJiraState([task]),
+      makeGitHubState(),
+      NOW,
+      { ignoreShortReplies: true },
+    );
+    const withoutSetting = buildAttentionInbox(
+      makeJiraState([task]),
+      makeGitHubState(),
+      NOW,
+      { ignoreShortReplies: false },
+    );
+
+    assert.deepStrictEqual(withSetting, []);
+    assert.deepStrictEqual(withoutSetting.map((item) => item.reasons), [['jira-awaiting-reply']]);
+  });
+
+  test('buildAttentionInbox_awaitingReply_independentOfUnread', () => {
+    const task = makeTask({
+      commentAttention: makeCommentAttention('jira:cloud-1:APP-1', 0, ACTIVITY_NEWER, {
+        awaitingReply: true,
+      }),
+    });
+
+    const inbox = buildAttentionInbox(makeJiraState([task]), makeGitHubState(), NOW);
+
+    assert.deepStrictEqual(inbox[0].reasons, ['jira-awaiting-reply']);
+    assert.strictEqual(inbox[0].jiraUnreadCount, 0);
+    assert.strictEqual(inbox[0].reasons.includes('jira-unread-comment'), false);
+    assert.strictEqual(inbox[0].jiraLatestAwaitingComment?.id, 'comment-1');
+    assert.strictEqual(inbox[0].jiraLatestUnreadComment, null);
+  });
+
+  test('buildAttentionInbox_surfacesPrLatestAwaitingComment_withoutUnread', () => {
+    const myPr = makePR({ number: 43, author: 'me' });
+    const sourceKey = `github:${myPr.repoKey}#${myPr.number}`;
+
+    const inbox = buildAttentionInbox(
+      makeJiraState([]),
+      makeGitHubState({
+        myPRs: [makeAttentionItem(myPr, [])],
+        attentionInbox: [],
+        commentAttentionBySource: {
+          [sourceKey]: makeCommentAttention(sourceKey, 0, ACTIVITY_NEWER, { awaitingReply: true }),
+        },
+      }),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox[0].reasons, ['pr-awaiting-reply']);
+    assert.strictEqual(inbox[0].prLatestAwaitingComment?.id, 'comment-1');
+    assert.strictEqual(inbox[0].prLatestUnreadComment, null);
+  });
+
+  test('buildAttentionInbox_skipsJiraAwaitingReply_forDoneOrClosed', () => {
+    const done = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'Done',
+        commentAttention: makeCommentAttention('jira:cloud-1:APP-1', 0, ACTIVITY_NEWER, {
+          awaitingReply: true,
+        }),
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+    const closed = buildAttentionInbox(
+      makeJiraState([makeTask({
+        key: 'APP-2',
+        status: '  CLOSED ',
+        commentAttention: makeCommentAttention('jira:cloud-1:APP-2', 0, ACTIVITY_NEWER, {
+          awaitingReply: true,
+        }),
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+    const stillOpen = buildAttentionInbox(
+      makeJiraState([makeTask({
+        key: 'APP-3',
+        status: 'In Progress',
+        commentAttention: makeCommentAttention('jira:cloud-1:APP-3', 0, ACTIVITY_NEWER, {
+          awaitingReply: true,
+        }),
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(done, []);
+    assert.deepStrictEqual(closed, []);
+    assert.deepStrictEqual(stillOpen.map((item) => item.reasons), [['jira-awaiting-reply']]);
+  });
+
+  test('buildAttentionInbox_skipsJiraAwaitingReply_whenStatusCategoryDone', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'Released',
+        statusCategory: { key: 'done', name: 'Done' },
+        commentAttention: makeCommentAttention('jira:cloud-1:APP-1', 0, ACTIVITY_NEWER, {
+          awaitingReply: true,
+        }),
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox, []);
+  });
+
+  test('buildAttentionInbox_keepsJiraAwaitingReply_whenStatusCategoryNotDone', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'In Progress',
+        statusCategory: { key: 'indeterminate', name: 'In Progress' },
+        commentAttention: makeCommentAttention('jira:cloud-1:APP-1', 0, ACTIVITY_NEWER, {
+          awaitingReply: true,
+        }),
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox.map((item) => item.reasons), [['jira-awaiting-reply']]);
+  });
+
+  test('buildAttentionInbox_skipsJiraAwaitingReply_fallbackTerminalNames', () => {
+    const resolved = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'Resolved',
+        commentAttention: makeCommentAttention('jira:cloud-1:APP-1', 0, ACTIVITY_NEWER, {
+          awaitingReply: true,
+        }),
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+    const cancelled = buildAttentionInbox(
+      makeJiraState([makeTask({
+        key: 'APP-2',
+        status: 'Canceled',
+        commentAttention: makeCommentAttention('jira:cloud-1:APP-2', 0, ACTIVITY_NEWER, {
+          awaitingReply: true,
+        }),
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+    const wontDo = buildAttentionInbox(
+      makeJiraState([makeTask({
+        key: 'APP-3',
+        status: "Won't Do",
+        commentAttention: makeCommentAttention('jira:cloud-1:APP-3', 0, ACTIVITY_NEWER, {
+          awaitingReply: true,
+        }),
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(resolved, []);
+    assert.deepStrictEqual(cancelled, []);
+    assert.deepStrictEqual(wontDo, []);
+  });
+
+  test('buildAttentionInbox_doneTicket_stillFlagsOtherReasons', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({
+        status: 'done',
+        commentAttention: makeCommentAttention('jira:cloud-1:APP-1', 1, ACTIVITY_NEWER, {
+          awaitingReply: true,
+        }),
+      })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox[0].reasons, ['jira-unread-comment']);
+    assert.strictEqual(inbox[0].reasons.includes('jira-awaiting-reply'), false);
   });
 });

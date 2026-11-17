@@ -18,8 +18,10 @@ function item(key: string): AttentionInboxItem {
     latestRelevantAt: null,
     jiraUnreadCount: 0,
     jiraLatestUnreadComment: null,
+    jiraLatestAwaitingComment: null,
     prUnreadCount: 0,
     prLatestUnreadComment: null,
+    prLatestAwaitingComment: null,
   };
 }
 

@@ -44,6 +44,8 @@ function makeCommentAttention(
       url: `${pr.url}#issuecomment-1`,
       isCurrentUser: false,
     },
+    awaitingReply: false,
+    latestAwaitingComment: null,
   }]]);
 }
 

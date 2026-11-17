@@ -12,6 +12,18 @@ export interface CommentAttentionSummary {
   unreadCount: number;
   latestUnreadAt: number | null;
   latestUnreadComment: ProviderCommentCandidate | null;
+  awaitingReply: boolean;
+  latestAwaitingComment: ProviderCommentCandidate | null;
+}
+
+export interface CommentAttentionOptions {
+  /** When true, a latest non-automation comment under {@link SHORT_REPLY_MAX_CHARS} chars does not count as awaiting reply. */
+  ignoreShortReplies?: boolean;
+  /**
+   * When false, awaiting-reply is never set (e.g. Jira `currentUser` unset so every
+   * comment has `isCurrentUser === false`). Default true.
+   */
+  enableAwaitingReply?: boolean;
 }
 
 /** Exact identities (case-insensitive) treated as automation / bots. */
@@ -27,10 +39,15 @@ const AUTOMATION_IDENTITIES = new Set([
   'github-actions[bot]',
 ]);
 
+/** Trimmed body length below this is "short" when `ignoreShortReplies` is on. */
+export const SHORT_REPLY_MAX_CHARS = 15;
+
 const EMPTY_SUMMARY: CommentAttentionSummary = {
   unreadCount: 0,
   latestUnreadAt: null,
   latestUnreadComment: null,
+  awaitingReply: false,
+  latestAwaitingComment: null,
 };
 
 /** True for known automation accounts and GitHub `…[bot]` authors (e.g. github-actions[bot]). */
@@ -44,12 +61,52 @@ export function isAutomationIdentity(author: string | null | undefined): boolean
   return bare !== raw && AUTOMATION_IDENTITIES.has(bare);
 }
 
+function commentCreatedAt(comment: ProviderCommentCandidate): number {
+  return Date.parse(comment.createdAt);
+}
+
+/**
+ * Newest non-automation comment is from someone else (and optionally not a short reply).
+ * Independent of seenAt / unread.
+ */
+export function computeAwaitingReply(
+  comments: ProviderCommentCandidate[],
+  options: CommentAttentionOptions = {},
+): Pick<CommentAttentionSummary, 'awaitingReply' | 'latestAwaitingComment'> {
+  if (options.enableAwaitingReply === false) {
+    return { awaitingReply: false, latestAwaitingComment: null };
+  }
+
+  const humanComments = comments
+    .filter((comment) => !isAutomationIdentity(comment.authorIdentity))
+    .filter((comment) => Number.isFinite(commentCreatedAt(comment)))
+    .slice()
+    .sort((left, right) => commentCreatedAt(left) - commentCreatedAt(right));
+
+  const latest = humanComments[humanComments.length - 1];
+  if (!latest || latest.isCurrentUser) {
+    return { awaitingReply: false, latestAwaitingComment: null };
+  }
+
+  if (
+    options.ignoreShortReplies
+    && latest.bodyText.trim().length < SHORT_REPLY_MAX_CHARS
+  ) {
+    return { awaitingReply: false, latestAwaitingComment: null };
+  }
+
+  return { awaitingReply: true, latestAwaitingComment: latest };
+}
+
 export function buildCommentAttention(
   comments: ProviderCommentCandidate[],
   seenAt: number | undefined,
+  options: CommentAttentionOptions = {},
 ): CommentAttentionSummary {
+  const awaiting = computeAwaitingReply(comments, options);
+
   if (seenAt === undefined) {
-    return { ...EMPTY_SUMMARY };
+    return { ...EMPTY_SUMMARY, ...awaiting };
   }
 
   let unreadCount = 0;
@@ -61,7 +118,7 @@ export function buildCommentAttention(
       continue;
     }
 
-    const createdAt = Date.parse(comment.createdAt);
+    const createdAt = commentCreatedAt(comment);
     if (!Number.isFinite(createdAt) || createdAt <= seenAt) {
       continue;
     }
@@ -73,5 +130,5 @@ export function buildCommentAttention(
     }
   }
 
-  return { unreadCount, latestUnreadAt, latestUnreadComment };
+  return { unreadCount, latestUnreadAt, latestUnreadComment, ...awaiting };
 }
