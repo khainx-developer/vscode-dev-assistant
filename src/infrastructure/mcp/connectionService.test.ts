@@ -228,4 +228,56 @@ suite('McpConnectionService', () => {
 
     assert.strictEqual(providerFactoryCalls, 2);
   });
+
+  test('reconnect_clearsTokensAndRebuildsProvider', async () => {
+    const redirectCalls: URL[] = [];
+    let providerFactoryCalls = 0;
+    const context = makeContext();
+    const service = new McpConnectionService(
+      context,
+      makeNeverConnectedClientPair({ requiresAuthOnce: false }),
+      (_serverId: McpServerId) => {
+        providerFactoryCalls += 1;
+        return Promise.resolve(makeFakeProvider(redirectCalls));
+      },
+    );
+
+    await service.connect('atlassian');
+    await (context.secrets as vscode.SecretStorage).store(
+      'devMateKit.mcp.atlassian.tokens',
+      '{"access_token":"stale"}',
+    );
+    assert.strictEqual(providerFactoryCalls, 1);
+    assert.strictEqual(service.isConnected('atlassian'), true);
+
+    await service.reconnect('atlassian');
+
+    assert.strictEqual(await context.secrets.get('devMateKit.mcp.atlassian.tokens'), undefined);
+    assert.strictEqual(providerFactoryCalls, 2);
+    assert.strictEqual(service.isConnected('atlassian'), true);
+  });
+
+  test('connect_whileConnected_isNoOp_butReconnectForcesRenew', async () => {
+    const redirectCalls: URL[] = [];
+    let providerFactoryCalls = 0;
+    const service = new McpConnectionService(
+      makeContext(),
+      makeNeverConnectedClientPair({ requiresAuthOnce: false }),
+      (_serverId: McpServerId) => {
+        providerFactoryCalls += 1;
+        return Promise.resolve(makeFakeProvider(redirectCalls));
+      },
+    );
+
+    await service.connect('github');
+    assert.strictEqual(providerFactoryCalls, 1);
+
+    await service.connect('github');
+    assert.strictEqual(providerFactoryCalls, 1);
+    assert.strictEqual(service.isConnected('github'), true);
+
+    await service.reconnect('github');
+    assert.strictEqual(providerFactoryCalls, 2);
+    assert.strictEqual(service.isConnected('github'), true);
+  });
 });

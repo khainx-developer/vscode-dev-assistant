@@ -61,6 +61,13 @@ export class GitHubViewController {
           return this.performRefresh();
         });
         return;
+      case 'github.reconnect':
+        await this.runOperation(msg.command, async () => {
+          await this.connectionService.disconnect('github');
+          await this.authService.getSession(true, { forceNewSession: true });
+          return this.performRefresh();
+        });
+        return;
       case 'github.refresh':
         await this.runOperation(msg.command, () => this.performRefresh());
         return;

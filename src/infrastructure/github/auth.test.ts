@@ -48,4 +48,26 @@ suite('GitHubAuthService', () => {
 
     assert.deepStrictEqual(capturedScopes, ['repo']);
   });
+
+  test('GitHubAuthService_getSession_passesForceNewSession', async () => {
+    let capturedOptions: { createIfNone?: boolean; forceNewSession?: boolean } | undefined;
+    (vscode.authentication as any).getSession = async (
+      _providerId: string,
+      _scopes: readonly string[],
+      options?: { createIfNone?: boolean; forceNewSession?: boolean },
+    ) => {
+      capturedOptions = options;
+      return {
+        id: 'session-id',
+        accessToken: 'token-456',
+        account: { id: 'account-id', label: 'octocat' },
+        scopes: ['repo'],
+      };
+    };
+
+    const result = await new GitHubAuthService().getSession(true, { forceNewSession: true });
+
+    assert.deepStrictEqual(capturedOptions, { createIfNone: true, forceNewSession: true });
+    assert.deepStrictEqual(result, { username: 'octocat', accessToken: 'token-456' });
+  });
 });

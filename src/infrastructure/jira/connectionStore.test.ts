@@ -49,13 +49,15 @@ function fakeContext(secretStore: Map<string, string>): vscode.ExtensionContext 
   } as unknown as vscode.ExtensionContext;
 }
 
-function fakeConnectionService(opts: { connectThrows?: Error } = {}): {
+function fakeConnectionService(opts: { connectThrows?: Error; reconnectThrows?: Error } = {}): {
   service: McpConnectionService;
   connectCalls: string[];
   disconnectCalls: string[];
+  reconnectCalls: string[];
 } {
   const connectCalls: string[] = [];
   const disconnectCalls: string[] = [];
+  const reconnectCalls: string[] = [];
   const service = {
     connect: async (serverId: string) => {
       connectCalls.push(serverId);
@@ -66,8 +68,14 @@ function fakeConnectionService(opts: { connectThrows?: Error } = {}): {
     disconnect: async (serverId: string) => {
       disconnectCalls.push(serverId);
     },
+    reconnect: async (serverId: string) => {
+      reconnectCalls.push(serverId);
+      if (opts.reconnectThrows) {
+        throw opts.reconnectThrows;
+      }
+    },
   } as unknown as McpConnectionService;
-  return { service, connectCalls, disconnectCalls };
+  return { service, connectCalls, disconnectCalls, reconnectCalls };
 }
 
 suite('JiraConnectionStore', () => {
@@ -169,5 +177,59 @@ suite('JiraConnectionStore', () => {
     await store.saveConnection(VALID_SITE_URL);
 
     assert.strictEqual(secretStore.has('devMateKit.jira.apiToken'), false);
+  });
+
+  test('reconnect_preservesSiteSettings', async () => {
+    const configuration = stubConfiguration({ siteUrl: VALID_SITE_URL, siteId: 'cloud-1' });
+    restoreConfiguration = configuration.restore;
+    const { service, reconnectCalls, disconnectCalls } = fakeConnectionService();
+    AtlassianMcpAdapter.validateConnection = async () => ({ ok: true, siteId: 'cloud-1' });
+    const store = new JiraConnectionStore(fakeContext(new Map()), service);
+
+    const result = await store.reconnectConnection();
+
+    assert.deepStrictEqual(result, { ok: true });
+    assert.deepStrictEqual(reconnectCalls, ['atlassian']);
+    assert.deepStrictEqual(configuration.settings, { siteUrl: VALID_SITE_URL, siteId: 'cloud-1' });
+
+    await store.clearConnection();
+    assert.deepStrictEqual(configuration.settings, { siteUrl: '', siteId: '' });
+    assert.deepStrictEqual(disconnectCalls, ['atlassian']);
+  });
+
+  test('reconnect_withoutConnection_fails', async () => {
+    const configuration = stubConfiguration();
+    restoreConfiguration = configuration.restore;
+    const { service, reconnectCalls } = fakeConnectionService();
+    const store = new JiraConnectionStore(fakeContext(new Map()), service);
+
+    const result = await store.reconnectConnection();
+
+    assert.deepStrictEqual(result, {
+      ok: false,
+      reason: 'Not connected. Connect to a Jira site first.',
+    });
+    assert.strictEqual(reconnectCalls.length, 0);
+    assert.deepStrictEqual(configuration.settings, { siteUrl: '', siteId: '' });
+  });
+
+  test('reconnect_validateFails_keepsSiteSettings', async () => {
+    const configuration = stubConfiguration({ siteUrl: VALID_SITE_URL, siteId: 'cloud-1' });
+    restoreConfiguration = configuration.restore;
+    const { service, reconnectCalls } = fakeConnectionService();
+    AtlassianMcpAdapter.validateConnection = async () => ({
+      ok: false,
+      reason: 'Could not find an accessible Jira site at that URL.',
+    });
+    const store = new JiraConnectionStore(fakeContext(new Map()), service);
+
+    const result = await store.reconnectConnection();
+
+    assert.deepStrictEqual(result, {
+      ok: false,
+      reason: 'Could not find an accessible Jira site at that URL.',
+    });
+    assert.deepStrictEqual(reconnectCalls, ['atlassian']);
+    assert.deepStrictEqual(configuration.settings, { siteUrl: VALID_SITE_URL, siteId: 'cloud-1' });
   });
 });

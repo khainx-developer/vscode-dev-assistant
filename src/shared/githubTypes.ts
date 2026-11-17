@@ -131,6 +131,7 @@ export interface GitHubViewState {
 
 export type GitHubIncomingMessage =
   | { command: 'github.signIn' }
+  | { command: 'github.reconnect' }
   | { command: 'github.refresh' }
   | { command: 'github.addRepo'; value: string }
   | { command: 'github.removeRepo'; owner: string; repo: string }

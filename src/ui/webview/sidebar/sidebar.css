@@ -208,7 +208,8 @@ body {
 }
 .entry.invalid { border-color: var(--dm-danger); color: var(--dm-danger); }
 .entry .icon-only { min-height: 18px; min-width: 18px; padding: 1px; border-radius: 999px; }
-.connected-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.connected-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; min-width: 0; }
+.connected-row > span:not(.state-dot) { min-width: 0; overflow-wrap: anywhere; }
 .state-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dm-muted); }
 .state-dot.ok { background: var(--dm-success); }
 .queries { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 4px; }

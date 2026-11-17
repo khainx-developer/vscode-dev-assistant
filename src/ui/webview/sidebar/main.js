@@ -51,6 +51,8 @@ function signedIn() {
 function jiraConnected() {
   const j = status?.jira;
   if (!j) return false;
+  // Keep the connected row (with Reconnect) visible while force re-auth is pending.
+  if (j.kind === 'connecting' && jira?.siteUrl) return true;
   return j.kind === 'connected' || j.kind === 'ready' || ((j.kind === 'refreshing' || j.kind === 'error') && !!j.siteUrl);
 }
 
@@ -246,11 +248,19 @@ function entryChips(entries, kind) {
 }
 
 function githubStepBody() {
-  if (signedIn()) {
-    return `<p>Signed in as <strong>${esc(github?.me || '')}</strong>.</p>
-      <p class="field-help">DevMate uses the GitHub account you’re signed into in VS Code. Switch accounts from the Accounts menu.</p>`;
-  }
   const signingIn = status?.github?.kind === 'signingIn';
+  const githubKind = status?.github?.kind;
+  const reconnecting = pending(github, 'github.reconnect');
+  const showReconnect = signedIn() || githubKind === 'error' || githubKind === 'degraded' || reconnecting;
+  if (showReconnect) {
+    const userLine = github?.me
+      ? `<p>Signed in as <strong>${esc(github.me)}</strong>.</p>`
+      : `<p class="field-help">${esc(status?.github?.message || 'GitHub sign-in needs attention.')}</p>`;
+    return `${userLine}
+      <p class="field-help">DevMate uses the GitHub account you’re signed into in VS Code. Switch accounts from the Accounts menu, or reconnect to renew access.</p>
+      <button type="button" data-action="reconnectGithub"${reconnecting || signingIn ? ' disabled' : ''}>${reconnecting || signingIn ? 'Waiting for browser…' : 'Reconnect'}</button>
+      ${opFeedback(github, 'github.reconnect', 'Reconnected.')}`;
+  }
   return `<p class="field-help">DevMate uses your GitHub account in VS Code and only reads pull requests in repositories you choose.</p>
     <button type="button" data-action="githubSignIn"${signingIn ? ' disabled' : ''}>${signingIn ? 'Waiting for browser…' : 'Sign in to GitHub'}</button>
     ${opFeedback(github, 'github.signIn', 'Signed in.')}`;
@@ -301,12 +311,16 @@ function jiraStepBody() {
     }
   })();
   const disconnecting = pending(jira, 'jira.disconnect');
+  const reconnecting = pending(jira, 'jira.reconnect') || status?.jira?.kind === 'connecting';
 
   return `<div class="connected-row">
       <span class="state-dot ok"></span><span>Connected to <strong>${esc(host)}</strong></span>
-      <span class="spacer"></span>
-      <button type="button" class="ghost" data-action="disconnectJira"${disconnecting ? ' disabled' : ''}>${disconnecting ? 'Disconnecting…' : 'Disconnect'}</button>
     </div>
+    <div class="step-actions">
+      <button type="button" class="ghost" data-action="reconnectJira"${reconnecting ? ' disabled' : ''}>${reconnecting ? 'Waiting for browser…' : 'Reconnect'}</button>
+      <button type="button" class="ghost" data-action="disconnectJira"${disconnecting || reconnecting ? ' disabled' : ''}>${disconnecting ? 'Disconnecting…' : 'Disconnect'}</button>
+    </div>
+    ${opFeedback(jira, 'jira.reconnect', 'Reconnected.')}
 
     <label class="field-label" for="jiraUser">Your name in Jira</label>
     <div class="field-row">
@@ -512,6 +526,7 @@ delegate(app, {
   cliLogin: () => post({ command: 'ai.cliTerminal', action: 'login' }),
   loadModels: () => post({ command: 'ai.loadModels' }),
   githubSignIn: () => post({ command: 'github.signIn' }),
+  reconnectGithub: () => post({ command: 'github.reconnect' }),
   addRepo: () => {
     const repo = value('ghRepo');
     if (!repo) return;
@@ -537,6 +552,7 @@ delegate(app, {
     post({ command: 'jira.saveConnection', siteUrl: /^https?:\/\//i.test(site) ? site : `https://${site}` });
   },
   disconnectJira: () => post({ command: 'jira.disconnect' }),
+  reconnectJira: () => post({ command: 'jira.reconnect' }),
   saveJiraUser: () => {
     errors.jiraUser = '';
     post({ command: 'jira.setCurrentUser', displayName: value('jiraUser') });
