@@ -66,11 +66,18 @@ suite('setupStatus', () => {
     assert.strictEqual(stateOf(status, 'ai'), 'done');
   });
 
-  test('vscodeLm_withoutModel_needsAttention_suggestsCliWithoutAutoSwitch', () => {
-    const status = deriveSetupStatus(github(), jira(), { provider: 'vscodeLm', modelName: null });
+  test('vscodeLm_withoutModel_onCursor_suggestsCliWithoutAutoSwitch', () => {
+    const status = deriveSetupStatus(github(), jira(), { provider: 'vscodeLm', modelName: null, cursorHost: true });
     assert.strictEqual(stateOf(status, 'ai'), 'attention');
     assert.match(detailOf(status, 'ai'), /Cursor Agent CLI/);
     assert.ok(!/automatically switched|auto-switch/i.test(detailOf(status, 'ai')));
+  });
+
+  test('vscodeLm_withoutModel_onVscode_doesNotMentionCursorCli', () => {
+    const status = deriveSetupStatus(github(), jira(), { provider: 'vscodeLm', modelName: null, cursorHost: false });
+    assert.strictEqual(stateOf(status, 'ai'), 'attention');
+    assert.ok(!/Cursor Agent CLI/i.test(detailOf(status, 'ai')));
+    assert.match(detailOf(status, 'ai'), /GitHub Copilot|LM provider/i);
   });
 
   test('cursorCli_missing_needsAttention', () => {

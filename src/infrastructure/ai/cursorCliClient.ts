@@ -199,7 +199,7 @@ export class CursorCliClient implements LanguageModelPort {
       });
       child.on('close', () => {
         clearTimeout(timer);
-        finish(parseModelList(stdout));
+        finish(parseCursorCliModelList(stdout));
       });
     });
   }
@@ -335,22 +335,40 @@ function canRun(spawn: SpawnFn, binary: string, env: NodeJS.ProcessEnv): Promise
   });
 }
 
-function parseModelList(stdout: string): ChatModelInfo[] {
+/** Exported for unit tests — CLI help text must never become fake picker rows. */
+export function parseCursorCliModelList(stdout: string): ChatModelInfo[] {
   const models: ChatModelInfo[] = [];
   const seen = new Set<string>();
   for (const line of stdout.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || /^available models/i.test(trimmed)) continue;
-    // "id - Display Name" or bare id
-    const match = /^([a-zA-Z0-9._-]+)\s*(?:-|–|—)?\s*(.*)$/.exec(trimmed);
-    if (!match) continue;
-    const id = match[1];
-    if (seen.has(id) || id.toLowerCase() === 'available') continue;
-    seen.add(id);
-    const name = (match[2] || id).trim() || id;
-    models.push({ id, name, vendor: 'cursor-cli', family: id });
+    // Help / usage lines from mismatched CLI builds (e.g. `--list-models` printing --model docs).
+    if (/--model|\/model\b|parameterized models|interactive mode/i.test(trimmed)) continue;
+    if (/[<>]/.test(trimmed)) continue;
+
+    // Prefer "id - Display Name"
+    const dashed = /^([a-zA-Z0-9._/-]+)\s+[-–—]\s+(.+)$/.exec(trimmed);
+    if (dashed) {
+      addParsedModel(models, seen, dashed[1], dashed[2].trim());
+      continue;
+    }
+
+    // Bare slug ids only (must contain . _ / or -) — rejects sentence words like "use".
+    const bare = /^([a-zA-Z0-9]+(?:[._/-][a-zA-Z0-9]+)+)$/.exec(trimmed);
+    if (bare) addParsedModel(models, seen, bare[1], bare[1]);
   }
   return models;
+}
+
+function addParsedModel(
+  models: ChatModelInfo[],
+  seen: Set<string>,
+  id: string,
+  name: string,
+): void {
+  if (seen.has(id) || id.toLowerCase() === 'available') return;
+  seen.add(id);
+  models.push({ id, name: name || id, vendor: 'cursor-cli', family: id });
 }
 
 function isAuthFailure(text: string): boolean {

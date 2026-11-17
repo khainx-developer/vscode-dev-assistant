@@ -1,6 +1,6 @@
 import type { AttentionInboxItem } from '../services/attention/attentionInboxBuilder';
 import type { SnoozeOption } from '../services/attention/snooze';
-import type { AiProvider, ChatModelInfo } from '../services/ai/aiSettings';
+import type { AiEnableProvider, AiProvider, ChatModelInfo } from '../services/ai/aiSettings';
 import type {
   DashboardStatus,
   GitHubConnectionState,
@@ -134,8 +134,16 @@ export interface AiViewState {
   /**
    * Suggestion-only: host vscode.lm models are empty/unsupported.
    * Never auto-switches provider — the webview CTA must post `ai.setProvider`.
+   * Always false outside Cursor (CLI backend is Cursor-only in the UI).
    */
   suggestCursorCli: boolean;
+  /**
+   * Host-aware backend for enable-from-off (VS Code → vscodeLm, Cursor → cursorCli).
+   * Does not change a persisted `none`; webviews use this only when turning AI on.
+   */
+  defaultEnableProvider: AiEnableProvider;
+  /** True when `vscode.env.appName` looks like Cursor — gates Cursor Agent CLI UI. */
+  cursorHost: boolean;
 }
 
 export type SessionEvent =
