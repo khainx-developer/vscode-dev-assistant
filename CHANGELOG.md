@@ -5,6 +5,9 @@
 ### New
 - **Reconnect** in Setup for GitHub and Jira — force MCP sign-in again when tokens expire or auth fails. Clears stored MCP credentials and runs OAuth again; Jira keeps your site URL and settings. Disconnect remains available for Jira.
 
+### Improved
+- **AI backend by host** — In VS Code, Setup only offers **Editor language models** (Cursor Agent CLI is hidden). In Cursor, both backends appear and Cursor Agent CLI is recommended while Off. Enabling AI from Off uses the host default; a Cursor-only provider saved from Cursor is reset to Editor LM when opened in VS Code.
+
 ## 0.2.0
 
 ### New

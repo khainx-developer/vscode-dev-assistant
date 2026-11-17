@@ -5,6 +5,9 @@
  */
 export type AiProvider = 'none' | 'vscodeLm' | 'cursorCli';
 
+/** Backend chosen when enabling AI from off — never `none`. */
+export type AiEnableProvider = Exclude<AiProvider, 'none'>;
+
 /** Legacy value written by DevMate ≤ 0.0.6 — read as `vscodeLm`. */
 const LEGACY_COPILOT = 'githubCopilot';
 
@@ -17,6 +20,19 @@ export function normalizeAiProvider(raw: unknown): AiProvider {
 
 export function isLegacyProviderValue(raw: unknown): boolean {
   return raw === LEGACY_COPILOT;
+}
+
+/** True when `vscode.env.appName` (or similar) names Cursor. */
+export function isCursorHost(appName: string | undefined | null): boolean {
+  return (appName ?? '').toLowerCase().includes('cursor');
+}
+
+/**
+ * Sensible backend when turning AI on from the package default (`none`).
+ * Persisted Off stays Off until the user enables — this only picks what to enable *to*.
+ */
+export function defaultAiProviderForHost(appName: string | undefined | null): AiEnableProvider {
+  return isCursorHost(appName) ? 'cursorCli' : 'vscodeLm';
 }
 
 export interface ChatModelInfo {

@@ -1,5 +1,13 @@
 import * as assert from 'assert';
-import { isLegacyProviderValue, normalizeAiProvider, pickDefaultModel, sortModelsForPicker, type ChatModelInfo } from './aiSettings';
+import {
+  defaultAiProviderForHost,
+  isCursorHost,
+  isLegacyProviderValue,
+  normalizeAiProvider,
+  pickDefaultModel,
+  sortModelsForPicker,
+  type ChatModelInfo,
+} from './aiSettings';
 
 const copilotA: ChatModelInfo = { id: 'copilot-a', name: 'Model A', vendor: 'copilot', family: 'a' };
 const copilotB: ChatModelInfo = { id: 'copilot-b', name: 'Claude B', vendor: 'copilot', family: 'claude-b' };
@@ -17,6 +25,23 @@ suite('aiSettings', () => {
     assert.strictEqual(normalizeAiProvider('cursor'), 'none');
     assert.strictEqual(normalizeAiProvider('claude'), 'none');
     assert.strictEqual(normalizeAiProvider(undefined), 'none');
+  });
+
+  test('isCursorHost_matchesAppNameCaseInsensitively', () => {
+    assert.strictEqual(isCursorHost('Cursor'), true);
+    assert.strictEqual(isCursorHost('cursor'), true);
+    assert.strictEqual(isCursorHost('Cursor - Insiders'), true);
+    assert.strictEqual(isCursorHost('Visual Studio Code'), false);
+    assert.strictEqual(isCursorHost('Code'), false);
+    assert.strictEqual(isCursorHost(''), false);
+    assert.strictEqual(isCursorHost(undefined), false);
+    assert.strictEqual(isCursorHost(null), false);
+  });
+
+  test('defaultAiProviderForHost_cursorVsVscode', () => {
+    assert.strictEqual(defaultAiProviderForHost('Cursor'), 'cursorCli');
+    assert.strictEqual(defaultAiProviderForHost('Visual Studio Code'), 'vscodeLm');
+    assert.strictEqual(defaultAiProviderForHost(undefined), 'vscodeLm');
   });
 
   test('pickDefaultModel_prefersSavedId', () => {

@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import {
   CURSOR_CLI_ASK_PRINT_ARGS,
   CursorCliClient,
+  parseCursorCliModelList,
   type SpawnFn,
 } from './cursorCliClient';
 import { AiUnavailableError } from '../../services/ai/aiAssistant';
@@ -200,5 +201,19 @@ suite('CursorCliClient', () => {
     const status = await client.getStatus();
     assert.strictEqual(status.authenticated, true);
     assert.strictEqual(statusCalled, false);
+  });
+
+  test('parseCursorCliModelList_keepsRealModels_rejectsHelpText', () => {
+    const models = parseCursorCliModelList(`Available models:
+gpt-5.6-luna-low - GPT-5.6 Luna Low
+claude-4.5-sonnet - Claude 4.5 Sonnet
+use --model <id> (or /model <id> in interactive mode) to switch.
+Parameterized models also accept quoted overrides, e.g. --model 'claude-opus-4-8[context=1m,effort=high,fast=false]'.
+`);
+    assert.deepStrictEqual(
+      models.map((model) => model.id),
+      ['gpt-5.6-luna-low', 'claude-4.5-sonnet'],
+    );
+    assert.ok(models.every((model) => model.vendor === 'cursor-cli'));
   });
 });

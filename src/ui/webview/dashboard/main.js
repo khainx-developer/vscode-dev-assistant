@@ -511,9 +511,11 @@ delegate(app, {
   aiDismiss: () => post({ command: 'ai.dismiss' }),
   aiCopy: () => post({ command: 'ai.copy' }),
   aiEnable: () => {
-    // Prefer editor LM when turning on from none; honor Cursor Agent CLI if already selected.
-    const provider = ai?.provider === 'cursorCli' ? 'cursorCli' : 'vscodeLm';
-    if (ai?.provider === 'none') post({ command: 'ai.setProvider', provider });
+    // Host-aware default when enabling from none (VS Code → vscodeLm, Cursor → cursorCli).
+    if (ai?.provider === 'none') {
+      const provider = ai.defaultEnableProvider === 'cursorCli' ? 'cursorCli' : 'vscodeLm';
+      post({ command: 'ai.setProvider', provider });
+    }
     post({ command: 'ai.whatNext' });
   },
   useCursorCli: () => {

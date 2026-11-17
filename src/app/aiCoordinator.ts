@@ -7,7 +7,15 @@ import {
   toPromptHistory,
   trimStoredMessages,
 } from '../services/ai/cardChat';
-import { modelLabel, pickDefaultModel, sortModelsForPicker, type AiProvider, type ChatModelInfo } from '../services/ai/aiSettings';
+import {
+  defaultAiProviderForHost,
+  isCursorHost,
+  modelLabel,
+  pickDefaultModel,
+  sortModelsForPicker,
+  type AiProvider,
+  type ChatModelInfo,
+} from '../services/ai/aiSettings';
 import { appendEditorHandoffTranscript, buildReviewPrompt } from '../services/ai/prompts';
 import { buildStandupSnapshot } from '../services/ai/standupSnapshot';
 import { AiConfigStore } from '../infrastructure/ai/aiConfigStore';
@@ -42,6 +50,7 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   private cliAvailable = false;
   private cliAuthenticated = false;
   private cliStatusLoading = false;
+  private modelsLoadGeneration = 0;
   private readonly chatHandoff: ChatHandoff;
   private readonly disposables: vscode.Disposable[] = [];
 
@@ -65,12 +74,16 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
       }),
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (AiConfigStore.affects(event)) {
-          void this.refreshCliStatus();
+          void this.ensureProviderFitsHost();
+          if (isCursorHost(vscode.env.appName)) void this.refreshCliStatus();
           this.publish();
         }
       }),
     );
-    void this.refreshCliStatus();
+    void this.ensureProviderFitsHost().then(() => {
+      if (isCursorHost(vscode.env.appName)) void this.refreshCliStatus();
+      this.publish();
+    });
   }
 
   // ── AiCommandHandler ────────────────────────────────────────────────────
@@ -104,11 +117,15 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
         }
         return;
       case 'ai.setProvider': {
-        const provider = normalizeProviderChoice(message.provider);
+        let provider = normalizeProviderChoice(message.provider);
+        // Cursor Agent CLI is only offered inside Cursor.
+        if (provider === 'cursorCli' && !isCursorHost(vscode.env.appName)) provider = 'vscodeLm';
+        const previous = this.config.getProvider();
         await this.config.setProvider(provider);
+        if (previous !== provider) await this.config.setModel('');
         this.models = null;
         if (provider === 'vscodeLm' || provider === 'cursorCli') await this.loadModels();
-        await this.refreshCliStatus();
+        if (isCursorHost(vscode.env.appName)) await this.refreshCliStatus();
         this.publish();
         return;
       }
@@ -141,10 +158,13 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
     if (this.config.getProvider() === 'cursorCli') {
       const model = this.models ? pickDefaultModel(this.models, this.config.getModel()) : undefined;
       if (model) return modelLabel(model);
-      const saved = this.config.getModel();
-      return saved ? `${saved} · Cursor Agent CLI` : null;
+      const saved = this.config.getModel()?.trim();
+      // Ignore leftover CLI help / usage text accidentally persisted as a model id.
+      if (!saved || /--model|\/model\b|</.test(saved)) return null;
+      return `${saved} · Cursor Agent CLI`;
     }
-    const model = this.models ? pickDefaultModel(this.models, this.config.getModel()) : undefined;
+    const editorModels = this.models?.filter((model) => model.vendor !== 'cursor-cli') ?? null;
+    const model = editorModels ? pickDefaultModel(editorModels, this.config.getModel()) : undefined;
     return model ? modelLabel(model) : null;
   }
 
@@ -274,9 +294,14 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   /** Quick-pick model selection (command palette). */
   async pickModel(): Promise<void> {
     if (this.config.getProvider() === 'none') {
+      const defaultProvider = defaultAiProviderForHost(vscode.env.appName);
       const enable = await vscode.window.showInformationMessage(
-        'DevMate: AI is off. Turn it on to use models from this editor, or choose Cursor Agent CLI in Setup.',
-        'Turn on editor AI',
+        defaultProvider === 'cursorCli'
+          ? 'DevMate: AI is off. Turn it on to use Cursor Agent CLI, or choose editor language models in Setup.'
+          : isCursorHost(vscode.env.appName)
+            ? 'DevMate: AI is off. Turn it on to use models from this editor, or choose Cursor Agent CLI in Setup.'
+            : 'DevMate: AI is off. Turn it on to use language models from this editor (Setup).',
+        'Turn on AI',
         'Open Setup',
       );
       if (enable === 'Open Setup') {
@@ -284,7 +309,7 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
         return;
       }
       if (!enable) return;
-      await this.config.setProvider('vscodeLm');
+      await this.config.setProvider(defaultProvider);
     }
     await this.loadModels();
     const models = this.models ?? [];
@@ -453,13 +478,18 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
 
   private async ensureEnabled(): Promise<boolean> {
     if (this.config.getProvider() !== 'none') return true;
+    const defaultProvider = defaultAiProviderForHost(vscode.env.appName);
     const choice = await vscode.window.showInformationMessage(
-      'DevMate: AI is off. Use language models from this editor, or choose Cursor Agent CLI in Setup.',
-      'Turn on editor AI',
+      defaultProvider === 'cursorCli'
+        ? 'DevMate: AI is off. Use Cursor Agent CLI, or choose editor language models in Setup.'
+        : isCursorHost(vscode.env.appName)
+          ? 'DevMate: AI is off. Use language models from this editor, or choose Cursor Agent CLI in Setup.'
+          : 'DevMate: AI is off. Use language models from this editor (Setup).',
+      'Turn on AI',
       'Open Setup',
     );
-    if (choice === 'Turn on editor AI') {
-      await this.config.setProvider('vscodeLm');
+    if (choice === 'Turn on AI') {
+      await this.config.setProvider(defaultProvider);
       return true;
     }
     if (choice === 'Open Setup') this.hooks.revealSetup();
@@ -471,20 +501,35 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   }
 
   private async loadModels(): Promise<void> {
+    const generation = ++this.modelsLoadGeneration;
     this.modelsLoading = true;
     this.publish();
     try {
       const provider = this.config.getProvider();
-      if (provider === 'cursorCli') {
+      let models: ChatModelInfo[];
+      if (provider === 'cursorCli' && isCursorHost(vscode.env.appName)) {
         await this.refreshCliStatus();
-        this.models = sortModelsForPicker(await this.cursorCli.listModels());
+        models = sortModelsForPicker(await this.cursorCli.listModels());
       } else {
-        this.models = sortModelsForPicker(await this.vscodeLm.listModels());
+        models = sortModelsForPicker(await this.vscodeLm.listModels());
       }
+      if (generation !== this.modelsLoadGeneration) return;
+      this.models = models;
     } finally {
-      this.modelsLoading = false;
-      this.publish();
+      if (generation === this.modelsLoadGeneration) {
+        this.modelsLoading = false;
+        this.publish();
+      }
     }
+  }
+
+  /** VS Code must not keep a persisted Cursor Agent CLI backend. */
+  private async ensureProviderFitsHost(): Promise<void> {
+    if (isCursorHost(vscode.env.appName)) return;
+    if (this.config.getProvider() !== 'cursorCli') return;
+    await this.config.setProvider('vscodeLm');
+    await this.config.setModel('');
+    this.models = null;
   }
 
   private async refreshCliStatus(): Promise<void> {
@@ -526,23 +571,35 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   }
 
   private viewState(): AiViewState {
+    const cursorHost = isCursorHost(vscode.env.appName);
     const provider: AiProvider = this.config.getProvider();
-    const selected = this.models ? pickDefaultModel(this.models, this.config.getModel()) : undefined;
+    const modelsForProvider = provider === 'cursorCli'
+      ? this.models
+      : this.models?.filter((model) => model.vendor !== 'cursor-cli') ?? this.models;
+    const selected = modelsForProvider ? pickDefaultModel(modelsForProvider, this.config.getModel()) : undefined;
     const lmUnsupported = !LanguageModelClient.isSupported();
-    const lmEmpty = this.models !== null && this.models.length === 0;
-    const suggestCursorCli = provider !== 'cursorCli' && (lmUnsupported || (provider === 'vscodeLm' && lmEmpty) || (provider === 'none' && (lmUnsupported || lmEmpty)));
+    const lmEmpty = modelsForProvider !== null && modelsForProvider.length === 0;
+    const suggestCursorCli = cursorHost
+      && provider !== 'cursorCli'
+      && (lmUnsupported || (provider === 'vscodeLm' && lmEmpty) || (provider === 'none' && (lmUnsupported || lmEmpty)));
+    const defaultEnableProvider = defaultAiProviderForHost(vscode.env.appName);
+    const savedModel = this.config.getModel();
+    const selectedModelId = selected?.id
+      ?? (savedModel && !/--model|\/model\b|</.test(savedModel) ? savedModel : null);
 
     return {
       provider,
       supported: LanguageModelClient.isSupported(),
-      selectedModelId: selected?.id ?? this.config.getModel() ?? null,
-      models: this.models,
+      selectedModelId,
+      models: modelsForProvider,
       modelsLoading: this.modelsLoading,
       run: this.run,
       threads: cloneThreadsRecord(this.threads),
       cliAvailable: this.cliAvailable,
       cliAuthenticated: this.cliAuthenticated,
       suggestCursorCli,
+      defaultEnableProvider,
+      cursorHost,
     };
   }
 
@@ -568,9 +625,14 @@ function noModelsMessage(provider: AiProvider): string {
   if (provider === 'cursorCli') {
     return 'No models reported by Cursor Agent CLI. Check `agent --list-models`, or leave the model blank for Auto.';
   }
+  if (isCursorHost(vscode.env.appName)) {
+    return LanguageModelClient.isSupported()
+      ? 'No language models are available in this editor. Install or sign in to GitHub Copilot Chat (or another language-model provider), then try again — or choose Cursor Agent CLI in Setup.'
+      : 'This editor does not expose a language-model API. Choose Cursor Agent CLI in Setup if `agent` is on your PATH.';
+  }
   return LanguageModelClient.isSupported()
-    ? 'No language models are available in this editor. Install or sign in to GitHub Copilot Chat (or another language-model provider), then try again — or choose Cursor Agent CLI in Setup.'
-    : 'This editor does not expose a language-model API. Choose Cursor Agent CLI in Setup if `agent` is on your PATH.';
+    ? 'No language models are available in this editor. Install or sign in to GitHub Copilot Chat (or another language-model provider), then try again.'
+    : 'This editor does not expose a language-model API for DevMate to use.';
 }
 
 function errorMessage(error: unknown, provider: AiProvider): string {

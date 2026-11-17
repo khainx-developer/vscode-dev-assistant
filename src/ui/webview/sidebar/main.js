@@ -425,13 +425,20 @@ function aiStepBody() {
     }
   }
 
+  const cursorHost = !!ai?.cursorHost;
+  const recommended = provider === 'none'
+    ? (cursorHost && ai?.defaultEnableProvider === 'cursorCli' ? 'cursorCli' : 'vscodeLm')
+    : null;
+  const help = cursorHost
+    ? 'Editor LM uses models from this host (e.g. GitHub Copilot). Cursor Agent CLI runs <code>agent -p --mode ask</code> on your machine. DevMate sends only titles, statuses and short comment excerpts — never tokens. No Anthropic API key is stored in DevMate.'
+    : 'Uses language models from this editor (e.g. GitHub Copilot). DevMate sends only titles, statuses and short comment excerpts — never tokens.';
   return `<fieldset class="ai-provider">
       <legend class="field-label">AI backend</legend>
       <label class="checkbox"><input type="radio" name="aiProvider" value="none"${provider === 'none' ? ' checked' : ''}> Off</label>
-      <label class="checkbox"><input type="radio" name="aiProvider" value="vscodeLm"${provider === 'vscodeLm' ? ' checked' : ''}> Editor language models</label>
-      <label class="checkbox"><input type="radio" name="aiProvider" value="cursorCli"${provider === 'cursorCli' ? ' checked' : ''}> Cursor Agent CLI</label>
+      <label class="checkbox"><input type="radio" name="aiProvider" value="vscodeLm"${provider === 'vscodeLm' ? ' checked' : ''}> Editor language models${recommended === 'vscodeLm' ? ' (recommended)' : ''}</label>
+      ${cursorHost ? `<label class="checkbox"><input type="radio" name="aiProvider" value="cursorCli"${provider === 'cursorCli' ? ' checked' : ''}> Cursor Agent CLI${recommended === 'cursorCli' ? ' (recommended)' : ''}</label>` : ''}
     </fieldset>
-    <p class="field-help">Editor LM uses models from this host (e.g. GitHub Copilot). Cursor Agent CLI runs <code>agent -p --mode ask</code> on your machine. DevMate sends only titles, statuses and short comment excerpts — never tokens. No Anthropic API key is stored in DevMate.</p>
+    <p class="field-help">${help}</p>
     ${body}`;
 }
 

@@ -9,6 +9,7 @@ import {
   deriveGitHubConnection,
   deriveJiraConnection,
 } from '../services/session/connectionState';
+import { isCursorHost } from '../services/ai/aiSettings';
 import { deriveSetupStatus } from '../services/session/setupStatus';
 import { RefreshScheduler, type RefreshVisibilityHost } from '../infrastructure/github/refreshScheduler';
 import type { GitHubIncomingMessage, GitHubOutgoingMessage, GitHubViewState } from '../shared/githubTypes';
@@ -350,6 +351,7 @@ export class DashboardSession implements vscode.Disposable {
         modelName: this.aiHandler?.selectedModelName() ?? null,
         cliAvailable: this.aiHandler?.cliStatus().available,
         cliAuthenticated: this.aiHandler?.cliStatus().authenticated,
+        cursorHost: isCursorHost(vscode.env.appName),
       }),
       lastRefreshAt: refreshTimes.length ? new Date(Math.max(...refreshTimes)).toISOString() : null,
       isRefreshing: this.refreshInFlight !== null || this.anyControllerRefreshing(),

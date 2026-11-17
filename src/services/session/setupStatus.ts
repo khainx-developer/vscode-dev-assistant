@@ -33,6 +33,8 @@ export interface SetupAiInput {
   cliAvailable?: boolean;
   /** When provider is cursorCli — login / CURSOR_API_KEY. */
   cliAuthenticated?: boolean;
+  /** When false/omitted, Setup does not suggest Cursor Agent CLI (VS Code host). */
+  cursorHost?: boolean;
 }
 
 export function deriveSetupStatus(
@@ -122,7 +124,9 @@ function deriveAiStep(ai: SetupAiInput): SetupStep {
     id: 'ai',
     title,
     state: 'attention',
-    detail: 'Editor language models aren’t ready yet. Check for a model in Setup, or choose Cursor Agent CLI.',
+    detail: ai.cursorHost
+      ? 'Editor language models aren’t ready yet. Check for a model in Setup, or choose Cursor Agent CLI.'
+      : 'Editor language models aren’t ready yet. Install or sign in to GitHub Copilot Chat (or another LM provider), then check again in Setup.',
   };
 }
 
