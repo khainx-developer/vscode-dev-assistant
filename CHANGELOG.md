@@ -7,6 +7,7 @@
 - **JWT Decoder** (API) — paste a token to see its header and payload, with `exp`, `iat` and `nbf` shown as dates and whether the token has expired. Strips whitespace (wrapped pastes), accepts an optional `Bearer` prefix, and tolerates Base64URL padding or standard `+/` alphabet. Decode only: it never verifies the signature and never sends the token anywhere.
 - **Date / Timestamp Converter** (Code) — show a moment as Unix seconds/milliseconds and in UTC, your local zone, and any IANA zones listed after `in` (e.g. `1700000000 in Asia/Tokyo, Europe/London`). Accepts Unix timestamps (seconds or milliseconds) or ISO 8601 date strings; no new dependencies (Intl only, DST-aware).
 - **Hash** (API) — SHA-256, SHA-1, MD5, and SHA-512 digests of text exactly as typed (including a trailing newline), plus an All hashes action. MD5 and SHA-1 are for checksums, not security. Uses Node crypto; no new dependencies.
+- **JSON ↔ YAML** (Code) — convert JSON to YAML and YAML to JSON (comments are dropped; multi-document YAML becomes an array).
 
 ### Improved
 - Timestamp → ISO (editor command) now returns a friendly error for out-of-range values instead of a raw `RangeError`.

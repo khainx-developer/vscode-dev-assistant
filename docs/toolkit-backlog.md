@@ -18,6 +18,7 @@ Tool logic: pure functions in `src/services/textTools/`, registered once in
   Lowercase / Camel Case / Snake Case / Kebab Case**
 - Timestamp with time zones (Code) — UTC, local, and named IANA zones via Intl
 - Hash (API) — SHA-256, SHA-1, MD5, SHA-512 (and All hashes)
+- JSON ↔ YAML (Code) — `js-yaml` (+~43 KB); safe parse; multi-doc → array
 
 ## Keep as is
 
@@ -26,24 +27,23 @@ Tool logic: pure functions in `src/services/textTools/`, registered once in
 ## Add (in priority order)
 
 Tools
-1. **JSON ↔ YAML** (Code) — check bundle size for the YAML dependency
-2. **JSON → Types** (Code) — TypeScript and C# (the languages in use); more
+1. **JSON → Types** (Code) — TypeScript and C# (the languages in use); more
    languages later. Handle nested objects, arrays, nullable / optional fields;
    C# as classes or records with `PascalCase` names and a property-name option.
 
 Tools tab, continued
-3. *Run Tool…* Quick Pick command (one entry, replaces per-tool commands)
-4. Recent / pinned tools row
+2. *Run Tool…* Quick Pick command (one entry, replaces per-tool commands)
+3. Recent / pinned tools row
 
 Later, by demand
-5. Minify JSON and sort JSON keys (Code)
-6. URL / query-string parser (API)
-7. cURL → C# `HttpClient` / fetch / axios converter (API)
-8. Basic auth header and HMAC (API)
-9. JSONPath query on a selection (Code)
-10. Date calculator — add/subtract days, relative age (Code)
-11. Output choice per tool — replace, insert below, or copy
-12. Regex tester (Code) — only if requested; needs a two-input contract
+4. Minify JSON and sort JSON keys (Code)
+5. URL / query-string parser (API)
+6. cURL → C# `HttpClient` / fetch / axios converter (API)
+7. Basic auth header and HMAC (API)
+8. JSONPath query on a selection (Code)
+9. Date calculator — add/subtract days, relative age (Code)
+10. Output choice per tool — replace, insert below, or copy
+11. Regex tester (Code) — only if requested; needs a two-input contract
     (.NET and JavaScript regex flavours differ; pick one or offer both)
 
 ## Not planned
@@ -60,5 +60,5 @@ Later, by demand
 ## Open questions
 
 - Bundle-size budget is set: under about +100 KB combined for toolkit
-  dependencies, loaded on demand (see `roadmap.md`). Measure the YAML library
-  before adding it.
+  dependencies (see `roadmap.md`). YAML measured and shipped with `js-yaml`
+  (~+43 KB).

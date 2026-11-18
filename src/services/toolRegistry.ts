@@ -2,6 +2,7 @@ import { ToolDefinition } from '../shared/toolTypes';
 import { base64Encode, base64Decode } from './textTools/base64';
 import { urlEncode, urlDecode } from './textTools/url';
 import { formatJson, jsonEscapeString } from './textTools/json';
+import { jsonToYaml, yamlToJson } from './textTools/yaml';
 import { generateUuid } from './textTools/uuid';
 import { describeTimestamp } from './textTools/timestamp';
 import { decodeJwt } from './textTools/jwt';
@@ -51,6 +52,22 @@ export const tools: ToolDefinition[] = [
       { id: 'escape', label: 'Escape as String' },
     ],
     run: (action, input) => (action === 'format' ? formatJson(input) : jsonEscapeString(input)),
+  },
+  {
+    id: 'json-yaml',
+    title: 'JSON ↔ YAML',
+    description: 'Convert between JSON and YAML.',
+    icon: 'file-code',
+    category: 'code',
+    tags: ['json', 'yaml', 'convert', 'config'],
+    needsInput: true,
+    inputPlaceholder:
+      'Paste JSON or YAML… Comments are dropped; multi-document YAML becomes a JSON array; integers beyond 2^53 lose precision in both directions. YAML values with no JSON form change silently (.nan/.inf → null; non-string keys → strings like "a,b").',
+    actions: [
+      { id: 'jsonToYaml', label: 'JSON → YAML' },
+      { id: 'yamlToJson', label: 'YAML → JSON' },
+    ],
+    run: (action, input) => (action === 'yamlToJson' ? yamlToJson(input) : jsonToYaml(input)),
   },
   {
     id: 'base64-tool',
