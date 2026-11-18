@@ -5,6 +5,7 @@ import { formatJson, jsonEscapeString } from './textTools/json';
 import { generateUuid } from './textTools/uuid';
 import { describeTimestamp } from './textTools/timestamp';
 import { decodeJwt } from './textTools/jwt';
+import { hashText } from './textTools/hash';
 
 const BASE64_PATTERN = /^[A-Za-z0-9+/\s]*={0,2}\s*$/;
 
@@ -100,6 +101,25 @@ export const tools: ToolDefinition[] = [
     inputPlaceholder: 'Paste a JWT to decode (decode only — signature is not verified)...',
     actions: [{ id: 'decode', label: 'Decode JWT' }],
     run: (_action, input) => decodeJwt(input),
+  },
+  {
+    id: 'hash-tool',
+    title: 'Hash',
+    description:
+      'Hash text with SHA-256, SHA-1, MD5, or SHA-512. Digests the text exactly as typed, including a trailing newline. The panel uses \\n, so text pasted from a Windows file that still has \\r\\n will hash differently from the file on disk. MD5 and SHA-1 are for checksums, not security.',
+    icon: 'hash',
+    category: 'api',
+    tags: ['hash', 'sha256', 'sha1', 'md5', 'sha512', 'checksum', 'digest'],
+    needsInput: true,
+    inputPlaceholder: 'Enter text to hash...',
+    actions: [
+      { id: 'all', label: 'All hashes' },
+      { id: 'sha256', label: 'SHA-256' },
+      { id: 'sha1', label: 'SHA-1' },
+      { id: 'md5', label: 'MD5' },
+      { id: 'sha512', label: 'SHA-512' },
+    ],
+    run: (action, input) => hashText(action, input),
   },
 ];
 

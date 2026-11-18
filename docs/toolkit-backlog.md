@@ -17,6 +17,7 @@ Tool logic: pure functions in `src/services/textTools/`, registered once in
 - Removed duplicate case transforms — use VS Code **Transform to Uppercase /
   Lowercase / Camel Case / Snake Case / Kebab Case**
 - Timestamp with time zones (Code) — UTC, local, and named IANA zones via Intl
+- Hash (API) — SHA-256, SHA-1, MD5, SHA-512 (and All hashes)
 
 ## Keep as is
 
@@ -25,25 +26,24 @@ Tool logic: pure functions in `src/services/textTools/`, registered once in
 ## Add (in priority order)
 
 Tools
-1. **Hash** (API) — SHA-256, SHA-1, MD5
-2. **JSON ↔ YAML** (Code) — check bundle size for the YAML dependency
-3. **JSON → Types** (Code) — TypeScript and C# (the languages in use); more
+1. **JSON ↔ YAML** (Code) — check bundle size for the YAML dependency
+2. **JSON → Types** (Code) — TypeScript and C# (the languages in use); more
    languages later. Handle nested objects, arrays, nullable / optional fields;
    C# as classes or records with `PascalCase` names and a property-name option.
 
 Tools tab, continued
-4. *Run Tool…* Quick Pick command (one entry, replaces per-tool commands)
-5. Recent / pinned tools row
+3. *Run Tool…* Quick Pick command (one entry, replaces per-tool commands)
+4. Recent / pinned tools row
 
 Later, by demand
-6. Minify JSON and sort JSON keys (Code)
-7. URL / query-string parser (API)
-8. cURL → C# `HttpClient` / fetch / axios converter (API)
-9. Basic auth header and HMAC (API)
-10. JSONPath query on a selection (Code)
-11. Date calculator — add/subtract days, relative age (Code)
-12. Output choice per tool — replace, insert below, or copy
-13. Regex tester (Code) — only if requested; needs a two-input contract
+5. Minify JSON and sort JSON keys (Code)
+6. URL / query-string parser (API)
+7. cURL → C# `HttpClient` / fetch / axios converter (API)
+8. Basic auth header and HMAC (API)
+9. JSONPath query on a selection (Code)
+10. Date calculator — add/subtract days, relative age (Code)
+11. Output choice per tool — replace, insert below, or copy
+12. Regex tester (Code) — only if requested; needs a two-input contract
     (.NET and JavaScript regex flavours differ; pick one or offer both)
 
 ## Not planned
