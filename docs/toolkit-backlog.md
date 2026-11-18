@@ -1,64 +1,31 @@
-# Groups 3 and 4 — Code and API Toolkit
+# Toolkit
 
-Stateless tools that work on a selection. They live in the Tools tab as the
-*Code* and *API* categories, plus the editor context menu and *Run Tool…*. No
-GitHub/Jira connection needed. See `roadmap.md`.
+Stateless tools that work on text, in the Tools tab (Code and API groups). They
+need no GitHub/Jira connection. See `roadmap.md`.
 
 Tool logic: pure functions in `src/services/textTools/`, registered once in
 `src/services/toolRegistry.ts`.
 
-## Already built
+## Next
 
-- Format JSON, Base64 encode/decode, URL encode/decode, JSON string escape,
-  UUID v4, Unix timestamp now / to ISO
-- Tools tab search
-- Tools tab category grouping (Code / API / Debug)
-- JWT decoder (API) — decode only, never verify or send; includes Base64URL
-- Removed duplicate case transforms — use VS Code **Transform to Uppercase /
-  Lowercase / Camel Case / Snake Case / Kebab Case**
-- Timestamp with time zones (Code) — UTC, local, and named IANA zones via Intl
-- Hash (API) — SHA-256, SHA-1, MD5, SHA-512 (and All hashes)
-- JSON ↔ YAML (Code) — `js-yaml` (+~43 KB); safe parse; multi-doc → array
-
-## Keep as is
-
-(Same set as Already built above — no further changes planned for those.)
-
-## Add (in priority order)
-
-Tools
-1. **JSON → Types** (Code) — TypeScript and C# (the languages in use); more
-   languages later. Handle nested objects, arrays, nullable / optional fields;
-   C# as classes or records with `PascalCase` names and a property-name option.
-
-Tools tab, continued
-2. *Run Tool…* Quick Pick command (one entry, replaces per-tool commands)
-3. Recent / pinned tools row
-
-Later, by demand
-4. Minify JSON and sort JSON keys (Code)
-5. URL / query-string parser (API)
-6. cURL → C# `HttpClient` / fetch / axios converter (API)
-7. Basic auth header and HMAC (API)
-8. JSONPath query on a selection (Code)
-9. Date calculator — add/subtract days, relative age (Code)
-10. Output choice per tool — replace, insert below, or copy
-11. Regex tester (Code) — only if requested; needs a two-input contract
-    (.NET and JavaScript regex flavours differ; pick one or offer both)
+- ***Run Tool…*** — one Command Palette entry with a searchable list of all tools,
+  running the chosen tool on the editor selection and putting the result back or
+  on the clipboard. Today JWT, Hash, the timestamp converter and JSON ↔ YAML are
+  only reachable from the sidebar.
 
 ## Not planned
 
-- **API group extras:** REST client (Thunder Client, REST Client, httpyac exist),
-  OpenAPI viewer, mock server.
-- **Covered by VS Code or other extensions:** text diff, line tools (sort,
-  dedupe, trim), color converter, Markdown table formatter, case transforms
-  (built-in *Transform to …*).
-- **Rarely used:** cron explainer, JSON ↔ CSV, UUID v7 / ULID / nanoid, HTML
-  entities, number base, Lorem ipsum.
-- AI regex / cron generation.
+- **More tools until needed:** JSON → Types, minify / sort JSON, URL parser, cURL
+  converter, HMAC, JSONPath, regex tester, date calculator, recent / pinned tools,
+  cron explainer, JSON ↔ CSV, UUID v7 / ULID, HTML entities, number base, Lorem
+  ipsum.
+- **Covered by VS Code or extensions:** text diff, line tools (sort, dedupe, trim),
+  color converter, Markdown table formatter, REST client (Thunder Client, REST
+  Client, httpyac), OpenAPI viewer, mock server.
+- **Covered by editor AI:** stack trace analysis and the debug tools built around
+  it, regex or cron generation.
 
-## Open questions
+## Bundle budget
 
-- Bundle-size budget is set: under about +100 KB combined for toolkit
-  dependencies (see `roadmap.md`). YAML measured and shipped with `js-yaml`
-  (~+43 KB).
+Toolkit dependencies stay under about +100 KB combined; about 56 KB is left. See
+`roadmap.md`.

@@ -1,50 +1,37 @@
-# Group 2 — Jira & GitHub Workflow
+# Jira & GitHub workflow
 
-Goal: select a ticket and the extension already knows its PRs, branch,
-description and acceptance criteria, and produces the text you need around it.
-Surface: the actions menu on each inbox card. See `roadmap.md`.
+Goal: the inbox card shows what you need to know about a ticket without opening
+Jira. Surfaces: the inbox card and the status bar. See `roadmap.md`.
 
-Rule: no git writes. Everything generated is copy-to-clipboard.
+Rule: no git writes.
 
-## Already built
+## Next (in priority order)
 
-- Inbox item bundles a ticket with its linked PRs (`attentionInboxBuilder.ts`).
-- PR matching by ticket key in title or branch name (`prLinkMatcher.ts`).
-- Linked PR's branch name available as `headRef`.
-- Editor-chat hand-off passes card context to an AI agent.
-
-## Add (in priority order)
-
-1. **Fetch ticket description; show acceptance criteria**
+1. **Show acceptance criteria on the card.**
    - `JiraTask` has no description today; add it.
    - Parse an "Acceptance criteria" heading or section; fall back to the full
-     description. Handle Atlassian document format.
-   - Apply the credential scan and length trimming before any text goes to an AI.
-   - Check what the Jira MCP adapter returns first. Items 2 and 5 depend on this.
-2. **Work item actions menu** (copy only)
-   - Copy branch name, e.g. `feature/PROJ-123-short-title`
-   - Copy commit message, e.g. `PROJ-123: summary`
-   - Copy PR description: ticket link, summary, acceptance criteria as a checklist
-   - Settings: branch-name pattern and slug rules; commit/PR templates
-3. **Current-branch detection (read-only)** — approved
-   - Read HEAD through the built-in `vscode.git` API; no writes.
-   - Show the matching ticket key in the status bar; pre-select it for the menu.
-   - Gives an automatic "now working on" (see `productivity-backlog.md`).
-4. **Markdown ↔ Jira wiki markup** — for ticket comments and descriptions.
-5. **Summarize a PR or ticket comment thread** (AI, uses existing snapshot data).
-6. **Open PR source files** (low priority) — list the PR's changed files; mapping
-   to local files is fragile and the editor-chat hand-off covers most of it.
+     description. Handle the Atlassian document format.
+   - Apply the existing credential scan and length trimming before any of it
+     goes to an AI.
+   - Run the Jira Field Spike first to see what the MCP returns and whether the
+     criteria are a heading or a custom field on your site.
+2. **Current branch → status bar** (approved, read-only).
+   - Read HEAD through the built-in `vscode.git` API; no writes. Quietly off if the
+     git extension is missing; in multi-root workspaces use the active editor's
+     repo.
+   - Show the ticket key found in the branch name (using the same key matching as
+     the PR linker) in the status bar. Clicking it can open that ticket's card or
+     the Jira page.
 
 ## Not planned
 
-- AI commit message or PR description generated from a git diff.
-- Looking up local branches.
-- Creating, switching or deleting branches.
-- Copy ticket / PR as a Markdown or Slack link, key or URL (dropped: not useful
-  enough to justify card UI).
+- Copy-text actions: branch name, commit message, PR description, Markdown or
+  Slack link, worklog line. An editor AI does these better with the diff in view.
+- Markdown ↔ Jira markup, comment-thread summaries and PR source file lists (the
+  editor-chat hand-off covers these).
+- Looking up local branches; creating, switching or deleting branches.
 
-## Open questions
+## Open question
 
-- Does the Jira MCP adapter return the description and the acceptance-criteria
-  field? Is that field a heading or a custom field on your site?
-- Should the branch-name pattern be configurable per project key?
+- Are the acceptance criteria a heading in the description, or a custom field on
+  your Jira site? (The spike answers this.)

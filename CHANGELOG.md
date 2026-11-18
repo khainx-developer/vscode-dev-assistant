@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
 
 ### New
-- **Tools tab groups** — tools are now listed under collapsible **Code** and **API** sections (a **Debug** section appears once it has tools). Search still filters across all groups.
+- **Tools tab groups** — tools are now listed under collapsible **Code** and **API** sections. Search still filters across all groups.
 - **JWT Decoder** (API) — paste a token to see its header and payload, with `exp`, `iat` and `nbf` shown as dates and whether the token has expired. Strips whitespace (wrapped pastes), accepts an optional `Bearer` prefix, and tolerates Base64URL padding or standard `+/` alphabet. Decode only: it never verifies the signature and never sends the token anywhere.
 - **Date / Timestamp Converter** (Code) — show a moment as Unix seconds/milliseconds and in UTC, your local zone, and any IANA zones listed after `in` (e.g. `1700000000 in Asia/Tokyo, Europe/London`). Accepts Unix timestamps (seconds or milliseconds) or ISO 8601 date strings; no new dependencies (Intl only, DST-aware).
 - **Hash** (API) — SHA-256, SHA-1, MD5, and SHA-512 digests of text exactly as typed (including a trailing newline), plus an All hashes action. MD5 and SHA-1 are for checksums, not security. Uses Node crypto; no new dependencies.
