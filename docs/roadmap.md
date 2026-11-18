@@ -81,7 +81,7 @@ issue links, Flagged field). Run the **Jira Field Spike** command
 1. ✅ Tools tab: category grouping (Code / API / Debug; search already existed)
 2. ✅ JWT decoder (with Base64URL)
 3. ✅ Timestamp with time zones
-4. Hash
+4. ✅ Hash
 5. JSON ↔ YAML
 6. JSON → Types (TypeScript and C#)
 7. *Run Tool…* Quick Pick command

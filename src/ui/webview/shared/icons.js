@@ -40,6 +40,7 @@ const PATHS = {
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 18.7l1-1"/>',
   braces: '<path d="M8 4c-2 0-2.5 1-2.5 3v2c0 1.5-1 2.5-2 3 1 .5 2 1.5 2 3v2c0 2 .5 3 2.5 3"/><path d="M16 4c2 0 2.5 1 2.5 3v2c0 1.5 1 2.5 2 3-1 .5-2 1.5-2 3v2c0 2-.5 3-2.5 3"/>',
   case: '<path d="M3.5 18 7.5 6l4 12M5 14h5"/><circle cx="16.5" cy="14.5" r="3.5"/><path d="M20 11v7"/>',
+  hash: '<path d="M8 4v16M16 4v16M5 9h14M5 15h14"/>',
 };
 
 export function icon(name, size = '') {
