@@ -3,7 +3,7 @@ import { base64Encode, base64Decode } from './textTools/base64';
 import { urlEncode, urlDecode } from './textTools/url';
 import { formatJson, jsonEscapeString } from './textTools/json';
 import { generateUuid } from './textTools/uuid';
-import { currentUnixTimestamp, unixTimestampToIso } from './textTools/timestamp';
+import { describeTimestamp } from './textTools/timestamp';
 import { decodeJwt } from './textTools/jwt';
 
 const BASE64_PATTERN = /^[A-Za-z0-9+/\s]*={0,2}\s*$/;
@@ -23,23 +23,18 @@ export const tools: ToolDefinition[] = [
   {
     id: 'timestamp-converter',
     title: 'Date / Timestamp Converter',
-    description: 'Get the current Unix timestamp, or convert one to an ISO date.',
+    description:
+      'Show a moment as Unix timestamps and in UTC, your local zone, and any IANA zones you list.',
     icon: 'clock',
     category: 'code',
-    tags: ['date', 'time', 'timestamp', 'convert'],
+    tags: ['date', 'time', 'timestamp', 'convert', 'timezone'],
     needsInput: true,
-    inputPlaceholder: 'Enter a Unix timestamp (seconds or milliseconds)...',
+    inputPlaceholder: '<value> [in <zone>[, <zone>...]] — e.g. 1700000000 in Asia/Tokyo, Europe/London',
     actions: [
-      { id: 'now', label: 'Current Timestamp' },
-      { id: 'toIso', label: 'Timestamp → ISO Date' },
+      { id: 'now', label: 'Current time' },
+      { id: 'convert', label: 'Convert' },
     ],
-    run: (action, input) => {
-      if (action === 'now') {
-        const seconds = currentUnixTimestamp();
-        return `${seconds} (seconds)\n${new Date().toISOString()} (ISO)`;
-      }
-      return unixTimestampToIso(input);
-    },
+    run: (action, input) => describeTimestamp(input, action),
   },
   {
     id: 'json-formatter',

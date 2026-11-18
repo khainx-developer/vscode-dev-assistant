@@ -16,6 +16,7 @@ Tool logic: pure functions in `src/services/textTools/`, registered once in
 - JWT decoder (API) — decode only, never verify or send; includes Base64URL
 - Removed duplicate case transforms — use VS Code **Transform to Uppercase /
   Lowercase / Camel Case / Snake Case / Kebab Case**
+- Timestamp with time zones (Code) — UTC, local, and named IANA zones via Intl
 
 ## Keep as is
 
@@ -24,26 +25,25 @@ Tool logic: pure functions in `src/services/textTools/`, registered once in
 ## Add (in priority order)
 
 Tools
-1. **Timestamp with time zones** (Code) — extend the existing tool
-2. **Hash** (API) — SHA-256, SHA-1, MD5
-3. **JSON ↔ YAML** (Code) — check bundle size for the YAML dependency
-4. **JSON → Types** (Code) — TypeScript and C# (the languages in use); more
+1. **Hash** (API) — SHA-256, SHA-1, MD5
+2. **JSON ↔ YAML** (Code) — check bundle size for the YAML dependency
+3. **JSON → Types** (Code) — TypeScript and C# (the languages in use); more
    languages later. Handle nested objects, arrays, nullable / optional fields;
    C# as classes or records with `PascalCase` names and a property-name option.
 
 Tools tab, continued
-5. *Run Tool…* Quick Pick command (one entry, replaces per-tool commands)
-6. Recent / pinned tools row
+4. *Run Tool…* Quick Pick command (one entry, replaces per-tool commands)
+5. Recent / pinned tools row
 
 Later, by demand
-7. Minify JSON and sort JSON keys (Code)
-8. URL / query-string parser (API)
-9. cURL → C# `HttpClient` / fetch / axios converter (API)
-10. Basic auth header and HMAC (API)
-11. JSONPath query on a selection (Code)
-12. Date calculator — add/subtract days, relative age (Code)
-13. Output choice per tool — replace, insert below, or copy
-14. Regex tester (Code) — only if requested; needs a two-input contract
+6. Minify JSON and sort JSON keys (Code)
+7. URL / query-string parser (API)
+8. cURL → C# `HttpClient` / fetch / axios converter (API)
+9. Basic auth header and HMAC (API)
+10. JSONPath query on a selection (Code)
+11. Date calculator — add/subtract days, relative age (Code)
+12. Output choice per tool — replace, insert below, or copy
+13. Regex tester (Code) — only if requested; needs a two-input contract
     (.NET and JavaScript regex flavours differ; pick one or offer both)
 
 ## Not planned

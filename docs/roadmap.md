@@ -80,13 +80,13 @@ issue links, Flagged field). Run the **Jira Field Spike** command
 ### Phase 3 — Tools foundation and core
 1. ✅ Tools tab: category grouping (Code / API / Debug; search already existed)
 2. ✅ JWT decoder (with Base64URL)
-3. Timestamp with time zones
+3. ✅ Timestamp with time zones
 4. Hash
 5. JSON ↔ YAML
 6. JSON → Types (TypeScript and C#)
 7. *Run Tool…* Quick Pick command
 8. Recent / pinned tools
-9. ✅ Remove duplicate case transforms (VS Code built-ins: upper/lower long-standing; snake 1.53; kebab 1.69; camel 1.75 — all before `engines.vscode` ^1.90.0)
+9. ✅ Remove duplicate case transforms (VS Code Transform to … commands cover upper/lower, snake, kebab, and camel — all before `engines.vscode` ^1.90.0)
 
 ### Phase 4 — Debug
 1. Redact secrets

@@ -5,9 +5,13 @@
 ### New
 - **Tools tab groups** — tools are now listed under collapsible **Code** and **API** sections (a **Debug** section appears once it has tools). Search still filters across all groups.
 - **JWT Decoder** (API) — paste a token to see its header and payload, with `exp`, `iat` and `nbf` shown as dates and whether the token has expired. Strips whitespace (wrapped pastes), accepts an optional `Bearer` prefix, and tolerates Base64URL padding or standard `+/` alphabet. Decode only: it never verifies the signature and never sends the token anywhere.
+- **Date / Timestamp Converter** (Code) — show a moment as Unix seconds/milliseconds and in UTC, your local zone, and any IANA zones listed after `in` (e.g. `1700000000 in Asia/Tokyo, Europe/London`). Accepts Unix timestamps (seconds or milliseconds) or ISO 8601 date strings; no new dependencies (Intl only, DST-aware).
+
+### Improved
+- Timestamp → ISO (editor command) now returns a friendly error for out-of-range values instead of a raw `RangeError`.
 
 ### Changed
-- Removed the DevMate Kit case transforms (UPPERCASE, lowercase, camelCase, snake_case, kebab-case) from the Tools tab, Command Palette and right-click menu. VS Code has covered these since before our minimum (`^1.90.0`): upper/lower (long-standing), snake (1.53), kebab (1.69), camel (1.75). If you bound a key to `devMateKit.toUpperCase`, `devMateKit.toLowerCase`, `devMateKit.toCamelCase`, `devMateKit.toSnakeCase` or `devMateKit.toKebabCase`, rebind it to `editor.action.transformToUppercase`, `editor.action.transformToLowercase`, `editor.action.transformToCamelcase`, `editor.action.transformToSnakecase` or `editor.action.transformToKebabcase`.
+- Removed the DevMate Kit case transforms (UPPERCASE, lowercase, camelCase, snake_case, kebab-case) from the Tools tab, Command Palette and right-click menu. VS Code has covered these since before our minimum (`^1.90.0`): upper/lower, snake, kebab, and camel case transforms. If you bound a key to `devMateKit.toUpperCase`, `devMateKit.toLowerCase`, `devMateKit.toCamelCase`, `devMateKit.toSnakeCase` or `devMateKit.toKebabCase`, rebind it to `editor.action.transformToUppercase`, `editor.action.transformToLowercase`, `editor.action.transformToCamelcase`, `editor.action.transformToSnakecase` or `editor.action.transformToKebabcase`.
 
 ## 0.3.0
 
