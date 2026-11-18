@@ -58,6 +58,7 @@ Quick transforms from the **Tools** tab (grouped as Code / API / Debug), the Com
 - JWT decoder (decode only — never verifies the signature)
 - Hash — SHA-256, SHA-1, MD5, SHA-512 (text exactly as typed, including trailing newline; panel uses `\n`, so Windows `\r\n` differs from the file; MD5/SHA-1 for checksums only)
 - Format JSON, escape text as a JSON string
+- JSON ↔ YAML — convert between JSON and YAML (comments dropped; multi-document YAML → JSON array)
 - Insert UUID, insert current Unix timestamp, convert a Unix timestamp to an ISO date
 - Date / Timestamp Converter — Unix ↔ date with UTC, local, and named IANA time zones (DST-aware)
 

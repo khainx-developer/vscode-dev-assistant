@@ -82,7 +82,7 @@ issue links, Flagged field). Run the **Jira Field Spike** command
 2. ✅ JWT decoder (with Base64URL)
 3. ✅ Timestamp with time zones
 4. ✅ Hash
-5. JSON ↔ YAML
+5. ✅ JSON ↔ YAML
 6. JSON → Types (TypeScript and C#)
 7. *Run Tool…* Quick Pick command
 8. Recent / pinned tools
@@ -119,7 +119,14 @@ rules, AI analyze and summaries.
   extension turns the feature off quietly. In multi-root workspaces use the repo
   of the active editor. The branch name stays local unless the user hands it off.
 - **Bundle budget:** toolkit dependencies stay under about +100 KB combined
-  (`dist/extension.js` was 532 KB), loaded on demand so startup is unaffected.
+  (`dist/extension.js` was 532 KB). Lazy `require` defers start-up only; it does not
+  reduce bundle size.
+  Measured before JSON ↔ YAML (production `npm run build`):
+  - Baseline `dist/extension.js`: **558,259** bytes (~545 KB).
+  - `js-yaml@4.3.2` (minimal require): **602,446** bytes — delta **+44,187** (~+43 KB).
+  - `yaml@2.9.1` (minimal require): **673,543** bytes — delta **+115,284** (~+112 KB, over budget).
+  - **Chosen: `js-yaml@4.3.2`** (+44 KB; under budget). Lazy `require` defers startup
+    only — it does not shrink the single-file CJS bundle.
 
 ## Not planned
 
