@@ -144,7 +144,35 @@ function reasonChips(reasons, counts = {}) {
   }).join('');
 }
 
-/** Draft + CI chips. Skips the CI chip when a reason chip already says the checks are failing. */
+/** Latest review per author (same convention as attentionEngine.classifyReviewState). */
+function latestReviewsByAuthor(reviews) {
+  const latestByAuthor = new Map();
+  for (const review of reviews || []) {
+    const existing = latestByAuthor.get(review.author);
+    if (!existing || new Date(review.submittedAt) > new Date(existing.submittedAt)) {
+      latestByAuthor.set(review.author, review);
+    }
+  }
+  return [...latestByAuthor.values()];
+}
+
+/** Approver names whose latest review is APPROVED. Empty when none. */
+export function approvedReviewers(pr) {
+  return latestReviewsByAuthor(pr?.reviews)
+    .filter((review) => review.state === 'APPROVED')
+    .map((review) => review.author)
+    .filter(Boolean);
+}
+
+/** Compact approval label: `alice approved`, `alice, bob approved`, or `alice, bob +1 approved`. */
+export function approvalChipLabel(approvers) {
+  if (!approvers.length) return '';
+  if (approvers.length === 1) return `${approvers[0]} approved`;
+  if (approvers.length === 2) return `${approvers[0]}, ${approvers[1]} approved`;
+  return `${approvers[0]}, ${approvers[1]} +${approvers.length - 2} approved`;
+}
+
+/** Draft + CI + approval chips. Skips the CI chip when a reason chip already says the checks are failing. */
 export function prStatusChips(pr, reasons = []) {
   let html = '';
   if (pr.draft) html += chip('Draft');
@@ -152,6 +180,10 @@ export function prStatusChips(pr, reasons = []) {
   if (pr.checkStatus && CHECK_LABELS[pr.checkStatus] && !(failing && reasons.includes('pr-checks-failing'))) {
     const [label, tone] = CHECK_LABELS[pr.checkStatus];
     html += chip(label, tone);
+  }
+  const approvers = approvedReviewers(pr);
+  if (approvers.length) {
+    html += chip(approvalChipLabel(approvers), 'success', approvers.join(', '));
   }
   return html;
 }
@@ -279,7 +311,7 @@ export function renderAttentionItem(item, ctx, ui) {
   const jiraCardComment = jiraCommentForCard(item);
   const prCardComment = related.length === 0 ? prCommentForCard(item) : null;
   const comments = [
-    jiraCardComment ? quote(jiraCardComment.comment.authorIdentity, jiraCardComment.comment.bodyText, jiraCardComment.prefix) : '',
+    jiraCardComment ? quote(jiraCardComment.comment.authorIdentity, htmlToText(jiraCardComment.comment.bodyText), jiraCardComment.prefix) : '',
     prCardComment ? quote(prCardComment.authorIdentity, prCardComment.bodyText) : '',
   ].join('');
   const blockedByHtml = task ? blockedByKeys(task) : '';

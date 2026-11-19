@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### New
+- **PR approvals on Attention cards** — when a pull request has approvals, a chip shows who approved (e.g. `khainx.developer approved`). Two approvers are listed; three or more show the first two plus a `+N` count, with the full list in the tooltip.
+
+### Fixed
+- Attention card Jira comment previews no longer show raw HTML; they use the same plain-text extraction as the Comments section.
+
 ## 0.3.1
 
 ### New
