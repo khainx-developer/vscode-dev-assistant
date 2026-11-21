@@ -171,6 +171,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show the attention count in the status bar."
+        },
+        "devMateKit.branchStatusBar.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Jira ticket key from the current git branch in the status bar."
         }
       }
     },
