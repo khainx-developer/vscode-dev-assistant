@@ -13,13 +13,10 @@ Rules:
 - No git writes (create / commit / delete). Reading the current branch is allowed.
 - Tools are offline and need no GitHub/Jira connection.
 
-## Groups
+## Work
 
-| Group | Where it lives | Backlog |
-|---|---|---|
-| Dashboard | Home tab, dashboard panel, status bar | [dashboard-backlog.md](dashboard-backlog.md) |
-| Jira & GitHub workflow | Inbox cards and the status bar | [workflow-backlog.md](workflow-backlog.md) |
-| Toolkit | Tools tab (Code / API groups), editor right-click | [toolkit-backlog.md](toolkit-backlog.md) |
+All planned work, including the Webview UI migration proposal, is in
+[backlog.md](backlog.md), in priority order.
 
 ## UI: one job per surface
 
@@ -35,28 +32,6 @@ Rules:
 Keep the sidebar tabs at Home / Tools / Setup. A tool is defined once in
 `src/services/toolRegistry.ts`; tool logic is pure functions in
 `src/services/textTools/`.
-
-## Next (in order)
-
-1. **Run the Jira Field Spike** (one-off, in an Extension Development Host:
-   "DevMate Kit (Dev): Jira Field Spike") and record what the Jira MCP returns:
-   description, `issuelinks`, `statusCategory`, the Flagged field. Then delete the
-   spike command (`src/app/jiraFieldSpike.ts`, its registration and its
-   `package.json` entry). It currently ships in the Command Palette.
-2. **Acceptance criteria on the card** — fetch the ticket description and show the
-   acceptance criteria. (See `workflow-backlog.md`.)
-3. **Blockers, part 2** — the Flagged / Impediment field, once the spike shows its
-   shape.
-4. **Current branch → status bar** — read-only, shows the ticket for the branch
-   you are on.
-5. **Auto-pause outside working hours** — schedule for the existing Sleep/Wake
-   setting.
-6. **@mention detection** — mentions of you become an attention reason.
-7. ***Run Tool…*** — one Command Palette entry that runs any tool on the editor
-   selection.
-
-Later, only if needed: inbox filters, custom attention rules. See
-`dashboard-backlog.md`.
 
 ## Decided
 
@@ -85,9 +60,12 @@ Later, only if needed: inbox filters, custom attention rules. See
   number base, Lorem ipsum.
 - **Dashboard extras:** reports and weekly summaries, review-load view, multiple
   GitHub orgs / Jira sites (until needed), email integration.
+- **Covered by VS Code or extensions:** text diff, line tools (sort, dedupe, trim),
+  color converter, Markdown table formatter, REST client (Thunder Client, REST
+  Client, httpyac), OpenAPI viewer, mock server.
+- **Editor-chat hand-off covers:** Markdown ↔ Jira markup, comment-thread
+  summaries, PR source file lists, regex or cron generation.
+- **Email integration:** a third OAuth integration with mail-read scope conflicts
+  with "no stored vendor keys"; GitHub and Jira notification mail is covered at
+  the source.
 - Any git write, and looking up local branches.
-
-## Docs to update
-
-- `README.md`: intro still describes a radar only; add the "developer tools" line.
-- `CHANGELOG.md` per release.
