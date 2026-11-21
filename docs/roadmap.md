@@ -38,21 +38,14 @@ Keep the sidebar tabs at Home / Tools / Setup. A tool is defined once in
 
 ## Next (in order)
 
-1. **Run the Jira Field Spike** (one-off, in an Extension Development Host:
-   "DevMate Kit (Dev): Jira Field Spike") and record what the Jira MCP returns:
-   description, `issuelinks`, `statusCategory`, the Flagged field. Then delete the
-   spike command (`src/app/jiraFieldSpike.ts`, its registration and its
-   `package.json` entry). It currently ships in the Command Palette.
-2. **Acceptance criteria on the card** — fetch the ticket description and show the
-   acceptance criteria. (See `workflow-backlog.md`.)
-3. **Blockers, part 2** — the Flagged / Impediment field, once the spike shows its
-   shape.
-4. **Current branch → status bar** — read-only, shows the ticket for the branch
+1. **Blockers, part 2** — the Flagged / Impediment field (`customfield_10021`; see
+   [backlog.md](backlog.md) spike findings).
+2. **Current branch → status bar** — read-only, shows the ticket for the branch
    you are on.
-5. **Auto-pause outside working hours** — schedule for the existing Sleep/Wake
+3. **Auto-pause outside working hours** — schedule for the existing Sleep/Wake
    setting.
-6. **@mention detection** — mentions of you become an attention reason.
-7. ***Run Tool…*** — one Command Palette entry that runs any tool on the editor
+4. **@mention detection** — mentions of you become an attention reason.
+5. ***Run Tool…*** — one Command Palette entry that runs any tool on the editor
    selection.
 
 Later, only if needed: inbox filters, custom attention rules. See
@@ -60,6 +53,9 @@ Later, only if needed: inbox filters, custom attention rules. See
 
 ## Decided
 
+- **Jira Field Spike** — findings recorded in [backlog.md](backlog.md). Spike
+  command removed. Acceptance criteria are a description heading (not a custom
+  field); Flagged is `customfield_10021` (UI still pending).
 - **Read-only current-branch detection is approved**, through the built-in
   `vscode.git` API. Branch name only, no writes. A missing git extension turns the
   feature off quietly. In multi-root workspaces use the repo of the active editor.

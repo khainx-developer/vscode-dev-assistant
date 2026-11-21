@@ -233,6 +233,12 @@ function describeBlockedBy(item: AttentionInboxItem): string[] {
   return [`   Blocked by: ${blockers.map((blocker) => blocker.key).join(', ')}`];
 }
 
+function describeAcceptanceCriteria(task: JiraTask | undefined): string[] {
+  const criteria = task?.acceptanceCriteria?.trim();
+  if (!criteria) return [];
+  return [`   Acceptance criteria: ${clip(criteria, MAX_COMMENT_CHARS)}`];
+}
+
 /**
  * Single-item Explain / card-chat descriptor: compact facts plus allow-listed reviewers,
  * non-PENDING reviews, labels, flag explanations, unread counts when >1, and a capped set of
@@ -245,6 +251,7 @@ export function describeInboxItemDetailed(item: AttentionInboxItem, index: numbe
     lines.push(...describeReviewFacts(item.pr));
   }
   lines.push(...describeBlockedBy(item));
+  lines.push(...describeAcceptanceCriteria(item.jiraTask));
   lines.push(...describeReasonExplanations(item));
   lines.push(...describeUnreadCount(item));
   lines.push(...describeExtraCommentExcerpts(item));
@@ -491,6 +498,10 @@ export function buildReviewPrompt(
       `Status: ${task.status}${task.assignee ? `; assignee ${task.assignee}` : ''}${task.dueDate ? `; due ${task.dueDate}` : ''}.`,
       `Attention reasons: ${status}.`,
     ];
+    const criteria = task.acceptanceCriteria?.trim();
+    if (criteria) {
+      lines.push(`Acceptance criteria (snapshot): ${clip(criteria, MAX_COMMENT_CHARS)}`);
+    }
     if (pr) {
       lines.push(`Linked PR: ${pr.repoKey}#${pr.number} ${pr.url}`);
       lines.push('Also fetch that PR if the plan depends on code changes.');

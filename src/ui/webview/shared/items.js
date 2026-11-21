@@ -591,7 +591,11 @@ export function renderJiraDetail(task) {
   const comments = humanComments(task.comments);
   const subtasks = task.subtasks || [];
   const linked = task.prLink?.kind === 'linked' ? task.prLink.pr : null;
+  const criteria = typeof task.acceptanceCriteria === 'string' ? task.acceptanceCriteria.trim() : '';
   return `
+    ${criteria ? `<section><h4>Acceptance criteria</h4>
+      <div class="markdown">${renderMarkdown(criteria)}</div>
+    </section>` : ''}
     ${linked ? `<section><h4>Linked pull request</h4>
       <div class="row wrap">${icon('pr', 'sm')}<strong>${esc(linked.repoKey)}#${linked.number}</strong> ${esc(linked.title)}</div>
       <div class="chips">${chip(linked.state.toLowerCase())}${prStatusChips(linked)}</div>

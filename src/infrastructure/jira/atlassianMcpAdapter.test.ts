@@ -1,5 +1,9 @@
 import * as assert from 'assert';
-import { AtlassianMcpAdapter } from './atlassianMcpAdapter';
+import {
+  AtlassianMcpAdapter,
+  extractAcceptanceCriteria,
+  normalizeDescription,
+} from './atlassianMcpAdapter';
 import type { McpConnectionService } from '../mcp/connectionService';
 
 function makeConnectionService(callTool: (serverId: string, name: string, args: unknown) => Promise<unknown>): McpConnectionService {
@@ -231,10 +235,36 @@ suite('AtlassianMcpAdapter', () => {
         cloudId: 'cloud-1',
         jql: 'project = ABC',
         maxResults: 50,
-        fields: ['summary', 'status', 'assignee', 'duedate', 'updated', 'subtasks', 'issuelinks'],
+        fields: ['summary', 'status', 'assignee', 'duedate', 'updated', 'description', 'subtasks', 'issuelinks'],
       },
     });
     assert.strictEqual(result[0].updatedAt, '2026-11-03T12:30:00Z');
+  });
+
+  test('fetchIssues_mapsDescriptionAndAcceptanceCriteria', async () => {
+    const service = makeConnectionService(() =>
+      Promise.resolve(
+        toolResult({
+          data: {
+            issues: [{
+              key: 'ABC-20',
+              fields: {
+                summary: 'With AC',
+                status: { name: 'To Do' },
+                assignee: null,
+                updated: '2026-11-03T10:00:00Z',
+                description: 'Context\n\n## Acceptance Criteria\n- Works offline\n\n## Notes\nIgnore',
+              },
+            }],
+          },
+        }),
+      ),
+    );
+
+    const result = await AtlassianMcpAdapter.fetchIssues(service, 'cloud-1', 'project = ABC', 'https://example.atlassian.net');
+
+    assert.strictEqual(result[0].description, 'Context\n\n## Acceptance Criteria\n- Works offline\n\n## Notes\nIgnore');
+    assert.strictEqual(result[0].acceptanceCriteria, '- Works offline');
   });
 
   test('fetchIssues_mapsBlockedBy_fromIsBlockedByLink', async () => {
@@ -635,5 +665,78 @@ suite('AtlassianMcpAdapter', () => {
     );
 
     assert.deepStrictEqual(result, []);
+  });
+});
+
+suite('extractAcceptanceCriteria', () => {
+  test('extractAcceptanceCriteria_headingFound_returnsSection', () => {
+    const description = [
+      '## Summary',
+      'Ship the feature.',
+      '',
+      '## Acceptance criteria',
+      '- Offline works',
+      '- Errors are clear',
+      '',
+      '## Notes',
+      'Internal only',
+    ].join('\n');
+
+    assert.strictEqual(
+      extractAcceptanceCriteria(description),
+      '- Offline works\n- Errors are clear',
+    );
+  });
+
+  test('extractAcceptanceCriteria_customField_preferredOverDescription', () => {
+    assert.strictEqual(
+      extractAcceptanceCriteria('## Acceptance Criteria\nFrom description', 'From custom field'),
+      'From custom field',
+    );
+  });
+
+  test('extractAcceptanceCriteria_noHeading_fallsBackToFullDescription', () => {
+    assert.strictEqual(
+      extractAcceptanceCriteria('Just a plain description with no section.'),
+      'Just a plain description with no section.',
+    );
+  });
+
+  test('extractAcceptanceCriteria_adfInput_flattensAndExtractsHeading', () => {
+    const adf = {
+      type: 'doc',
+      version: 1,
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Intro paragraph' }] },
+        {
+          type: 'heading',
+          attrs: { level: 2 },
+          content: [{ type: 'text', text: 'Acceptance Criteria' }],
+        },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Must load within 2s' }] },
+        {
+          type: 'heading',
+          attrs: { level: 2 },
+          content: [{ type: 'text', text: 'Out of scope' }],
+        },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Perf tuning' }] },
+      ],
+    };
+
+    assert.strictEqual(normalizeDescription(adf), [
+      'Intro paragraph',
+      '## Acceptance Criteria',
+      'Must load within 2s',
+      '## Out of scope',
+      'Perf tuning',
+    ].join('\n'));
+    assert.strictEqual(extractAcceptanceCriteria(adf), 'Must load within 2s');
+  });
+
+  test('extractAcceptanceCriteria_empty_returnsEmpty', () => {
+    assert.strictEqual(extractAcceptanceCriteria(null), '');
+    assert.strictEqual(extractAcceptanceCriteria(undefined), '');
+    assert.strictEqual(extractAcceptanceCriteria(''), '');
+    assert.strictEqual(extractAcceptanceCriteria('   '), '');
   });
 });
