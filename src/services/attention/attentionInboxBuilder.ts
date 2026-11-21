@@ -8,6 +8,7 @@ import type {
 import type { JiraTask, JiraViewState } from '../../shared/jiraTypes';
 import type { CommentAttentionSummary, ProviderCommentCandidate } from './commentAttention';
 import { SHORT_REPLY_MAX_CHARS } from './commentAttention';
+import { mentionsUser, type MentionIdentities } from './mentions';
 import { findPullRequestsForIssue } from '../jira/prLinkMatcher';
 
 export type AttentionReason =
@@ -17,6 +18,7 @@ export type AttentionReason =
   | 'jira-due-tomorrow'
   | 'jira-unread-comment'
   | 'jira-awaiting-reply'
+  | 'jira-mentioned'
   | 'jira-blocked'
   | 'jira-no-pr'
   | 'pr-linked'
@@ -26,6 +28,7 @@ export type AttentionReason =
   | 'pr-needs-my-review'
   | 'pr-unread-comment'
   | 'pr-awaiting-reply'
+  | 'pr-mentioned'
   | 'pr-merge-conflict'
   | 'pr-stale'
   | 'jira-stale';
@@ -194,6 +197,7 @@ function mapGitHubReason(reason: GitHubAttentionReason): AttentionReason | null 
     case 'pr-waiting-review':
     case 'pr-needs-my-review':
     case 'pr-unread-comment':
+    case 'pr-mentioned':
     case 'pr-merge-conflict':
     case 'pr-stale':
       return reason;
@@ -205,6 +209,23 @@ function mapGitHubReason(reason: GitHubAttentionReason): AttentionReason | null 
     case 'merged':
       return null;
   }
+}
+
+function mentionIdentitiesFromState(
+  jiraState: JiraViewState,
+  githubState: GitHubViewState,
+): MentionIdentities {
+  return {
+    githubLogin: githubState.me,
+    jiraDisplayName: jiraState.currentUser,
+  };
+}
+
+function commentMentionsUser(
+  comment: ProviderCommentCandidate | null | undefined,
+  identities: MentionIdentities,
+): boolean {
+  return Boolean(comment && mentionsUser(comment.bodyText, identities));
 }
 
 function isAssignedToCurrentUser(task: JiraTask, jiraState: JiraViewState): boolean {
@@ -231,6 +252,7 @@ function mapPRReasons(
   prReasons: GitHubAttentionReason[],
   hasUnreadComments: boolean,
   hasAwaitingReply: boolean,
+  hasMention = false,
 ): AttentionReason[] {
   const reasons = prReasons.flatMap((reason) => {
     const mapped = mapGitHubReason(reason);
@@ -241,6 +263,9 @@ function mapPRReasons(
   }
   if (hasAwaitingReply && !reasons.includes('pr-awaiting-reply')) {
     reasons.push('pr-awaiting-reply');
+  }
+  if (hasMention && !reasons.includes('pr-mentioned')) {
+    reasons.push('pr-mentioned');
   }
   return reasons;
 }
@@ -262,8 +287,10 @@ function getPriority(reasons: AttentionReason[]): AttentionInboxItem['priority']
     reason === 'jira-review'
     || reason === 'jira-no-pr'
     || reason === 'jira-awaiting-reply'
+    || reason === 'jira-mentioned'
     || reason === 'jira-blocked'
     || reason === 'pr-awaiting-reply'
+    || reason === 'pr-mentioned'
     || reason === 'pr-waiting-review'
     || reason === 'pr-needs-my-review')) {
     return 3;
@@ -339,6 +366,7 @@ export function buildAttentionInbox(
   const noPrStatuses = options.noPrStatuses ?? DEFAULT_NO_PR_STATUSES;
   const noPrDays = options.noPrDays ?? DEFAULT_NO_PR_DAYS;
   const ignoreShortReplies = options.ignoreShortReplies ?? false;
+  const identities = mentionIdentitiesFromState(jiraState, githubState);
   const tasksByKey = new Map<string, JiraTask>();
   if (jiraState.connected) {
     for (const tasks of Object.values(jiraState.tasksByQuery)) {
@@ -371,12 +399,21 @@ export function buildAttentionInbox(
     const jiraReasons: AttentionReason[] = [];
     if (task.status === 'Review') jiraReasons.push('jira-review');
     if ((task.commentAttention?.unreadCount ?? 0) > 0) jiraReasons.push('jira-unread-comment');
+    const jiraUnreadMentions = commentMentionsUser(task.commentAttention?.latestUnreadComment, identities);
+    const jiraAwaitingMentions = commentMentionsUser(task.commentAttention?.latestAwaitingComment, identities);
+    const assignedAndOpen = isAssignedToCurrentUser(task, jiraState) && !isJiraDoneStatus(task);
     if (
-      isAssignedToCurrentUser(task, jiraState)
-      && !isJiraDoneStatus(task)
-      && countsAsAwaitingReply(task.commentAttention, ignoreShortReplies)
+      assignedAndOpen
+      && (
+        countsAsAwaitingReply(task.commentAttention, ignoreShortReplies)
+        // Co-flag / boost awaiting-reply when the latest comment @mentions the user.
+        || jiraAwaitingMentions
+      )
     ) {
       jiraReasons.push('jira-awaiting-reply');
+    }
+    if (jiraUnreadMentions || jiraAwaitingMentions) {
+      jiraReasons.push('jira-mentioned');
     }
     if (
       isAssignedToCurrentUser(task, jiraState)
@@ -405,11 +442,21 @@ export function buildAttentionInbox(
         const githubItem = githubItemsByKey.get(key);
         const attention = githubState.commentAttentionBySource[sourceKey];
         const unreadCount = attention?.unreadCount ?? 0;
+        const unreadMentions = commentMentionsUser(attention?.latestUnreadComment, identities);
+        const awaitingMentions = commentMentionsUser(attention?.latestAwaitingComment, identities);
         const awaitingReply = myPRKeys.has(key)
-          && countsAsAwaitingReply(attention, ignoreShortReplies);
+          && (
+            countsAsAwaitingReply(attention, ignoreShortReplies)
+            || awaitingMentions
+          );
         return {
           pr,
-          reasons: mapPRReasons(githubItem?.reasons ?? [], unreadCount > 0, awaitingReply),
+          reasons: mapPRReasons(
+            githubItem?.reasons ?? [],
+            unreadCount > 0,
+            awaitingReply,
+            unreadMentions || awaitingMentions,
+          ),
           unreadCount,
           latestUnreadComment: attention?.latestUnreadComment ?? null,
           latestAwaitingComment: awaitingReply ? (attention?.latestAwaitingComment ?? null) : null,
@@ -441,10 +488,18 @@ export function buildAttentionInbox(
     if (consumedPRs.has(key)) continue;
     const sourceKey = githubCommentSourceKey(githubItem.pr.repoKey, githubItem.pr.number);
     const attention = githubState.commentAttentionBySource[sourceKey];
+    const unreadMentions = commentMentionsUser(attention?.latestUnreadComment, identities);
+    const awaitingMentions = commentMentionsUser(attention?.latestAwaitingComment, identities);
+    const awaitingReply = myPRKeys.has(key)
+      && (
+        countsAsAwaitingReply(attention, ignoreShortReplies)
+        || awaitingMentions
+      );
     const reasons = mapPRReasons(
       githubItem.reasons,
       (attention?.unreadCount ?? 0) > 0,
-      myPRKeys.has(key) && countsAsAwaitingReply(attention, ignoreShortReplies),
+      awaitingReply,
+      unreadMentions || awaitingMentions,
     );
     if (reasons.length > 0) {
       items.push(createInboxItem(undefined, githubItem.pr, reasons, githubState));
@@ -459,12 +514,16 @@ export function buildAttentionInbox(
     if (consumedPRs.has(key)) continue;
     const sourceKey = githubCommentSourceKey(pr.repoKey, pr.number);
     const attention = githubState.commentAttentionBySource[sourceKey];
-    if (!countsAsAwaitingReply(attention, ignoreShortReplies)) continue;
+    const unreadMentions = commentMentionsUser(attention?.latestUnreadComment, identities);
+    const awaitingMentions = commentMentionsUser(attention?.latestAwaitingComment, identities);
+    const awaitingReply = countsAsAwaitingReply(attention, ignoreShortReplies) || awaitingMentions;
+    if (!awaitingReply && !unreadMentions) continue;
     const githubItem = githubItemsByKey.get(key);
     const reasons = mapPRReasons(
       githubItem?.reasons ?? [],
       (attention?.unreadCount ?? 0) > 0,
-      true,
+      awaitingReply,
+      unreadMentions || awaitingMentions,
     );
     if (reasons.length > 0) {
       items.push(createInboxItem(undefined, pr, reasons, githubState));

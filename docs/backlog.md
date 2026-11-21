@@ -14,6 +14,20 @@ Flagged and below still **not started** (checked against `src/`).
 - **Flagged**: `customfield_10021`; value `[{value:"Impediment",id:"10019"}]`; JQL `flagged is not EMPTY` works
 - **Acceptance criteria**: NOT a custom field on WD Story create-meta; heading in description (`## Acceptance Criteria` / `## Acceptance criteria`); else full description
 
+## Findings: @mention detection
+
+Helper lives in `src/services/attention/mentions.ts`. **Inbox wiring is implemented** in this change: `flattenAdf` preserves mention text/account-id tokens; `jira-mentioned` / `pr-mentioned` reasons are added in the attention inbox (co-flagged with `*-awaiting-reply` when the latest comment mentions you). Identity: GitHub login from the signed-in session (`githubState.me`); Jira display name from `devMateKit.jira.currentUser`; account id only when already present in comment text / config (no new lookups).
+
+### What ADF flattening does to mentions
+
+From `flattenAdf` in `src/infrastructure/jira/atlassianMcpAdapter.ts` (ADF fixtures in `atlassianMcpAdapter.test.ts` cover `paragraph` + `text`, and now `mention`):
+
+- Handled node types: `text` (emits `text`), `hardBreak` (`\n`), `mention` (emits `attrs.text` and/or `[~accountid:…]` from `attrs.id`), `heading` / `paragraph` / `listItem` (walk `content`).
+- An ADF `mention` node is typically `{ type: "mention", attrs: { id, text: "@Display Name", … } }` with **no** `content` array.
+- **Before this change:** `flattenAdf` took the empty-content path and returned `""`, so mentions did not survive and the account id was lost.
+- **Now:** mention nodes emit display text and a stable account-id token into `JiraCommentSummary.body`, so `mentionsUser` can match by `@Display Name` and/or `[~accountid:…]`.
+- String / wiki-style bodies that already contain `[~accountid:…]` still carry the id as literal text.
+
 ## Now
 
 1. **Blockers, part 2: Flagged / Impediment field**, using the shape the spike
@@ -35,17 +49,14 @@ Flagged and below still **not started** (checked against `src/`).
 
 4. **Auto-pause outside working hours**: schedule for the existing Sleep/Wake
    monitoring (e.g. Mon–Fri 09:00–18:00).
-5. **@mention detection**: mentions of you become an attention reason and sharpen
-   awaiting-reply. GitHub comment bodies are plain text; Jira comments are
-   flattened from the Atlassian document format, so verify mentions survive.
-6. **Run Tool…**: one Command Palette entry with a searchable list of all tools,
+5. **Run Tool…**: one Command Palette entry with a searchable list of all tools,
    running the chosen tool on the editor selection and writing the result back or
    to the clipboard. JWT, Hash, Date/Timestamp and JSON ↔ YAML are sidebar-only
    today.
 
 ## Decision needed
 
-7. **Webview UI migration to Preact + JSX + TypeScript** (about 6-8 days, pilot
+6. **Webview UI migration to Preact + JSX + TypeScript** (about 6-8 days, pilot
    about 1 day). Status: proposed, 2026-11-15. Full proposal in
    [Webview UI migration](#webview-ui-migration) below. Recommendation: do the
    1-day pilot (tool panel) before items 4 and 5 if they touch the dashboard or

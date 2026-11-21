@@ -1085,4 +1085,115 @@ suite('buildAttentionInbox', () => {
 
     assert.deepStrictEqual(inbox, []);
   });
+
+  test('buildAttentionInbox_flagsJiraMentioned_onUnreadComment', () => {
+    const attention = makeCommentAttention('jira:cloud-1:APP-1', 1, ACTIVITY_NEWER, {
+      bodyText: 'Hey @me can you look?',
+    });
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({ commentAttention: attention })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.ok(inbox[0].reasons.includes('jira-unread-comment'));
+    assert.ok(inbox[0].reasons.includes('jira-mentioned'));
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraMentioned_whenBodyHasNoMention', () => {
+    const attention = makeCommentAttention('jira:cloud-1:APP-1', 1, ACTIVITY_NEWER, {
+      awaitingReply: true,
+      bodyText: 'Please review when you can',
+    });
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({ commentAttention: attention })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.ok(inbox[0].reasons.includes('jira-unread-comment'));
+    assert.ok(inbox[0].reasons.includes('jira-awaiting-reply'));
+    assert.strictEqual(inbox[0].reasons.includes('jira-mentioned'), false);
+  });
+
+  test('buildAttentionInbox_coFlagsJiraMentionedWithAwaitingReply', () => {
+    const attention = makeCommentAttention('jira:cloud-1:APP-1', 0, ACTIVITY_NEWER, {
+      awaitingReply: true,
+      bodyText: '@me please reply',
+    });
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({ commentAttention: attention })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(
+      inbox[0].reasons.slice().sort(),
+      ['jira-awaiting-reply', 'jira-mentioned'],
+    );
+  });
+
+  test('buildAttentionInbox_flagsPrMentioned_onUnreadComment', () => {
+    const pr = makePR({ number: 55, author: 'me' });
+    const sourceKey = `github:${pr.repoKey}#${pr.number}`;
+    const inbox = buildAttentionInbox(
+      makeJiraState([]),
+      makeGitHubState({
+        myPRs: [makeAttentionItem(pr, [])],
+        attentionInbox: [makeAttentionItem(pr, ['pr-unread-comment'])],
+        commentAttentionBySource: {
+          [sourceKey]: makeCommentAttention(sourceKey, 1, ACTIVITY_NEWER, {
+            bodyText: 'FYI @me',
+          }),
+        },
+      }),
+      NOW,
+    );
+
+    assert.ok(inbox[0].reasons.includes('pr-unread-comment'));
+    assert.ok(inbox[0].reasons.includes('pr-mentioned'));
+  });
+
+  test('buildAttentionInbox_coFlagsPrMentionedWithAwaitingReply', () => {
+    const pr = makePR({ number: 56, author: 'me' });
+    const sourceKey = `github:${pr.repoKey}#${pr.number}`;
+    const inbox = buildAttentionInbox(
+      makeJiraState([]),
+      makeGitHubState({
+        myPRs: [makeAttentionItem(pr, [])],
+        commentAttentionBySource: {
+          [sourceKey]: makeCommentAttention(sourceKey, 0, ACTIVITY_NEWER, {
+            awaitingReply: true,
+            bodyText: '@me can you respond?',
+          }),
+        },
+      }),
+      NOW,
+    );
+
+    assert.deepStrictEqual(
+      inbox[0].reasons.slice().sort(),
+      ['pr-awaiting-reply', 'pr-mentioned'],
+    );
+  });
+
+  test('buildAttentionInbox_doesNotFlagPrMentioned_whenBodyHasNoMention', () => {
+    const pr = makePR({ number: 57, author: 'me' });
+    const sourceKey = `github:${pr.repoKey}#${pr.number}`;
+    const inbox = buildAttentionInbox(
+      makeJiraState([]),
+      makeGitHubState({
+        myPRs: [makeAttentionItem(pr, [])],
+        commentAttentionBySource: {
+          [sourceKey]: makeCommentAttention(sourceKey, 0, ACTIVITY_NEWER, {
+            awaitingReply: true,
+            bodyText: 'Looks good overall',
+          }),
+        },
+      }),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox[0].reasons, ['pr-awaiting-reply']);
+  });
 });

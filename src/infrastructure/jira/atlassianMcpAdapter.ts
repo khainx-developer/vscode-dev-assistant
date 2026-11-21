@@ -184,6 +184,17 @@ export function flattenAdf(value: unknown): string {
   if (value.type === 'hardBreak') {
     return '\n';
   }
+  if (value.type === 'mention') {
+    const attrs = isRecord(value.attrs) ? value.attrs : undefined;
+    const parts: string[] = [];
+    if (attrs && typeof attrs.text === 'string' && attrs.text) {
+      parts.push(attrs.text);
+    }
+    if (attrs && typeof attrs.id === 'string' && attrs.id) {
+      parts.push(`[~accountid:${attrs.id}]`);
+    }
+    return parts.join(' ');
+  }
   if (value.content !== undefined && !Array.isArray(value.content)) {
     throw new Error('Jira comment contains malformed ADF content.');
   }
