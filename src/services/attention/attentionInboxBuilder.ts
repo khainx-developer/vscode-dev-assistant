@@ -118,6 +118,8 @@ function isJiraDoneStatus(issue: JiraStatusFields): boolean {
 }
 
 function hasOpenBlocker(task: JiraTask): boolean {
+  // Flagged / Impediment is treated the same as an open blockedBy link.
+  if (task.flagged) return true;
   return (task.blockedBy ?? []).some((blocker) => !isJiraDoneStatus(blocker));
 }
 
