@@ -6,6 +6,7 @@ import { SIDEBAR_VIEW_ID, SidebarProvider } from './ui/views/SidebarProvider';
 import { ToolPanel } from './ui/panels/ToolPanel';
 import { DashboardPanel } from './ui/panels/DashboardPanel';
 import { AttentionStatusBar } from './ui/statusBar';
+import { BranchStatusBar } from './ui/branchStatusBar';
 import { AttentionNotifier } from './ui/notifications';
 import type { SetupStepId } from './services/session/setupStatus';
 
@@ -26,6 +27,7 @@ export function activate(context: vscode.ExtensionContext): void {
     sidebar,
     vscode.window.registerWebviewViewProvider(SIDEBAR_VIEW_ID, sidebar, { webviewOptions: { retainContextWhenHidden: true } }),
     new AttentionStatusBar(session),
+    new BranchStatusBar(session, context.extensionUri),
     new AttentionNotifier(session, () => DashboardPanel.isFocused()),
   );
 
