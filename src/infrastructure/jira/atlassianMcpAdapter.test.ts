@@ -132,6 +132,7 @@ suite('AtlassianMcpAdapter', () => {
         dueDate: '2026-11-05',
         updatedAt: '2026-11-01T10:00:00Z',
         subtasks: [],
+        flagged: false,
         url: 'https://example.atlassian.net/browse/ABC-1',
         prLink: { kind: 'not-available' },
       },
@@ -143,6 +144,7 @@ suite('AtlassianMcpAdapter', () => {
         dueDate: null,
         updatedAt: '2026-11-02T10:00:00Z',
         subtasks: [],
+        flagged: false,
         url: 'https://example.atlassian.net/browse/ABC-2',
         prLink: { kind: 'not-available' },
       },
@@ -235,7 +237,17 @@ suite('AtlassianMcpAdapter', () => {
         cloudId: 'cloud-1',
         jql: 'project = ABC',
         maxResults: 50,
-        fields: ['summary', 'status', 'assignee', 'duedate', 'updated', 'description', 'subtasks', 'issuelinks'],
+        fields: [
+          'summary',
+          'status',
+          'assignee',
+          'duedate',
+          'updated',
+          'description',
+          'subtasks',
+          'issuelinks',
+          'customfield_10021',
+        ],
       },
     });
     assert.strictEqual(result[0].updatedAt, '2026-11-03T12:30:00Z');
@@ -369,6 +381,87 @@ suite('AtlassianMcpAdapter', () => {
     const result = await AtlassianMcpAdapter.fetchIssues(service, 'cloud-1', 'project = ABC', 'https://example.atlassian.net');
 
     assert.strictEqual(result[0].blockedBy, undefined);
+  });
+
+  test('fetchIssues_mapsFlagged_fromImpedimentArray', async () => {
+    const service = makeConnectionService(() =>
+      Promise.resolve(
+        toolResult({
+          data: {
+            issues: [{
+              key: 'ABC-20',
+              fields: {
+                summary: 'Flagged task',
+                status: { name: 'In Progress' },
+                assignee: { displayName: 'Alice' },
+                updated: '2026-11-03T10:00:00Z',
+                customfield_10021: [{ value: 'Impediment', id: '10019' }],
+              },
+            }],
+          },
+        }),
+      ),
+    );
+
+    const result = await AtlassianMcpAdapter.fetchIssues(service, 'cloud-1', 'project = ABC', 'https://example.atlassian.net');
+
+    assert.strictEqual(result[0].flagged, true);
+  });
+
+  test('fetchIssues_flaggedMissingNullOrMalformed_mapsToFalse', async () => {
+    const service = makeConnectionService(() =>
+      Promise.resolve(
+        toolResult({
+          data: {
+            issues: [
+              {
+                key: 'ABC-21',
+                fields: {
+                  summary: 'Missing flagged',
+                  status: { name: 'To Do' },
+                  assignee: null,
+                  updated: '2026-11-03T10:00:00Z',
+                },
+              },
+              {
+                key: 'ABC-22',
+                fields: {
+                  summary: 'Null flagged',
+                  status: { name: 'To Do' },
+                  assignee: null,
+                  updated: '2026-11-03T10:00:00Z',
+                  customfield_10021: null,
+                },
+              },
+              {
+                key: 'ABC-23',
+                fields: {
+                  summary: 'Empty flagged',
+                  status: { name: 'To Do' },
+                  assignee: null,
+                  updated: '2026-11-03T10:00:00Z',
+                  customfield_10021: [],
+                },
+              },
+              {
+                key: 'ABC-24',
+                fields: {
+                  summary: 'Malformed flagged',
+                  status: { name: 'To Do' },
+                  assignee: null,
+                  updated: '2026-11-03T10:00:00Z',
+                  customfield_10021: { value: 'Impediment' },
+                },
+              },
+            ],
+          },
+        }),
+      ),
+    );
+
+    const result = await AtlassianMcpAdapter.fetchIssues(service, 'cloud-1', 'project = ABC', 'https://example.atlassian.net');
+
+    assert.deepStrictEqual(result.map((task) => task.flagged), [false, false, false, false]);
   });
 
   test('fetchIssues_relatesToLink_ignoredForBlockedBy', async () => {

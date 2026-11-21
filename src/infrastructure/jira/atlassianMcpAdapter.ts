@@ -39,6 +39,9 @@ type SearchJqlIssueLink = {
   outwardIssue?: SearchJqlLinkedIssue;
 };
 
+// Flagged / Impediment field id from the Jira Field Spike (docs/backlog.md). Hard-coded — no setting.
+const JIRA_FLAGGED_FIELD = 'customfield_10021';
+
 type SearchJqlIssue = {
   key: string;
   fields: {
@@ -50,6 +53,8 @@ type SearchJqlIssue = {
     description?: unknown;
     subtasks?: SearchJqlSubtask[];
     issuelinks?: SearchJqlIssueLink[];
+    /** Spike: `[{value:"Impediment",id:"10019"}]` when flagged. */
+    customfield_10021?: unknown;
   };
 };
 
@@ -341,9 +346,15 @@ function mapBlockedBy(siteUrl: string, issuelinks: SearchJqlIssueLink[] | undefi
   return blockers;
 }
 
+/** Any non-empty array counts as flagged; missing, null, or malformed → false; never throws. */
+function mapFlagged(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0;
+}
+
 function mapIssue(siteUrl: string, issue: SearchJqlIssue): JiraTask {
   const statusCategory = mapStatusCategory(issue.fields.status);
   const blockedBy = mapBlockedBy(siteUrl, issue.fields.issuelinks);
+  const flagged = mapFlagged(issue.fields.customfield_10021);
   const description = normalizeDescription(issue.fields.description).trim();
   const acceptanceCriteria = extractAcceptanceCriteria(issue.fields.description).trim();
   return {
@@ -358,6 +369,7 @@ function mapIssue(siteUrl: string, issue: SearchJqlIssue): JiraTask {
     ...(acceptanceCriteria ? { acceptanceCriteria } : {}),
     subtasks: (issue.fields.subtasks ?? []).map((subtask) => mapSubtask(siteUrl, subtask)),
     ...(blockedBy.length > 0 ? { blockedBy } : {}),
+    flagged,
     url: `${siteUrl}/browse/${issue.key}`,
     prLink: { kind: 'not-available' },
   };
@@ -413,7 +425,17 @@ export const AtlassianMcpAdapter = {
         cloudId: siteId,
         jql,
         maxResults: 50,
-        fields: ['summary', 'status', 'assignee', 'duedate', 'updated', 'description', 'subtasks', 'issuelinks'],
+        fields: [
+          'summary',
+          'status',
+          'assignee',
+          'duedate',
+          'updated',
+          'description',
+          'subtasks',
+          'issuelinks',
+          JIRA_FLAGGED_FIELD,
+        ],
       }),
     );
 

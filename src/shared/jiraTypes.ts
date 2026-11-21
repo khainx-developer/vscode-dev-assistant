@@ -78,6 +78,11 @@ export interface JiraTask {
   subtasks?: JiraSubtask[];
   /** Issues that block this ticket (inward "is blocked by" links). Absent or empty when none. */
   blockedBy?: JiraBlockedByIssue[];
+  /**
+   * True when Jira Flagged / Impediment (`customfield_10021`) is a non-empty array.
+   * Absent or false when missing, null, empty, or malformed.
+   */
+  flagged?: boolean;
   url: string;
   prLink: JiraPrLinkState;
 }

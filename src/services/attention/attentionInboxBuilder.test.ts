@@ -1064,4 +1064,25 @@ suite('buildAttentionInbox', () => {
 
     assert.deepStrictEqual(inbox, []);
   });
+
+  test('buildAttentionInbox_flagsJiraBlocked_whenFlaggedWithNoLinks', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({ status: 'In Progress', flagged: true, blockedBy: [] })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox.map((item) => item.reasons), [['jira-blocked']]);
+    assert.strictEqual(inbox[0].priority, 3);
+  });
+
+  test('buildAttentionInbox_doesNotFlagJiraBlocked_whenUnflaggedWithNoLinks', () => {
+    const inbox = buildAttentionInbox(
+      makeJiraState([makeTask({ status: 'In Progress', flagged: false, blockedBy: [] })]),
+      makeGitHubState(),
+      NOW,
+    );
+
+    assert.deepStrictEqual(inbox, []);
+  });
 });
