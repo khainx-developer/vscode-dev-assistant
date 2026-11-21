@@ -243,3 +243,37 @@ body {
 .query-form { display: flex; flex-direction: column; gap: 4px; }
 .prefs { border-top: 1px solid var(--dm-border); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .prefs h3 { margin: 0; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dm-muted); font-weight: 600; }
+.working-hours { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; width: 100%; }
+.working-hours-fields { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 6px 0 0; }
+.day-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.day-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  cursor: pointer;
+  font-size: 0.8em;
+  color: var(--dm-muted);
+  border: 1px solid var(--dm-border);
+  border-radius: var(--dm-radius);
+  padding: 2px 7px;
+  user-select: none;
+}
+.day-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.day-chip:has(input:checked) {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-secondaryBackground);
+  border-color: var(--vscode-button-border, transparent);
+}
+.time-row { display: flex; gap: 8px; width: 100%; }
+.time-field { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.time-field .field-label { margin: 0; }
+.time-field input[type='time'] {
+  font: inherit;
+  width: 100%;
+  min-height: 26px;
+  padding: 3px 6px;
+  border-radius: 2px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-dropdown-border, transparent));
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+}

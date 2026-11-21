@@ -32,8 +32,11 @@ export class AttentionStatusBar implements vscode.Disposable {
     }
 
     if (!status.monitoringEnabled) {
+      const manuallyEnabled = vscode.workspace.getConfiguration().get<boolean>('devMateKit.monitoring.enabled', true);
       this.item.text = '$(debug-pause) DevMate';
-      this.item.tooltip = 'DevMate Kit: Monitoring paused — click to open Daily Tasks and resume.';
+      this.item.tooltip = manuallyEnabled
+        ? 'DevMate Kit: Monitoring paused — outside working hours. Click to open Daily Tasks.'
+        : 'DevMate Kit: Monitoring paused — click to open Daily Tasks and resume.';
       this.item.backgroundColor = undefined;
       this.item.accessibilityInformation = { label: this.item.tooltip as string };
       this.item.show();

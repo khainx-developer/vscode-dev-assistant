@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### New
+- **Working-hours auto-pause** — optionally pause monitoring outside a local weekday window (`devMateKit.monitoring.workingHours.*`, off by default). Setup → Preferences can turn it on and edit days, start, and end. Does not change Sleep / Wake; a manual pause always wins. The status bar shows when monitoring is paused outside working hours.
 - **Acceptance criteria on Jira cards** — expandable ticket details show acceptance criteria extracted from the description (`## Acceptance Criteria` heading, else the full description). Criteria are credential-scanned and length-trimmed before any AI prompt. Spike findings are in `docs/backlog.md`; the one-off Jira Field Spike command is removed.
 - **PR approvals on Attention cards** — when a pull request has approvals, a chip shows who approved (e.g. `khainx.developer approved`). Two approvers are listed; three or more show the first two plus a `+N` count, with the full list in the tooltip.
 
