@@ -14,6 +14,34 @@ Flagged and below still **not started** (checked against `src/`).
 - **Flagged**: `customfield_10021`; value `[{value:"Impediment",id:"10019"}]`; JQL `flagged is not EMPTY` works
 - **Acceptance criteria**: NOT a custom field on WD Story create-meta; heading in description (`## Acceptance Criteria` / `## Acceptance criteria`); else full description
 
+## Findings: @mention detection
+
+Investigation only — helper lives in `src/services/attention/mentions.ts`; **not wired** into the inbox.
+
+### What ADF flattening does to mentions
+
+From `flattenAdf` in `src/infrastructure/jira/atlassianMcpAdapter.ts` (and the ADF comment fixture in `atlassianMcpAdapter.test.ts`, which only covers `paragraph` + `text` nodes):
+
+- Handled node types: `text` (emits `text`), `hardBreak` (`\n`), `heading` / `paragraph` / `listItem` (walk `content`).
+- An ADF `mention` node is typically `{ type: "mention", attrs: { id, text: "@Display Name", … } }` with **no** `content` array.
+- For that shape, `flattenAdf` takes the empty-content path and returns `""`. It never reads `attrs.id` or `attrs.text`.
+- **Result:** after flattening, a Jira mention does **not** survive as `@Display Name`, and the **account id is lost** as well. Only plain `text` nodes (and string bodies) remain in `JiraCommentSummary.body`.
+- String / wiki-style bodies that already contain `[~accountid:…]` would still carry the id as literal text; the repo has no live fixture of that form, only the flatten path above.
+
+Because accountId is not preserved through ADF flatten, **`mentionsUser` matches Jira by `@Display Name` when the account id is absent from the comment text** (and still matches the id when it does appear, e.g. `[~accountid:…]`).
+
+### Follow-up ticket draft (wire into inbox)
+
+**Title:** Wire `@mention` detection into the attention inbox
+
+**Exact changes (do not do them in this investigation):**
+
+1. **`flattenAdf`** (`atlassianMcpAdapter.ts`): for `type === 'mention'`, emit `attrs.text` (e.g. `@Display Name`) and/or a stable account-id token so mentions survive flattening; add a fixture next to the existing ADF paragraph test.
+2. **`AttentionReason`**: add e.g. `jira-mentioned` and `pr-mentioned` (plus matching entries in `reasonLabels.ts`).
+3. **Call sites**: in the Jira/GitHub paths that already build `ProviderCommentCandidate` bodies (`jira/viewController.ts` comment mapping / `attentionInboxBuilder` + GitHub attention), call `mentionsUser(body, { githubLogin: session.username, jiraAccountId, jiraDisplayName: currentUser })` on unread / awaiting comments; push the new reason when true. Prefer boosting or co-flagging with `*-awaiting-reply` when the latest comment mentions the user.
+4. **Identity inputs**: GitHub login from the signed-in session; Jira display name from `devMateKit.jira.currentUser`. Account id only if/when the config or MCP user lookup stores it — until then rely on display-name matching.
+5. **Tests**: inbox-builder / view-controller cases for mentioned vs not; no new network calls.
+
 ## Now
 
 1. **Blockers, part 2: Flagged / Impediment field**, using the shape the spike
