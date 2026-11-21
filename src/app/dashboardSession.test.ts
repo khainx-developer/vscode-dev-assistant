@@ -218,4 +218,73 @@ suite('DashboardSession', () => {
       changeEmitter.dispose();
     }
   });
+
+  test('workingHours_outsideWindow_pausesEffectiveMonitoring_withoutOverwritingManualToggle', async () => {
+    const recorder: Recorder = { getSessionCalls: [], saveConnectionCalls: [], clearConnectionCalls: 0, signedIn: true };
+    const values: Record<string, unknown> = {
+      'devMateKit.monitoring.enabled': true,
+      'devMateKit.monitoring.workingHours.enabled': true,
+      'devMateKit.monitoring.workingHours.days': ['mon', 'tue', 'wed', 'thu', 'fri'],
+      'devMateKit.monitoring.workingHours.start': '09:00',
+      'devMateKit.monitoring.workingHours.end': '18:00',
+      'devMateKit.refresh.background': true,
+      'devMateKit.notifications.enabled': true,
+    };
+    const changeEmitter = new vscode.EventEmitter<vscode.ConfigurationChangeEvent>();
+    const originalGetConfiguration = vscode.workspace.getConfiguration;
+    const originalOnDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration;
+    const originalDate = Date;
+
+    (vscode.workspace as { getConfiguration: typeof vscode.workspace.getConfiguration }).getConfiguration = ((section?: string) => ({
+      get: (key: string, fallback?: unknown) => {
+        const full = section ? `${section}.${key}` : key;
+        return full in values ? values[full] : fallback;
+      },
+      update: async (key: string, value: unknown) => {
+        const full = section ? `${section}.${key}` : key;
+        values[full] = value;
+        changeEmitter.fire({
+          affectsConfiguration: (name: string) => full === name || full.startsWith(`${name}.`),
+        });
+      },
+      has: () => false,
+      inspect: () => undefined,
+    })) as unknown as typeof vscode.workspace.getConfiguration;
+    (vscode.workspace as { onDidChangeConfiguration: typeof vscode.workspace.onDidChangeConfiguration }).onDidChangeConfiguration =
+      changeEmitter.event;
+
+    // Saturday noon — outside Mon–Fri 09:00–18:00.
+    const fixedNow = new originalDate(2026, 10, 21, 12, 0, 0, 0);
+    class FakeDate extends originalDate {
+      constructor(value?: number | string | Date) {
+        if (value === undefined) {
+          super(fixedNow.getTime());
+        } else {
+          super(value);
+        }
+      }
+      static now() {
+        return fixedNow.getTime();
+      }
+    }
+    (globalThis as { Date: typeof Date }).Date = FakeDate as unknown as typeof Date;
+
+    try {
+      session = new DashboardSession(makeServices(recorder));
+      assert.strictEqual(session.isManuallyMonitoringEnabled(), true);
+      assert.strictEqual(session.isMonitoringEnabled(), false);
+      assert.strictEqual(session.getStatus().monitoringEnabled, false);
+
+      recorder.getSessionCalls.length = 0;
+      await session.refreshAll({ notify: false });
+      assert.deepStrictEqual(recorder.getSessionCalls, []);
+      assert.strictEqual(values['devMateKit.monitoring.enabled'], true);
+    } finally {
+      (globalThis as { Date: typeof Date }).Date = originalDate;
+      (vscode.workspace as { getConfiguration: typeof vscode.workspace.getConfiguration }).getConfiguration = originalGetConfiguration;
+      (vscode.workspace as { onDidChangeConfiguration: typeof vscode.workspace.onDidChangeConfiguration }).onDidChangeConfiguration =
+        originalOnDidChangeConfiguration;
+      changeEmitter.dispose();
+    }
+  });
 });

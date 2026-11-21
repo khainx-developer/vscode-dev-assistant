@@ -11,6 +11,12 @@ import {
 } from '../services/session/connectionState';
 import { isCursorHost } from '../services/ai/aiSettings';
 import { deriveSetupStatus } from '../services/session/setupStatus';
+import {
+  isWithinWorkingHours,
+  msUntilNextWorkingHoursBoundary,
+  normalizeWorkingHoursConfig,
+  type WorkingHoursConfig,
+} from '../services/session/workingHours';
 import { RefreshScheduler, type RefreshVisibilityHost } from '../infrastructure/github/refreshScheduler';
 import type { GitHubIncomingMessage, GitHubOutgoingMessage, GitHubViewState } from '../shared/githubTypes';
 import type { JiraIncomingMessage, JiraOutgoingMessage, JiraTask, JiraViewState } from '../shared/jiraTypes';
@@ -41,6 +47,9 @@ const STALE_AFTER_MS = 60 * 1000;
 const NOTIFICATIONS_SETTING = 'devMateKit.notifications.enabled';
 const BACKGROUND_SETTING = 'devMateKit.refresh.background';
 const MONITORING_SETTING = 'devMateKit.monitoring.enabled';
+const WORKING_HOURS_SECTION = 'devMateKit.monitoring.workingHours';
+/** setTimeout is safe well below this; reschedule if the next boundary is farther. */
+const WORKING_HOURS_TIMER_MAX_MS = 24 * 60 * 60 * 1000;
 const PAUSED_MESSAGE = 'DevMate: Monitoring is paused. Resume to connect again.';
 
 /** Commands that open a browser / update local prefs only — allowed while monitoring is paused. */
@@ -76,6 +85,7 @@ export class DashboardSession implements vscode.Disposable {
   private aiHandler: AiCommandHandler | undefined;
   private readonly scheduler: RefreshScheduler;
   private readonly disposables: vscode.Disposable[] = [];
+  private workingHoursTimer: ReturnType<typeof setTimeout> | undefined;
 
   private readonly visibilityEmitter = new vscode.EventEmitter<void>();
   private readonly changeEmitter = new vscode.EventEmitter<void>();
@@ -111,13 +121,21 @@ export class DashboardSession implements vscode.Disposable {
     this.status = this.computeStatus();
     this.lastCompositeVisible = this.compositeVisible();
     this.scheduler = new RefreshScheduler(this.visibilityHost(), () => this.refreshAll({ notify: true }));
+    this.scheduleWorkingHoursTimer();
 
     this.disposables.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration(BACKGROUND_SETTING) || event.affectsConfiguration(MONITORING_SETTING)) {
+        if (
+          event.affectsConfiguration(BACKGROUND_SETTING)
+          || event.affectsConfiguration(MONITORING_SETTING)
+          || event.affectsConfiguration(WORKING_HOURS_SECTION)
+        ) {
           const wasVisible = this.lastCompositeVisible;
           this.fireVisibilityIfChanged();
           this.publishStatus();
+          if (event.affectsConfiguration(WORKING_HOURS_SECTION)) {
+            this.scheduleWorkingHoursTimer();
+          }
           // Resuming (or turning background back on) should kick a refresh once the timer restarts.
           if (!wasVisible && this.lastCompositeVisible) void this.refreshAll({ notify: false });
         }
@@ -135,12 +153,21 @@ export class DashboardSession implements vscode.Disposable {
     );
   }
 
+  /**
+   * Effective monitoring: manual toggle AND (when configured) inside working hours.
+   * Manual pause always wins; this never writes `monitoring.enabled`.
+   */
   isMonitoringEnabled(): boolean {
+    return this.isManuallyMonitoringEnabled() && isWithinWorkingHours(new Date(), this.readWorkingHoursConfig());
+  }
+
+  /** Raw `devMateKit.monitoring.enabled` — unchanged by the working-hours schedule. */
+  isManuallyMonitoringEnabled(): boolean {
     return vscode.workspace.getConfiguration().get<boolean>(MONITORING_SETTING, true);
   }
 
   async setMonitoringEnabled(enabled: boolean): Promise<void> {
-    if (this.isMonitoringEnabled() === enabled) {
+    if (this.isManuallyMonitoringEnabled() === enabled) {
       this.publishStatus();
       return;
     }
@@ -437,7 +464,42 @@ export class DashboardSession implements vscode.Disposable {
     };
   }
 
+  private readWorkingHoursConfig(): WorkingHoursConfig {
+    const section = vscode.workspace.getConfiguration(WORKING_HOURS_SECTION);
+    return normalizeWorkingHoursConfig({
+      enabled: section.get('enabled'),
+      days: section.get('days'),
+      start: section.get('start'),
+      end: section.get('end'),
+    });
+  }
+
+  private clearWorkingHoursTimer(): void {
+    if (this.workingHoursTimer !== undefined) {
+      clearTimeout(this.workingHoursTimer);
+      this.workingHoursTimer = undefined;
+    }
+  }
+
+  private scheduleWorkingHoursTimer(): void {
+    this.clearWorkingHoursTimer();
+    const config = this.readWorkingHoursConfig();
+    const ms = msUntilNextWorkingHoursBoundary(new Date(), config);
+    if (ms === null) return;
+    const delay = Math.max(1, Math.min(ms, WORKING_HOURS_TIMER_MAX_MS));
+    this.workingHoursTimer = setTimeout(() => this.onWorkingHoursBoundary(), delay);
+  }
+
+  private onWorkingHoursBoundary(): void {
+    const wasVisible = this.lastCompositeVisible;
+    this.fireVisibilityIfChanged();
+    this.publishStatus();
+    if (!wasVisible && this.lastCompositeVisible) void this.refreshAll({ notify: false });
+    this.scheduleWorkingHoursTimer();
+  }
+
   dispose(): void {
+    this.clearWorkingHoursTimer();
     this.scheduler.dispose();
     this.visibilityEmitter.dispose();
     this.changeEmitter.dispose();
