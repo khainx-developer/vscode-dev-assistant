@@ -52,12 +52,13 @@ export function activate(context: vscode.ExtensionContext): void {
 function registerTextCommands(context: vscode.ExtensionContext): void {
   for (const command of allCommands) {
     context.subscriptions.push(vscode.commands.registerCommand(command.id, async () => {
-      const editor = getActiveEditorOrWarn();
-      if (!editor) {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor && command.requiresEditor !== false) {
+        getActiveEditorOrWarn();
         return;
       }
       try {
-        await command.handler(editor, context);
+        await command.handler(editor as vscode.TextEditor, context);
       } catch (err) {
         vscode.window.showErrorMessage(`DevMate Kit: ${(err as Error).message}`);
       }
