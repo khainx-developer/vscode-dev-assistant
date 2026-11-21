@@ -644,6 +644,42 @@ suite('AtlassianMcpAdapter', () => {
     assert.strictEqual(result[0].body, 'First paragraph\nSecond paragraph');
   });
 
+  test('fetchIssueComments_flattensADFMentions', async () => {
+    const service = makeConnectionService(() =>
+      Promise.resolve(
+        commentPage([
+          jiraComment('comment-1', '2026-11-03T10:00:00Z', {
+            type: 'doc',
+            version: 1,
+            content: [
+              {
+                type: 'paragraph',
+                content: [
+                  { type: 'text', text: 'Hey ' },
+                  {
+                    type: 'mention',
+                    attrs: { id: 'abc-123', text: '@Jane Doe', accessLevel: '' },
+                  },
+                  { type: 'text', text: ' please look' },
+                ],
+              },
+            ],
+          }),
+        ]),
+      ),
+    );
+
+    const result = await AtlassianMcpAdapter.fetchIssueComments(
+      service,
+      'cloud-1',
+      'ABC-5',
+      'https://example.atlassian.net',
+      1,
+    );
+
+    assert.strictEqual(result[0].body, 'Hey @Jane Doe [~accountid:abc-123] please look');
+  });
+
   test('fetchIssueComments_pagesUntilMarkerBoundary', async () => {
     const calls: unknown[] = [];
     const pages = [

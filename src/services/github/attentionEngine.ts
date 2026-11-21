@@ -1,4 +1,5 @@
 import type { CommentAttentionSummary } from '../attention/commentAttention';
+import { mentionsUser } from '../attention/mentions';
 import { AttentionItem, AttentionReason, GitHubAttentionResult, PullRequestSummary, ReviewState } from '../../shared/githubTypes';
 import { prKey } from '../../infrastructure/github/lastSeenStore';
 
@@ -40,14 +41,25 @@ function computeReasonsForPr(
   if ((isMine || isTeam) && pr.mergeable === 'CONFLICTING') {
     reasons.push('pr-merge-conflict');
   }
+  const mentionedInUnread = Boolean(
+    commentAttention?.latestUnreadComment
+    && mentionsUser(commentAttention.latestUnreadComment.bodyText, { githubLogin: me }),
+  );
+  const mentionedInAwaiting = Boolean(
+    commentAttention?.latestAwaitingComment
+    && mentionsUser(commentAttention.latestAwaitingComment.bodyText, { githubLogin: me }),
+  );
+  const hasMention = mentionedInUnread || mentionedInAwaiting;
   if (isMine) {
     if (classifyReviewState(pr) === 'changes_requested') reasons.push('pr-changes-requested');
     if (pr.checkStatus === 'FAILURE' || pr.checkStatus === 'ERROR') reasons.push('pr-checks-failing');
     if (hasUnreadComments) reasons.push('pr-unread-comment');
+    if (hasMention) reasons.push('pr-mentioned');
   }
   let needsMyReview = false;
   if (isTeam) {
     if (hasUnreadComments) reasons.push('pr-unread-comment');
+    if (hasMention) reasons.push('pr-mentioned');
     const reviewedByMe = pr.reviews.some((review) => review.author.toLowerCase() === normalizedMe);
     needsMyReview = pr.requestedReviewers.some(
       (reviewer) => reviewer.toLowerCase() === normalizedMe,

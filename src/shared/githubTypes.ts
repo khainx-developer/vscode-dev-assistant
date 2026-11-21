@@ -74,6 +74,7 @@ export type AttentionReason =
   | 'pr-waiting-review'
   | 'pr-needs-my-review'
   | 'pr-unread-comment'
+  | 'pr-mentioned'
   | 'pr-merge-conflict'
   | 'pr-stale';
 

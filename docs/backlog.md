@@ -16,31 +16,17 @@ Flagged and below still **not started** (checked against `src/`).
 
 ## Findings: @mention detection
 
-Investigation only — helper lives in `src/services/attention/mentions.ts`; **not wired** into the inbox.
+Helper lives in `src/services/attention/mentions.ts`. **Inbox wiring is implemented** in this change: `flattenAdf` preserves mention text/account-id tokens; `jira-mentioned` / `pr-mentioned` reasons are added in the attention inbox (co-flagged with `*-awaiting-reply` when the latest comment mentions you). Identity: GitHub login from the signed-in session (`githubState.me`); Jira display name from `devMateKit.jira.currentUser`; account id only when already present in comment text / config (no new lookups).
 
 ### What ADF flattening does to mentions
 
-From `flattenAdf` in `src/infrastructure/jira/atlassianMcpAdapter.ts` (and the ADF comment fixture in `atlassianMcpAdapter.test.ts`, which only covers `paragraph` + `text` nodes):
+From `flattenAdf` in `src/infrastructure/jira/atlassianMcpAdapter.ts` (ADF fixtures in `atlassianMcpAdapter.test.ts` cover `paragraph` + `text`, and now `mention`):
 
-- Handled node types: `text` (emits `text`), `hardBreak` (`\n`), `heading` / `paragraph` / `listItem` (walk `content`).
+- Handled node types: `text` (emits `text`), `hardBreak` (`\n`), `mention` (emits `attrs.text` and/or `[~accountid:…]` from `attrs.id`), `heading` / `paragraph` / `listItem` (walk `content`).
 - An ADF `mention` node is typically `{ type: "mention", attrs: { id, text: "@Display Name", … } }` with **no** `content` array.
-- For that shape, `flattenAdf` takes the empty-content path and returns `""`. It never reads `attrs.id` or `attrs.text`.
-- **Result:** after flattening, a Jira mention does **not** survive as `@Display Name`, and the **account id is lost** as well. Only plain `text` nodes (and string bodies) remain in `JiraCommentSummary.body`.
-- String / wiki-style bodies that already contain `[~accountid:…]` would still carry the id as literal text; the repo has no live fixture of that form, only the flatten path above.
-
-Because accountId is not preserved through ADF flatten, **`mentionsUser` matches Jira by `@Display Name` when the account id is absent from the comment text** (and still matches the id when it does appear, e.g. `[~accountid:…]`).
-
-### Follow-up ticket draft (wire into inbox)
-
-**Title:** Wire `@mention` detection into the attention inbox
-
-**Exact changes (do not do them in this investigation):**
-
-1. **`flattenAdf`** (`atlassianMcpAdapter.ts`): for `type === 'mention'`, emit `attrs.text` (e.g. `@Display Name`) and/or a stable account-id token so mentions survive flattening; add a fixture next to the existing ADF paragraph test.
-2. **`AttentionReason`**: add e.g. `jira-mentioned` and `pr-mentioned` (plus matching entries in `reasonLabels.ts`).
-3. **Call sites**: in the Jira/GitHub paths that already build `ProviderCommentCandidate` bodies (`jira/viewController.ts` comment mapping / `attentionInboxBuilder` + GitHub attention), call `mentionsUser(body, { githubLogin: session.username, jiraAccountId, jiraDisplayName: currentUser })` on unread / awaiting comments; push the new reason when true. Prefer boosting or co-flagging with `*-awaiting-reply` when the latest comment mentions the user.
-4. **Identity inputs**: GitHub login from the signed-in session; Jira display name from `devMateKit.jira.currentUser`. Account id only if/when the config or MCP user lookup stores it — until then rely on display-name matching.
-5. **Tests**: inbox-builder / view-controller cases for mentioned vs not; no new network calls.
+- **Before this change:** `flattenAdf` took the empty-content path and returned `""`, so mentions did not survive and the account id was lost.
+- **Now:** mention nodes emit display text and a stable account-id token into `JiraCommentSummary.body`, so `mentionsUser` can match by `@Display Name` and/or `[~accountid:…]`.
+- String / wiki-style bodies that already contain `[~accountid:…]` still carry the id as literal text.
 
 ## Now
 
@@ -63,17 +49,14 @@ Because accountId is not preserved through ADF flatten, **`mentionsUser` matches
 
 4. **Auto-pause outside working hours**: schedule for the existing Sleep/Wake
    monitoring (e.g. Mon–Fri 09:00–18:00).
-5. **@mention detection**: mentions of you become an attention reason and sharpen
-   awaiting-reply. GitHub comment bodies are plain text; Jira comments are
-   flattened from the Atlassian document format, so verify mentions survive.
-6. **Run Tool…**: one Command Palette entry with a searchable list of all tools,
+5. **Run Tool…**: one Command Palette entry with a searchable list of all tools,
    running the chosen tool on the editor selection and writing the result back or
    to the clipboard. JWT, Hash, Date/Timestamp and JSON ↔ YAML are sidebar-only
    today.
 
 ## Decision needed
 
-7. **Webview UI migration to Preact + JSX + TypeScript** (about 6-8 days, pilot
+6. **Webview UI migration to Preact + JSX + TypeScript** (about 6-8 days, pilot
    about 1 day). Status: proposed, 2026-11-15. Full proposal in
    [Webview UI migration](#webview-ui-migration) below. Recommendation: do the
    1-day pilot (tool panel) before items 4 and 5 if they touch the dashboard or
