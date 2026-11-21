@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { createContainer } from './app/container';
-import { runJiraFieldSpike } from './app/jiraFieldSpike';
 import { allCommands } from './ui/commands/index';
 import { getActiveEditorOrWarn } from './ui/textEdit';
 import { SIDEBAR_VIEW_ID, SidebarProvider } from './ui/views/SidebarProvider';
@@ -16,7 +15,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // The AI coordinator needs to reveal UI that is built from the session it receives, so the
   // hooks resolve the surfaces lazily.
   const surfaces: { sidebar?: SidebarProvider } = {};
-  const { session, ai, services } = createContainer(context, {
+  const { session, ai } = createContainer(context, {
     revealDashboard: () => DashboardPanel.createOrShow(context.extensionUri, session),
     revealSetup: () => void surfaces.sidebar?.showTab('setup', 'ai'),
   });
@@ -46,7 +45,6 @@ export function activate(context: vscode.ExtensionContext): void {
   register('devMateKit.ai.whatNext', () => ai.whatShouldIDoNext());
   register('devMateKit.ai.standup', () => ai.standup());
   register('devMateKit.ai.selectModel', () => ai.pickModel());
-  register('devMateKit.dev.jiraFieldSpike', () => runJiraFieldSpike(services));
 }
 
 function registerTextCommands(context: vscode.ExtensionContext): void {

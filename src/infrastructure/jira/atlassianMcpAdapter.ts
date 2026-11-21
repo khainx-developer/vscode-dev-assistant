@@ -47,6 +47,7 @@ type SearchJqlIssue = {
     assignee: { displayName: string } | null;
     duedate?: string | null;
     updated: string;
+    description?: unknown;
     subtasks?: SearchJqlSubtask[];
     issuelinks?: SearchJqlIssueLink[];
   };
@@ -158,7 +159,7 @@ function parseCommentPage(result: unknown): JiraCommentPage {
   return { data: { comments: comments as JiraCommentPayload[], total, isLast } };
 }
 
-function flattenAdf(value: unknown): string {
+export function flattenAdf(value: unknown): string {
   if (typeof value === 'string') {
     return value;
   }
@@ -183,9 +184,60 @@ function flattenAdf(value: unknown): string {
   }
 
   const content = Array.isArray(value.content) ? value.content.map(flattenAdf).join('') : '';
-  return value.type === 'paragraph' || value.type === 'heading' || value.type === 'listItem'
+  if (value.type === 'heading') {
+    const levelRaw = isRecord(value.attrs) && typeof value.attrs.level === 'number' ? value.attrs.level : 2;
+    const level = Math.min(6, Math.max(1, levelRaw));
+    return `${'#'.repeat(level)} ${content.replace(/\n+$/, '')}\n`;
+  }
+  return value.type === 'paragraph' || value.type === 'listItem'
     ? `${content}\n`
     : content;
+}
+
+/** Normalize a Jira description/body: string as-is, ADF flattened, anything else empty. */
+export function normalizeDescription(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (isRecord(value) && (value.type === 'doc' || Array.isArray(value.content))) {
+    return flattenAdf(value).replace(/\n+$/, '');
+  }
+  return '';
+}
+
+/**
+ * Prefer an optional custom-field value (string/ADF) when present; else the
+ * `## Acceptance Criteria` section in the description; else the full description.
+ */
+export function extractAcceptanceCriteria(description: unknown, customField?: unknown): string {
+  if (customField !== undefined && customField !== null && !Array.isArray(customField)) {
+    const fromCustom = normalizeDescription(customField).trim();
+    if (fromCustom) return fromCustom;
+  }
+
+  const text = normalizeDescription(description);
+  if (!text.trim()) return '';
+
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  let start = -1;
+  let headingLevel = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const match = /^(#{1,6})\s+(.+?)\s*$/.exec(lines[i]);
+    if (match && /^acceptance\s+criteria$/i.test(match[2].trim())) {
+      start = i + 1;
+      headingLevel = match[1].length;
+      break;
+    }
+  }
+
+  if (start < 0) return text.trim();
+
+  const section: string[] = [];
+  for (let i = start; i < lines.length; i++) {
+    const match = /^(#{1,6})\s+/.exec(lines[i]);
+    if (match && match[1].length <= headingLevel) break;
+    section.push(lines[i]);
+  }
+  return section.join('\n').trim() || text.trim();
 }
 
 function mapJiraComment(raw: JiraCommentPayload, siteUrl: string, issueKey: string): JiraCommentSummary {
@@ -292,6 +344,8 @@ function mapBlockedBy(siteUrl: string, issuelinks: SearchJqlIssueLink[] | undefi
 function mapIssue(siteUrl: string, issue: SearchJqlIssue): JiraTask {
   const statusCategory = mapStatusCategory(issue.fields.status);
   const blockedBy = mapBlockedBy(siteUrl, issue.fields.issuelinks);
+  const description = normalizeDescription(issue.fields.description).trim();
+  const acceptanceCriteria = extractAcceptanceCriteria(issue.fields.description).trim();
   return {
     key: issue.key,
     summary: issue.fields.summary,
@@ -300,6 +354,8 @@ function mapIssue(siteUrl: string, issue: SearchJqlIssue): JiraTask {
     assignee: issue.fields.assignee?.displayName ?? null,
     dueDate: issue.fields.duedate ?? null,
     updatedAt: issue.fields.updated,
+    ...(description ? { description } : {}),
+    ...(acceptanceCriteria ? { acceptanceCriteria } : {}),
     subtasks: (issue.fields.subtasks ?? []).map((subtask) => mapSubtask(siteUrl, subtask)),
     ...(blockedBy.length > 0 ? { blockedBy } : {}),
     url: `${siteUrl}/browse/${issue.key}`,
@@ -357,7 +413,7 @@ export const AtlassianMcpAdapter = {
         cloudId: siteId,
         jql,
         maxResults: 50,
-        fields: ['summary', 'status', 'assignee', 'duedate', 'updated', 'subtasks', 'issuelinks'],
+        fields: ['summary', 'status', 'assignee', 'duedate', 'updated', 'description', 'subtasks', 'issuelinks'],
       }),
     );
 
