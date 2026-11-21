@@ -2,12 +2,16 @@
 
 ## Unreleased
 
+## 0.4.0 — 2026-11-21
+
 ### New
 - **Branch ticket key in the status bar** — shows the Jira/GitHub ticket key parsed from the current git branch name; click opens the matching dashboard card or the Jira browse URL. Toggle with `devMateKit.branchStatusBar.enabled` (default true).
 - **Jira Flagged / Impediment as blocker** — assigned tickets with Flagged/Impediment set show a **Blocked** chip and are treated like open *is blocked by* links in the Attention Inbox.
 - **Working-hours auto-pause** — optionally pause monitoring outside a local weekday window (`devMateKit.monitoring.workingHours.*`, off by default). Setup → Preferences can turn it on and edit days, start, and end. Does not change Sleep / Wake; a manual pause always wins. The status bar shows when monitoring is paused outside working hours.
 - **Acceptance criteria on Jira cards** — expandable ticket details show acceptance criteria extracted from the description (`## Acceptance Criteria` heading, else the full description). Criteria are credential-scanned and length-trimmed before any AI prompt. Spike findings are in `docs/backlog.md`; the one-off Jira Field Spike command is removed.
 - **PR approvals on Attention cards** — when a pull request has approvals, a chip shows who approved (e.g. `khainx.developer approved`). Two approvers are listed; three or more show the first two plus a `+N` count, with the full list in the tooltip.
+- **Run Tool…** — Command Palette entry (`DevMate Kit: Run Tool…`) to run a registry tool on the selection (or whole document) and replace text or copy the result, including a no-editor clipboard path.
+- **@mention detection in the Attention Inbox** — flags Jira tickets and PRs when you're mentioned (`jira-mentioned` / `pr-mentioned`), and co-flags awaiting-reply when the latest comment mentions you.
 
 ### Fixed
 - Attention card Jira comment previews no longer show raw HTML; they use the same plain-text extraction as the Comments section.
