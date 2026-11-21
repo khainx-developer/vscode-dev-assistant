@@ -39,10 +39,11 @@ Keep the sidebar tabs at Home / Tools / Setup. A tool is defined once in
   criteria are a description heading (not a custom field); Flagged is
   `customfield_10021`. The spike command is removed.
 
-- **Read-only current-branch detection is approved**, through the built-in
+- **Read-only current-branch → status bar ticket key shipped**, through the built-in
   `vscode.git` API. Branch name only, no writes. A missing git extension turns the
   feature off quietly. In multi-root workspaces use the repo of the active editor.
-  The branch name stays local unless the user hands it off.
+  The branch name stays local unless the user hands it off. Flagged / Impediment
+  blockers on inbox cards are also shipped.
 - **Bundle budget:** toolkit dependencies stay under about +100 KB combined.
   About 56 KB is left (`js-yaml` took about 44 KB). A lazy `require` only defers
   start-up work; it does not shrink the single-file bundle.

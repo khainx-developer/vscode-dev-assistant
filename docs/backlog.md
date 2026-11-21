@@ -1,10 +1,12 @@
 # Backlog
 
 Single ordered list of work to do. Product rules and scope live in
-[roadmap.md](roadmap.md). Last reviewed 2026-11-21 (against v0.3.1 + PR #13).
+[roadmap.md](roadmap.md). Last reviewed 2026-11-21 against **v0.4.0** (PR #20).
 
-Status: spike deleted + acceptance criteria on the inbox card completed this run;
-Flagged and below still **not started** (checked against `src/`).
+Status: Flagged/Impediment, branch ticket key status bar, working-hours auto-pause,
+Run Tool…, @mention inbox wiring, acceptance criteria on cards, and PR approvals
+shipped in v0.4.0. Remaining open work: Preact migration decision, Later filters/rules,
+Housekeeping.
 
 ## Jira Field Spike findings
 
@@ -16,51 +18,17 @@ Flagged and below still **not started** (checked against `src/`).
 
 ## Findings: @mention detection
 
-Helper lives in `src/services/attention/mentions.ts`. **Inbox wiring is implemented** in this change: `flattenAdf` preserves mention text/account-id tokens; `jira-mentioned` / `pr-mentioned` reasons are added in the attention inbox (co-flagged with `*-awaiting-reply` when the latest comment mentions you). Identity: GitHub login from the signed-in session (`githubState.me`); Jira display name from `devMateKit.jira.currentUser`; account id only when already present in comment text / config (no new lookups).
-
-### What ADF flattening does to mentions
-
-From `flattenAdf` in `src/infrastructure/jira/atlassianMcpAdapter.ts` (ADF fixtures in `atlassianMcpAdapter.test.ts` cover `paragraph` + `text`, and now `mention`):
-
-- Handled node types: `text` (emits `text`), `hardBreak` (`\n`), `mention` (emits `attrs.text` and/or `[~accountid:…]` from `attrs.id`), `heading` / `paragraph` / `listItem` (walk `content`).
-- An ADF `mention` node is typically `{ type: "mention", attrs: { id, text: "@Display Name", … } }` with **no** `content` array.
-- **Before this change:** `flattenAdf` took the empty-content path and returned `""`, so mentions did not survive and the account id was lost.
-- **Now:** mention nodes emit display text and a stable account-id token into `JiraCommentSummary.body`, so `mentionsUser` can match by `@Display Name` and/or `[~accountid:…]`.
-- String / wiki-style bodies that already contain `[~accountid:…]` still carry the id as literal text.
-
-## Now
-
-1. **Blockers, part 2: Flagged / Impediment field**, using the shape the spike
-   shows.
-2. **Current branch → status bar** (approved, read-only).
-   - Read HEAD via the built-in `vscode.git` API; branch name only, no writes.
-     Quietly off if the git extension is missing; multi-root: use the active
-     editor's repo.
-   - Show the ticket key from the branch name (same matching as the PR linker);
-     click opens the card or the Jira page.
-3. **Docs catch-up** (small, do alongside the next release):
-   - `README.md`: intro still describes a radar only; add the "developer tools"
-     line. Features section should cover the Tools tab (JWT, Date/Timestamp, Hash,
-     JSON ↔ YAML).
-   - `CHANGELOG.md`: promote "Unreleased" (PR approvers chip, Jira HTML preview
-     fix) when releasing.
-
-## Next
-
-4. **Auto-pause outside working hours**: schedule for the existing Sleep/Wake
-   monitoring (e.g. Mon–Fri 09:00–18:00).
-5. **Run Tool…**: one Command Palette entry with a searchable list of all tools,
-   running the chosen tool on the editor selection and writing the result back or
-   to the clipboard. JWT, Hash, Date/Timestamp and JSON ↔ YAML are sidebar-only
-   today.
+- Helper: `src/services/attention/mentions.ts`
+- Reason ids: `jira-mentioned` / `pr-mentioned` (co-flagged with `*-awaiting-reply` when the latest comment mentions you)
+- Identity: GitHub login from signed-in session (`githubState.me`); Jira display name from `devMateKit.jira.currentUser`; account id from comment text / config when present
 
 ## Decision needed
 
-6. **Webview UI migration to Preact + JSX + TypeScript** (about 6-8 days, pilot
+1. **Webview UI migration to Preact + JSX + TypeScript** (about 6-8 days, pilot
    about 1 day). Status: proposed, 2026-11-15. Full proposal in
    [Webview UI migration](#webview-ui-migration) below. Recommendation: do the
-   1-day pilot (tool panel) before items 4 and 5 if they touch the dashboard or
-   sidebar UI heavily; otherwise defer.
+   1-day pilot (tool panel) before UI-heavy work if it touches the dashboard or
+   sidebar heavily; otherwise defer.
 
 ## Later, only if needed
 
