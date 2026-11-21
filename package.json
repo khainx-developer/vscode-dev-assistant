@@ -292,6 +292,10 @@
         "title": "DevMate Kit: Open Tool"
       },
       {
+        "command": "devMateKit.runTool",
+        "title": "DevMate Kit: Run Tool…"
+      },
+      {
         "command": "devMateKit.base64Encode",
         "title": "DevMate Kit: Base64 Encode Selection"
       },
