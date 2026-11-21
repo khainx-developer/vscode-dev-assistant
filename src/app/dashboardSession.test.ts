@@ -279,8 +279,71 @@ suite('DashboardSession', () => {
       await session.refreshAll({ notify: false });
       assert.deepStrictEqual(recorder.getSessionCalls, []);
       assert.strictEqual(values['devMateKit.monitoring.enabled'], true);
+      assert.strictEqual(session.getStatus().monitoringManuallyEnabled, true);
+      assert.strictEqual(session.getStatus().workingHours.enabled, true);
     } finally {
       (globalThis as { Date: typeof Date }).Date = originalDate;
+      (vscode.workspace as { getConfiguration: typeof vscode.workspace.getConfiguration }).getConfiguration = originalGetConfiguration;
+      (vscode.workspace as { onDidChangeConfiguration: typeof vscode.workspace.onDidChangeConfiguration }).onDidChangeConfiguration =
+        originalOnDidChangeConfiguration;
+      changeEmitter.dispose();
+    }
+  });
+
+  test('setWorkingHours_updatesSettings_withoutTouchingManualMonitoring', async () => {
+    const recorder: Recorder = { getSessionCalls: [], saveConnectionCalls: [], clearConnectionCalls: 0, signedIn: true };
+    const values: Record<string, unknown> = {
+      'devMateKit.monitoring.enabled': true,
+      'devMateKit.monitoring.workingHours.enabled': false,
+      'devMateKit.monitoring.workingHours.days': ['mon', 'tue', 'wed', 'thu', 'fri'],
+      'devMateKit.monitoring.workingHours.start': '09:00',
+      'devMateKit.monitoring.workingHours.end': '18:00',
+      'devMateKit.refresh.background': true,
+      'devMateKit.notifications.enabled': true,
+    };
+    const changeEmitter = new vscode.EventEmitter<vscode.ConfigurationChangeEvent>();
+    const originalGetConfiguration = vscode.workspace.getConfiguration;
+    const originalOnDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration;
+    (vscode.workspace as { getConfiguration: typeof vscode.workspace.getConfiguration }).getConfiguration = ((section?: string) => ({
+      get: (key: string, fallback?: unknown) => {
+        const full = section ? `${section}.${key}` : key;
+        return full in values ? values[full] : fallback;
+      },
+      update: async (key: string, value: unknown) => {
+        const full = section ? `${section}.${key}` : key;
+        values[full] = value;
+        changeEmitter.fire({
+          affectsConfiguration: (name: string) => full === name || full.startsWith(`${name}.`),
+        });
+      },
+      has: () => false,
+      inspect: () => undefined,
+    })) as unknown as typeof vscode.workspace.getConfiguration;
+    (vscode.workspace as { onDidChangeConfiguration: typeof vscode.workspace.onDidChangeConfiguration }).onDidChangeConfiguration =
+      changeEmitter.event;
+
+    try {
+      session = new DashboardSession(makeServices(recorder));
+      await session.handleCommand({
+        command: 'settings.setWorkingHours',
+        enabled: true,
+        days: ['mon', 'wed', 'fri'],
+        start: '10:00',
+        end: '16:30',
+      });
+
+      assert.strictEqual(values['devMateKit.monitoring.enabled'], true);
+      assert.strictEqual(values['devMateKit.monitoring.workingHours.enabled'], true);
+      assert.deepStrictEqual(values['devMateKit.monitoring.workingHours.days'], ['mon', 'wed', 'fri']);
+      assert.strictEqual(values['devMateKit.monitoring.workingHours.start'], '10:00');
+      assert.strictEqual(values['devMateKit.monitoring.workingHours.end'], '16:30');
+      assert.deepStrictEqual(session.getStatus().workingHours, {
+        enabled: true,
+        days: ['mon', 'wed', 'fri'],
+        start: '10:00',
+        end: '16:30',
+      });
+    } finally {
       (vscode.workspace as { getConfiguration: typeof vscode.workspace.getConfiguration }).getConfiguration = originalGetConfiguration;
       (vscode.workspace as { onDidChangeConfiguration: typeof vscode.workspace.onDidChangeConfiguration }).onDidChangeConfiguration =
         originalOnDidChangeConfiguration;

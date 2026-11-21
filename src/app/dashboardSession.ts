@@ -272,6 +272,15 @@ export class DashboardSession implements vscode.Disposable {
       this.publishStatus();
       return;
     }
+    if (command === 'settings.setWorkingHours') {
+      await this.setWorkingHours({
+        enabled: message.enabled,
+        days: message.days,
+        start: message.start,
+        end: message.end,
+      });
+      return;
+    }
     if (this.blocksWhilePaused(command)) {
       this.notifyPaused();
       return;
@@ -397,6 +406,16 @@ export class DashboardSession implements vscode.Disposable {
       isRefreshing: this.refreshInFlight !== null || this.anyControllerRefreshing(),
       notificationsEnabled: vscode.workspace.getConfiguration().get<boolean>(NOTIFICATIONS_SETTING, true),
       monitoringEnabled: this.isMonitoringEnabled(),
+      monitoringManuallyEnabled: this.isManuallyMonitoringEnabled(),
+      workingHours: (() => {
+        const config = this.readWorkingHoursConfig();
+        return {
+          enabled: config.enabled,
+          days: [...config.days],
+          start: config.start,
+          end: config.end,
+        };
+      })(),
     };
   }
 
@@ -472,6 +491,31 @@ export class DashboardSession implements vscode.Disposable {
       start: section.get('start'),
       end: section.get('end'),
     });
+  }
+
+  /**
+   * Persist working-hours prefs from the Setup UI. Partial updates merge with the current
+   * normalized config; invalid times fall back via normalizeWorkingHoursConfig.
+   */
+  private async setWorkingHours(patch: {
+    enabled?: boolean;
+    days?: WorkingHoursConfig['days'];
+    start?: string;
+    end?: string;
+  }): Promise<void> {
+    const current = this.readWorkingHoursConfig();
+    const next = normalizeWorkingHoursConfig({
+      enabled: patch.enabled ?? current.enabled,
+      days: patch.days ?? current.days,
+      start: patch.start ?? current.start,
+      end: patch.end ?? current.end,
+    });
+    const section = vscode.workspace.getConfiguration(WORKING_HOURS_SECTION);
+    await section.update('enabled', next.enabled, vscode.ConfigurationTarget.Global);
+    await section.update('days', [...next.days], vscode.ConfigurationTarget.Global);
+    await section.update('start', next.start, vscode.ConfigurationTarget.Global);
+    await section.update('end', next.end, vscode.ConfigurationTarget.Global);
+    // onDidChangeConfiguration republishes status + reschedules the boundary timer.
   }
 
   private clearWorkingHoursTimer(): void {

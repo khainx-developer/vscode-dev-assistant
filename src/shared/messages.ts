@@ -42,7 +42,14 @@ export type SessionCommand =
   | { command: 'ai.loadModels' }
   | { command: 'ai.cliTerminal'; action: 'install' | 'login' }
   | { command: 'settings.setNotifications'; enabled: boolean }
-  | { command: 'settings.setMonitoring'; enabled: boolean };
+  | { command: 'settings.setMonitoring'; enabled: boolean }
+  | {
+      command: 'settings.setWorkingHours';
+      enabled?: boolean;
+      days?: Array<'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat'>;
+      start?: string;
+      end?: string;
+    };
 
 export type SurfaceCommand =
   | { command: 'nav.openDashboard' }
@@ -83,8 +90,20 @@ export interface SessionStatus {
   lastRefreshAt: string | null;
   isRefreshing: boolean;
   notificationsEnabled: boolean;
-  /** False when the user paused monitoring (no refresh / no GitHub or Jira network). */
+  /**
+   * Effective monitoring: manual toggle AND (when configured) inside working hours.
+   * False means no refresh / no GitHub or Jira network.
+   */
   monitoringEnabled: boolean;
+  /** Raw `devMateKit.monitoring.enabled` — used by the Sleep/Wake control. */
+  monitoringManuallyEnabled: boolean;
+  /** Working-hours schedule from settings (defaults applied). */
+  workingHours: {
+    enabled: boolean;
+    days: Array<'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat'>;
+    start: string;
+    end: string;
+  };
 }
 
 export type AiRunKind = 'whatNext' | 'explain' | 'standup';
