@@ -63,6 +63,13 @@ export interface JiraTask {
   assignee: string | null;
   dueDate: string | null;
   updatedAt?: string;
+  /** Full ticket description (string/markdown/HTML or flattened ADF). Absent when empty. */
+  description?: string;
+  /**
+   * Acceptance criteria for the card/AI: custom-field text when provided, else the
+   * `## Acceptance Criteria` section, else the full description. Absent when empty.
+   */
+  acceptanceCriteria?: string;
   commentSourceKey?: string;
   comments?: JiraCommentSummary[];
   commentAttention?: CommentAttentionSummary;

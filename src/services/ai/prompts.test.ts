@@ -512,6 +512,22 @@ suite('AI prompts', () => {
     assert.doesNotMatch(multi, /Blocked by:/);
   });
 
+  test('explain_redactsAndTrimsAcceptanceCriteria', () => {
+    const long = `Must work offline. Token ghp_${'a'.repeat(40)} ${'x'.repeat(MAX_COMMENT_CHARS)}`;
+    const jiraItem = item(8, {
+      pr: undefined,
+      jiraTask: task({ acceptanceCriteria: long }),
+      reasons: ['jira-no-pr'],
+    });
+    const prompt = buildExplainItemPrompt(jiraItem, NOW, ME)[0].content;
+    assert.match(prompt, /Acceptance criteria:/);
+    assert.match(prompt, /\[redacted\]/);
+    assert.doesNotMatch(prompt, /ghp_a{40}/);
+    const match = /Acceptance criteria: (.+)$/m.exec(prompt);
+    assert.ok(match);
+    assert.ok(match[1].length <= MAX_COMMENT_CHARS);
+  });
+
   test('detailedDescriptor_respectsExtraCommentCap', () => {
     const prompt = buildExplainItemPrompt(richPrItem(), NOW, ME)[0].content;
     const additional = [...prompt.matchAll(/Additional comment: <comment /g)];

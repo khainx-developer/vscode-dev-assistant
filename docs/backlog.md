@@ -3,33 +3,28 @@
 Single ordered list of work to do. Product rules and scope live in
 [roadmap.md](roadmap.md). Last reviewed 2026-11-21 (against v0.3.1 + PR #13).
 
-Status of everything below: **not started** (checked against `src/`).
+Status: spike deleted + acceptance criteria on the inbox card completed this run;
+Flagged and below still **not started** (checked against `src/`).
+
+## Jira Field Spike findings
+
+- **description**: MCP string (markdown/plain or HTML when forced); also accept ADF and flatten via `flattenAdf`; do not assume always ADF
+- **issuelinks**: array of `{id, type:{id,name,inward,outward}, inwardIssue?|outwardIssue?}` with linked `status.statusCategory`
+- **statusCategory**: `{id,key,colorName,name}` on status and sometimes top-level; keys `new`|`indeterminate`|`done`; JQL works
+- **Flagged**: `customfield_10021`; value `[{value:"Impediment",id:"10019"}]`; JQL `flagged is not EMPTY` works
+- **Acceptance criteria**: NOT a custom field on WD Story create-meta; heading in description (`## Acceptance Criteria` / `## Acceptance criteria`); else full description
 
 ## Now
 
-1. **Run the Jira Field Spike, then delete it.**
-   - Run "DevMate Kit (Dev): Jira Field Spike" in an Extension Development Host.
-   - Record what the Jira MCP returns: description, `issuelinks`, `statusCategory`,
-     the Flagged field, and whether acceptance criteria are a heading in the
-     description or a custom field.
-   - Then remove `src/app/jiraFieldSpike.ts`, its registration in
-     `src/extension.ts` and its `package.json` entry. It currently ships in the
-     Command Palette.
-   - Unblocks items 2 and 3.
-2. **Acceptance criteria on the inbox card.**
-   - Add `description` to `JiraTask`; parse an "Acceptance criteria" heading or
-     section, fall back to the full description. Handle Atlassian document format.
-   - Run the existing credential scan and length trimming before anything goes to
-     an AI.
-3. **Blockers, part 2: Flagged / Impediment field**, using the shape the spike
+1. **Blockers, part 2: Flagged / Impediment field**, using the shape the spike
    shows.
-4. **Current branch → status bar** (approved, read-only).
+2. **Current branch → status bar** (approved, read-only).
    - Read HEAD via the built-in `vscode.git` API; branch name only, no writes.
      Quietly off if the git extension is missing; multi-root: use the active
      editor's repo.
    - Show the ticket key from the branch name (same matching as the PR linker);
      click opens the card or the Jira page.
-5. **Docs catch-up** (small, do alongside the next release):
+3. **Docs catch-up** (small, do alongside the next release):
    - `README.md`: intro still describes a radar only; add the "developer tools"
      line. Features section should cover the Tools tab (JWT, Date/Timestamp, Hash,
      JSON ↔ YAML).
@@ -38,22 +33,22 @@ Status of everything below: **not started** (checked against `src/`).
 
 ## Next
 
-6. **Auto-pause outside working hours**: schedule for the existing Sleep/Wake
+4. **Auto-pause outside working hours**: schedule for the existing Sleep/Wake
    monitoring (e.g. Mon–Fri 09:00–18:00).
-7. **@mention detection**: mentions of you become an attention reason and sharpen
+5. **@mention detection**: mentions of you become an attention reason and sharpen
    awaiting-reply. GitHub comment bodies are plain text; Jira comments are
    flattened from the Atlassian document format, so verify mentions survive.
-8. **Run Tool…**: one Command Palette entry with a searchable list of all tools,
+6. **Run Tool…**: one Command Palette entry with a searchable list of all tools,
    running the chosen tool on the editor selection and writing the result back or
    to the clipboard. JWT, Hash, Date/Timestamp and JSON ↔ YAML are sidebar-only
    today.
 
 ## Decision needed
 
-9. **Webview UI migration to Preact + JSX + TypeScript** (about 6-8 days, pilot
+7. **Webview UI migration to Preact + JSX + TypeScript** (about 6-8 days, pilot
    about 1 day). Status: proposed, 2026-11-15. Full proposal in
    [Webview UI migration](#webview-ui-migration) below. Recommendation: do the
-   1-day pilot (tool panel) before items 2, 6 and 7 if they touch the dashboard or
+   1-day pilot (tool panel) before items 4 and 5 if they touch the dashboard or
    sidebar UI heavily; otherwise defer.
 
 ## Later, only if needed

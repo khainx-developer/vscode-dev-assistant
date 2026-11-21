@@ -35,6 +35,10 @@ Keep the sidebar tabs at Home / Tools / Setup. A tool is defined once in
 
 ## Decided
 
+- **Jira Field Spike done**: findings are in [backlog.md](backlog.md). Acceptance
+  criteria are a description heading (not a custom field); Flagged is
+  `customfield_10021`. The spike command is removed.
+
 - **Read-only current-branch detection is approved**, through the built-in
   `vscode.git` API. Branch name only, no writes. A missing git extension turns the
   feature off quietly. In multi-root workspaces use the repo of the active editor.
