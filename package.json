@@ -157,6 +157,44 @@
           "default": true,
           "description": "Keep watching GitHub and Jira. Turn off to pause all monitoring network activity (no refresh, no connections) while keeping your sign-in."
         },
+        "devMateKit.monitoring.workingHours.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically pause monitoring outside the working-hours window below. Does not change the manual monitoring toggle."
+        },
+        "devMateKit.monitoring.workingHours.days": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "sun",
+              "mon",
+              "tue",
+              "wed",
+              "thu",
+              "fri",
+              "sat"
+            ]
+          },
+          "default": [
+            "mon",
+            "tue",
+            "wed",
+            "thu",
+            "fri"
+          ],
+          "description": "Weekdays (local time) when monitoring may run if working hours are enabled."
+        },
+        "devMateKit.monitoring.workingHours.start": {
+          "type": "string",
+          "default": "09:00",
+          "description": "Local start time (HH:MM, inclusive) of the working-hours window."
+        },
+        "devMateKit.monitoring.workingHours.end": {
+          "type": "string",
+          "default": "18:00",
+          "description": "Local end time (HH:MM, exclusive) of the working-hours window. If end is not after start, working hours are ignored (always on)."
+        },
         "devMateKit.notifications.enabled": {
           "type": "boolean",
           "default": true,

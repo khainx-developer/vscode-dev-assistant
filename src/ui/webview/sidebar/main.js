@@ -500,6 +500,43 @@ function defaultOpenStep(steps) {
   return next ? next.id : null;
 }
 
+const WEEKDAY_OPTIONS = [
+  { id: 'mon', label: 'Mon' },
+  { id: 'tue', label: 'Tue' },
+  { id: 'wed', label: 'Wed' },
+  { id: 'thu', label: 'Thu' },
+  { id: 'fri', label: 'Fri' },
+  { id: 'sat', label: 'Sat' },
+  { id: 'sun', label: 'Sun' },
+];
+
+function workingHoursPrefs() {
+  const hours = status?.workingHours || { enabled: false, days: ['mon', 'tue', 'wed', 'thu', 'fri'], start: '09:00', end: '18:00' };
+  const daySet = new Set(hours.days || []);
+  return `<div class="working-hours">
+    <label class="checkbox"><input type="checkbox" id="workingHoursEnabled"${hours.enabled ? ' checked' : ''}> Auto-pause outside working hours</label>
+    <p class="field-help">Pauses monitoring outside the window below. Does not change Sleep / Wake.</p>
+    ${hours.enabled ? `<div class="working-hours-fields">
+      <span class="field-label">Active days</span>
+      <div class="day-chips" role="group" aria-label="Working days">
+        ${WEEKDAY_OPTIONS.map((day) => `<label class="day-chip"><input type="checkbox" class="wh-day" value="${day.id}"${daySet.has(day.id) ? ' checked' : ''}><span>${day.label}</span></label>`).join('')}
+      </div>
+      <div class="time-row">
+        <label class="time-field"><span class="field-label">Start</span><input type="time" id="workingHoursStart" value="${esc(hours.start)}"></label>
+        <label class="time-field"><span class="field-label">End</span><input type="time" id="workingHoursEnd" value="${esc(hours.end)}"></label>
+      </div>
+    </div>` : ''}
+  </div>`;
+}
+
+function selectedWorkingDays() {
+  return [...app.querySelectorAll('.wh-day:checked')].map((input) => input.value);
+}
+
+function postWorkingHours(patch) {
+  post({ command: 'settings.setWorkingHours', ...patch });
+}
+
 function setupTab() {
   if (!status) return '<div class="stack"><div class="skeleton"></div><div class="skeleton"></div></div>';
   const { steps, completed, required } = status.setup;
@@ -525,12 +562,13 @@ function setupTab() {
     </ol>
     <div class="prefs">
       <h3>Preferences</h3>
-      ${status.monitoringEnabled === false
+      ${status.monitoringManuallyEnabled === false
         ? `<button type="button" data-action="resumeMonitoring">${icon('refresh', 'sm')}Wake — resume monitoring</button>
            <p class="field-help">Monitoring is asleep. GitHub and Jira are not connecting. Your sign-in is kept.</p>`
         : `<button type="button" class="secondary" data-action="pauseMonitoring">${icon('stop', 'sm')}Sleep — turn off monitoring</button>
            <p class="field-help">Stops refreshing and connecting until you wake it. Useful at night.</p>`}
       <label class="checkbox"><input type="checkbox" id="notifications"${status.notificationsEnabled ? ' checked' : ''}> Notify me when something new needs my attention</label>
+      ${workingHoursPrefs()}
       <button type="button" class="link" data-action="openSettings">All DevMate Kit settings</button>
     </div>
   </div>`;
@@ -705,6 +743,19 @@ app.addEventListener('change', (event) => {
     post({ command: 'ai.setModel', modelId: target.value });
   } else if (target.id === 'notifications') {
     post({ command: 'settings.setNotifications', enabled: target.checked });
+  } else if (target.id === 'workingHoursEnabled') {
+    postWorkingHours({ enabled: target.checked });
+  } else if (target.classList?.contains('wh-day')) {
+    const days = selectedWorkingDays();
+    if (days.length === 0) {
+      target.checked = true;
+      return;
+    }
+    postWorkingHours({ days });
+  } else if (target.id === 'workingHoursStart' || target.id === 'workingHoursEnd') {
+    const start = value('workingHoursStart') || status?.workingHours?.start || '09:00';
+    const end = value('workingHoursEnd') || status?.workingHours?.end || '18:00';
+    postWorkingHours({ start, end });
   }
 });
 
