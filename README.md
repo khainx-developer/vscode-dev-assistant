@@ -1,6 +1,6 @@
 # DevMate Kit
 
-**Your daily work radar.** DevMate Kit shows the GitHub pull requests and Jira tickets that need *your* attention — right inside VS Code — and can turn them into a prioritized plan or a standup update with the AI models your editor already has.
+**Your daily work radar and developer tools.** DevMate Kit shows the GitHub pull requests and Jira tickets that need *your* attention — right inside VS Code — and can turn them into a prioritized plan or a standup update with the AI models your editor already has.
 
 > What should I do next? Open the sidebar and you'll know.
 
@@ -50,12 +50,12 @@ Only titles, keys, statuses, reasons, dates and short comment excerpts are sent 
 
 If editor models are empty, Setup can **suggest** Cursor Agent CLI; it never switches provider automatically.
 
-### Text utilities
+### Tools tab
 
 Quick transforms from the **Tools** tab (grouped as Code / API), the Command Palette, or the editor right-click menu under **DevMate Kit** (they work on every selection, or the current line):
 
 - Base64 encode / decode, URL encode / decode
-- JWT decoder (decode only — never verifies the signature)
+- JWT Decoder (decode only — never verifies the signature)
 - Hash — SHA-256, SHA-1, MD5, SHA-512 (text exactly as typed, including trailing newline; panel uses `\n`, so Windows `\r\n` differs from the file; MD5/SHA-1 for checksums only)
 - Format JSON, escape text as a JSON string
 - JSON ↔ YAML — convert between JSON and YAML (comments dropped; multi-document YAML → JSON array)
