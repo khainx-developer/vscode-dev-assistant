@@ -1,10 +1,14 @@
 // Daily Tasks dashboard (editor panel). Attention Inbox first; everything else one click away.
 import './dashboard.css';
+import {
+  NEXT_ACTIONS_DEFAULT_LIMIT,
+  buildNextActions,
+  limitNextActions,
+} from '../../../services/analysis/nextActions';
 import { loadUiState, onMessage, post, saveUiState } from '../shared/bridge.js';
 import { attrs, clockTime, delegate, esc, plural, renderPreserving, timeUntil } from '../shared/dom.js';
 import { icon } from '../shared/icons.js';
-import { renderMarkdown } from '../shared/markdown.js';
-import { isDeepEditorQuestion, itemTitleText, renderAttentionItem, renderJiraItem, renderPrItem } from '../shared/items.js';
+import { itemTitleText, renderAttentionItem, renderJiraItem, renderPrItem } from '../shared/items.js';
 
 const app = document.getElementById('app');
 
@@ -22,11 +26,24 @@ const ui = loadUiState({
   mineOnly: false,
   teamFilter: '',
   jiraFilters: {},
-  open: { snoozed: false },
+  open: { snoozed: false, nextActions: true },
+  nextActionsShowAll: false,
   expanded: {},
-  chatOpen: {},
-  deepHint: {},
+  /** Keys the user has Analyze'd — card detail stays hidden until then. */
+  analysisUnlocked: {},
+  /** Keys whose analysis panel is currently expanded on the card. */
+  analysisDetailOpen: {},
 });
+
+const NEXT_ACTION_KIND_LABELS = {
+  'fix-ci': 'Fix CI',
+  'code-change': 'Code change',
+  'answer-question': 'Answer',
+  reply: 'Reply',
+  'review-context': 'Review',
+  decide: 'Decide',
+  'follow-up': 'Follow-up',
+};
 
 function persist() {
   saveUiState(ui);
@@ -105,8 +122,7 @@ function header(showAi = true) {
       <button type="button" class="secondary icon-only" data-action="refresh"${actionsEnabled ? '' : ' disabled'} title="${paused ? 'Monitoring is paused' : 'Refresh now'}" aria-label="Refresh now">
         <span class="${refreshing ? 'spin' : ''}">${icon('refresh', 'sm')}</span>
       </button>
-      ${showAi && !paused ? `<button type="button" class="secondary" data-action="aiStandup" title="Generate a Yesterday / Today / Blockers summary">${icon('list', 'sm')}Standup</button>
-      <button type="button" data-action="aiWhatNext"${ai?.run?.status === 'running' ? ' disabled' : ''}>${icon('sparkle', 'sm')}Ask AI: What should I do?</button>` : ''}
+      ${showAi && !paused ? `<button type="button" class="secondary" data-action="aiStandup" title="Generate a Yesterday / Today / Blockers summary">${icon('list', 'sm')}Standup</button>` : ''}
     </div>
   </header>`;
 }
@@ -176,52 +192,6 @@ function welcome() {
   </section>`;
 }
 
-function aiCard() {
-  const run = ai?.run;
-  // Per-card Ask AI answers render inside the card chat — keep the top
-  // panel for inbox-wide runs (What next) only.
-  if (!run) return '';
-  const running = run.status === 'running';
-  let body;
-  if (run.status === 'error') {
-    body = `<div class="banner${run.setupHint ? '' : ' error'}">
-      ${icon(run.setupHint ? 'info' : 'alert')}
-      <div class="banner-body">${esc(run.error || 'The AI request failed.')}</div>
-      ${run.setupHint
-        ? (ai.provider === 'none'
-          ? '<button type="button" data-action="aiEnable">Turn on AI</button>'
-          : ai.suggestCursorCli
-          ? '<button type="button" class="secondary" data-action="useCursorCli">Use Cursor Agent CLI</button><button type="button" class="ghost" data-action="openSetup" data-step="ai">Open Setup</button>'
-          : '<button type="button" class="secondary" data-action="openSetup" data-step="ai">Open Setup</button>')
-        : (run.kind === 'whatNext' ? '<button type="button" class="secondary" data-action="aiWhatNext">Try again</button>' : '')}
-    </div>`;
-  } else if (run.status === 'cancelled') {
-    body = `${run.text ? `<div class="markdown">${renderMarkdown(run.text)}</div>` : ''}<p class="muted small">Stopped.</p>`;
-  } else if (running && !run.text) {
-    body = '<div class="stack"><div class="skeleton short"></div><div class="skeleton short"></div><p class="muted small">Thinking about your inbox…</p></div>';
-  } else {
-    body = `<div class="markdown">${renderMarkdown(run.text)}${running ? '<span class="cursor"></span>' : ''}</div>`;
-  }
-  const actions = running
-    ? '<button type="button" class="secondary" data-action="aiCancel">' + icon('stop', 'sm') + 'Stop</button>'
-    : [
-      run.text && run.status === 'done' ? `<button type="button" class="ghost" data-action="aiCopy" title="Copy as Markdown">${icon('copy', 'sm')}Copy</button>` : '',
-      run.kind === 'whatNext' && run.status === 'done' ? `<button type="button" class="ghost" data-action="aiWhatNext">${icon('refresh', 'sm')}Ask again</button>` : '',
-    ].join('');
-  return `<section class="ai-card" aria-live="polite" aria-busy="${running}">
-    <div class="ai-head">
-      ${icon('sparkle')}
-      <strong>${esc(run.title)}</strong>
-      ${run.modelName ? `<span class="muted small">${esc(run.modelName)}</span>` : ''}
-      <span class="spacer"></span>
-      ${actions}
-      <button type="button" class="ghost icon-only" data-action="aiDismiss" aria-label="Close AI answer" title="Close">${icon('close', 'sm')}</button>
-    </div>
-    <div class="ai-body">${body}</div>
-    ${run.status === 'done' ? '<p class="ai-foot muted small">AI-generated from your inbox — double-check before acting.</p>' : ''}
-  </section>`;
-}
-
 function tiles() {
   const counts = inbox?.counts || { attention: 0, myPrs: 0, teamPrs: 0, myJira: 0 };
   const loading = !inbox || inbox.items === null;
@@ -257,33 +227,122 @@ function emptyState(iconName, title, text, action) {
 
 const ctx = () => ({ githubState: github, jiraState: jira });
 
+function nextActionRowHtml(row) {
+  const kindLabel = NEXT_ACTION_KIND_LABELS[row.kind] || row.kind;
+  const progress = row.status === 'progress'
+    ? '<span class="analysis-progress muted small" aria-label="Progress detected">progress detected</span>'
+    : '';
+  const checkboxId = `next-action-done-${row.itemKey}-${row.actionIndex}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const buttons = [
+    row.handoffPrompt
+      ? `<button type="button" class="ghost"${attrs({
+        'data-action': 'analysisCopyPrompt',
+        'data-key': row.itemKey,
+        'data-index': row.actionIndex,
+        title: 'Copy editor-AI handoff prompt',
+      })}>${icon('copy', 'sm')}Copy prompt</button>`
+      : '',
+    row.link && row.openLabel
+      ? `<button type="button" class="secondary"${attrs({
+        'data-action': 'analysisOpenLink',
+        'data-url': row.link,
+        'aria-label': row.openLabel,
+      })}>${icon('external', 'sm')}${esc(row.openLabel)}</button>`
+      : '',
+  ].join('');
+
+  return `<div class="next-action-row analysis-action${row.status === 'progress' ? ' is-progress' : ''}">
+    <label class="analysis-action-mark" for="${esc(checkboxId)}">
+      <input type="checkbox" id="${esc(checkboxId)}"${attrs({
+        'data-action': 'analysisToggleDone',
+        'data-key': row.itemKey,
+        'data-action-key': row.actionKey || null,
+        'aria-label': `Mark ${row.title} as done`,
+      })} />
+    </label>
+    <div class="analysis-action-body">
+      <div class="row wrap next-action-item">
+        <button type="button" class="ghost next-action-jump"${attrs({
+          'data-action': 'scrollToItem',
+          'data-key': row.itemKey,
+          title: 'Show this card in the inbox',
+        })}>
+          <span class="next-action-key">${esc(row.itemDisplayKey)}</span>
+          <span class="next-action-item-title">${esc(row.itemTitle)}</span>
+        </button>
+        <span class="chip neutral">${esc(kindLabel)}</span>
+        ${progress}
+      </div>
+      <div class="row wrap analysis-action-head">
+        <div class="analysis-action-title">${esc(row.title)}</div>
+        <span class="spacer"></span>
+        <div class="analysis-action-buttons">${buttons}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function nextActionsSection(visibleItems) {
+  // Backend on + explicit model — never invent a default for Next actions.
+  if (!ai || ai.provider === 'none' || !ai.selectedModelId) return '';
+
+  const open = ui.open.nextActions !== false;
+  const rows = buildNextActions({
+    items: visibleItems || [],
+    analysisByKey,
+  });
+  const limited = ui.nextActionsShowAll
+    ? { visible: rows, total: rows.length, truncated: false }
+    : limitNextActions(rows, NEXT_ACTIONS_DEFAULT_LIMIT);
+  const count = rows.length;
+
+  let body;
+  if (!visibleItems) {
+    body = skeletonList(2);
+  } else if (count === 0) {
+    body = `<p class="muted small next-actions-empty">No analysed actions yet. Analyze a card or turn on automatic analysis.</p>`;
+  } else {
+    const showAll = limited.truncated
+      ? `<button type="button" class="ghost"${attrs({ 'data-action': 'nextActionsShowAll' })}>Show all (${count})</button>`
+      : (ui.nextActionsShowAll && count > NEXT_ACTIONS_DEFAULT_LIMIT
+        ? `<button type="button" class="ghost"${attrs({ 'data-action': 'nextActionsShowLess' })}>Show less</button>`
+        : '');
+    body = `<div class="next-actions-list" role="list">${limited.visible.map(nextActionRowHtml).join('')}</div>${showAll}`;
+  }
+
+  return `<div class="group next-actions">
+    <button type="button" class="group-head" data-action="toggleGroup" data-group="nextActions" aria-expanded="${open}">
+      ${icon(open ? 'chevronDown' : 'chevronRight', 'sm')}${icon('sparkle', 'sm')}<span>Next actions</span><span class="count">${count}</span>
+    </button>
+    ${open ? `<div class="next-actions-body">${body}</div>` : ''}
+  </div>`;
+}
+
 function attentionSection() {
   const items = inbox?.items;
   let list;
+  const visible = items ? (ui.mineOnly ? items.filter(isMine) : items) : null;
   if (!items) {
     list = skeletonList();
+  } else if (visible.length === 0) {
+    list = items.length > 0
+      ? emptyState('user', 'Nothing of yours needs attention.', `${plural(items.length, 'item')} for your team ${items.length === 1 ? 'is' : 'are'} hidden by “Mine only”.`, '')
+      : emptyState('checkCircle', 'You’re clear — nothing needs your attention right now.',
+        status?.lastRefreshAt ? `Last checked at ${clockTime(status.lastRefreshAt)}.` : '', '');
   } else {
-    const visible = ui.mineOnly ? items.filter(isMine) : items;
-    if (visible.length === 0) {
-      list = items.length > 0
-        ? emptyState('user', 'Nothing of yours needs attention.', `${plural(items.length, 'item')} for your team ${items.length === 1 ? 'is' : 'are'} hidden by “Mine only”.`, '')
-        : emptyState('checkCircle', 'You’re clear — nothing needs your attention right now.',
-          status?.lastRefreshAt ? `Last checked at ${clockTime(status.lastRefreshAt)}.` : '', '');
-    } else {
-      list = `<div class="list">${visible.map((item) => renderAttentionItem(item, ctx(), {
-        expanded: ui.expanded,
-        menuKey,
-        snoozable: true,
-        threads: ai?.threads || {},
-        chatOpen: ui.chatOpen,
-        deepHint: ui.deepHint,
-        aiEnabled: !!ai && ai.provider !== 'none',
-        analysis: analysisByKey,
-      })).join('')}</div>`;
-    }
+    list = `<div class="list">${visible.map((item) => renderAttentionItem(item, ctx(), {
+      expanded: ui.expanded,
+      menuKey,
+      snoozable: true,
+      aiEnabled: !!ai && ai.provider !== 'none' && !!ai.selectedModelId,
+      analysis: analysisByKey,
+      analysisUnlocked: ui.analysisUnlocked,
+      analysisDetailOpen: ui.analysisDetailOpen,
+    })).join('')}</div>`;
   }
-  const count = items ? (ui.mineOnly ? items.filter(isMine).length : items.length) : 0;
+  const count = visible ? visible.length : 0;
   return `<section class="hero" aria-labelledby="inbox-title">
+    ${nextActionsSection(visible)}
     <div class="section-head">
       <h2 id="inbox-title">${icon('bell')}Attention Inbox <span class="count">${count}</span></h2>
       <span class="spacer"></span>
@@ -399,8 +458,8 @@ function render() {
   }
   const needsSetup = status.dashboard.kind === 'needsSetup';
   const html = needsSetup
-    ? `${header(false)}${pausedBanner()}${aiCard()}${welcome()}`
-    : `${header()}${pausedBanner()}${failureBanner()}${setupCallouts()}${aiCard()}${tiles()}${heroSection()}${everythingElse()}`;
+    ? `${header(false)}${pausedBanner()}${welcome()}`
+    : `${header()}${pausedBanner()}${failureBanner()}${setupCallouts()}${tiles()}${heroSection()}${everythingElse()}`;
   renderPreserving(app, html);
 }
 
@@ -423,6 +482,28 @@ delegate(app, {
     persist();
     render();
   },
+  nextActionsShowAll: () => {
+    ui.nextActionsShowAll = true;
+    persist();
+    render();
+  },
+  nextActionsShowLess: () => {
+    ui.nextActionsShowAll = false;
+    persist();
+    render();
+  },
+  scrollToItem: (el) => {
+    const key = el.getAttribute('data-key');
+    if (!key) return;
+    const card = app.querySelector(`[data-item-key="${CSS.escape(key)}"]`);
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    card.classList.remove('item-flash');
+    // Force reflow so re-adding the class retriggers the animation.
+    void card.offsetWidth;
+    card.classList.add('item-flash');
+    window.setTimeout(() => card.classList.remove('item-flash'), 1200);
+  },
   toggleDetail: (el) => {
     const key = el.getAttribute('data-key');
     ui.expanded[key] = !ui.expanded[key];
@@ -430,58 +511,13 @@ delegate(app, {
     persist();
     render();
   },
-  toggleChat: (el) => {
+  toggleAnalysisDetail: (el) => {
     const key = el.getAttribute('data-key');
-    if (!key) return;
-    const thread = ai?.threads?.[key];
-    const open = ui.chatOpen[key] === false ? false : !!(ui.chatOpen[key] || thread);
-    // Persist explicit false so Hide wins over an existing thread; true re-opens it.
-    ui.chatOpen[key] = !open;
+    if (!key || !ui.analysisUnlocked?.[key]) return;
+    if (ui.analysisDetailOpen[key]) delete ui.analysisDetailOpen[key];
+    else ui.analysisDetailOpen[key] = true;
     persist();
     render();
-    if (ui.chatOpen[key]) {
-      app.querySelector(`[data-chat-input="${CSS.escape(key)}"]`)?.focus();
-    }
-  },
-  chatSend: (el) => {
-    const key = el.getAttribute('data-key');
-    const preset = el.getAttribute('data-text');
-    const input = app.querySelector(`[data-chat-input="${CSS.escape(key)}"]`);
-    const text = (preset || input?.value || '').trim();
-    if (!text) return;
-    ui.chatOpen[key] = true;
-    // Typed deep questions need the PR/Jira body — show copy-prompt actions instead of a thin card answer.
-    if (!preset && isDeepEditorQuestion(text)) {
-      ui.deepHint[key] = text;
-      persist();
-      render();
-      return;
-    }
-    if (ui.deepHint?.[key]) delete ui.deepHint[key];
-    if (input && !preset) input.value = '';
-    persist();
-    post({ command: 'ai.chat.send', key, text });
-  },
-  dismissDeepHint: (el) => {
-    const key = el.getAttribute('data-key');
-    if (!key) return;
-    delete ui.deepHint[key];
-    persist();
-    render();
-  },
-  chatClear: (el) => {
-    const key = el.getAttribute('data-key');
-    if (!key) return;
-    delete ui.deepHint[key];
-    persist();
-    post({ command: 'ai.chat.clear', key });
-    // Optimistic local clear so the transcript disappears even before ai.state arrives.
-    if (ai?.threads?.[key]) {
-      const threads = { ...ai.threads };
-      delete threads[key];
-      ai = { ...ai, threads };
-      render();
-    }
   },
   openPr: (el) => post({ command: 'github.openPr', repoKey: el.getAttribute('data-repo'), number: Number(el.getAttribute('data-number')), url: el.getAttribute('data-url') }),
   openComment: (el) => post({ command: 'github.openComment', repoKey: el.getAttribute('data-repo'), number: Number(el.getAttribute('data-number')), url: el.getAttribute('data-url') }),
@@ -492,23 +528,14 @@ delegate(app, {
     render();
     if (menuKey) app.querySelector('.menu [role="menuitem"]')?.focus();
   },
-  reviewInChat: (el) => {
-    menuKey = null;
-    const key = el.getAttribute('data-key');
-    if (key && ui.deepHint?.[key]) delete ui.deepHint[key];
-    persist();
-    post({
-      command: 'ai.reviewInChat',
-      key,
-      template: el.getAttribute('data-template') || 'review',
-    });
-    render();
-  },
   analysisRun: (el) => {
     const key = el.getAttribute('data-key');
     if (!key) return;
     const force = el.getAttribute('data-force') === 'true';
-    analysisByKey = { ...analysisByKey, [key]: { status: 'analyzing' } };
+    ui.analysisUnlocked[key] = true;
+    ui.analysisDetailOpen[key] = true;
+    persist();
+    analysisByKey = { ...analysisByKey, [key]: { ...(analysisByKey[key] || {}), status: 'analyzing' } };
     render();
     post({ command: 'analysis.run', key, force: force || undefined });
   },
@@ -533,27 +560,38 @@ delegate(app, {
     post({ command: 'attention.snooze', key: el.getAttribute('data-key'), option: el.getAttribute('data-option') });
   },
   unsnooze: (el) => post({ command: 'attention.unsnooze', key: el.getAttribute('data-key') }),
-  aiWhatNext: () => post({ command: 'ai.whatNext' }),
   aiStandup: () => post({ command: 'ai.standup' }),
   aiCancel: () => post({ command: 'ai.cancel' }),
-  aiDismiss: () => post({ command: 'ai.dismiss' }),
-  aiCopy: () => post({ command: 'ai.copy' }),
-  aiEnable: () => {
-    // Host-aware default when enabling from none (VS Code → vscodeLm, Cursor → cursorCli).
-    if (ai?.provider === 'none') {
-      const provider = ai.defaultEnableProvider === 'cursorCli' ? 'cursorCli' : 'vscodeLm';
-      post({ command: 'ai.setProvider', provider });
-    }
-    post({ command: 'ai.whatNext' });
-  },
-  useCursorCli: () => {
-    post({ command: 'ai.setProvider', provider: 'cursorCli' });
-    post({ command: 'ai.whatNext' });
-  },
 });
 
 app.addEventListener('change', (event) => {
   const target = event.target;
+  if (target?.getAttribute?.('data-action') === 'analysisToggleDone') {
+    const key = target.getAttribute('data-key');
+    const actionKey = target.getAttribute('data-action-key');
+    if (!key || !actionKey) return;
+    const entry = analysisByKey[key];
+    const nextStatus = target.checked ? 'done' : 'open';
+    if (entry?.analysis) {
+      analysisByKey = {
+        ...analysisByKey,
+        [key]: {
+          ...entry,
+          actionStatus: {
+            ...(entry.actionStatus || {}),
+            [actionKey]: nextStatus,
+          },
+        },
+      };
+      render();
+    }
+    post({
+      command: target.checked ? 'analysis.markDone' : 'analysis.unmarkDone',
+      key,
+      actionKey,
+    });
+    return;
+  }
   if (target.id === 'mineOnly') {
     ui.mineOnly = target.checked;
   } else if (target.id === 'teamFilter') {
@@ -580,24 +618,6 @@ document.addEventListener('keydown', (event) => {
     menuKey = null;
     render();
     app.querySelector(`[data-action="toggleSnoozeMenu"][data-key="${CSS.escape(key)}"]`)?.focus();
-    return;
-  }
-  if (event.key === 'Enter' && event.target?.matches?.('[data-chat-input]')) {
-    event.preventDefault();
-    const key = event.target.getAttribute('data-chat-input');
-    const text = event.target.value.trim();
-    if (!text) return;
-    ui.chatOpen[key] = true;
-    if (isDeepEditorQuestion(text)) {
-      ui.deepHint[key] = text;
-      persist();
-      render();
-      return;
-    }
-    if (ui.deepHint?.[key]) delete ui.deepHint[key];
-    event.target.value = '';
-    persist();
-    post({ command: 'ai.chat.send', key, text });
   }
 });
 
@@ -639,6 +659,22 @@ onMessage((message) => {
         };
       }
       break;
+    case 'analysis.snapshot': {
+      const incoming = message.entries || {};
+      const next = { ...analysisByKey };
+      for (const key of Object.keys(next)) {
+        const status = next[key]?.status;
+        if ((status === 'ready' || status === 'stale') && !incoming[key]) {
+          delete next[key];
+        }
+      }
+      for (const [key, entry] of Object.entries(incoming)) {
+        if (next[key]?.status === 'analyzing') continue;
+        next[key] = entry;
+      }
+      analysisByKey = next;
+      break;
+    }
     default:
       return;
   }

@@ -44,19 +44,28 @@ export interface ChatModelInfo {
 }
 
 /**
- * Pick the model to use: the saved one if the host still offers it (matched by id, then by name
- * or family for values saved by older versions), else the first Copilot model, else the first
- * model at all. Returns undefined when the host offers no models.
+ * Resolve a user-chosen model only (id, then legacy name/family). No automatic fallback —
+ * Analyze / auto-analysis require an explicit Setup selection.
+ */
+export function pickConfiguredModel(
+  models: ChatModelInfo[],
+  savedModel: string | undefined | null,
+): ChatModelInfo | undefined {
+  const saved = savedModel?.trim();
+  if (!saved || models.length === 0) return undefined;
+  const exact = models.find((model) => model.id === saved);
+  if (exact) return exact;
+  return models.find((model) => model.name === saved || model.family === saved);
+}
+
+/**
+ * @deprecated Prefer pickConfiguredModel for AI runs. Kept for tests / legacy callers that
+ * still document the old “first Copilot” fallback.
  */
 export function pickDefaultModel(models: ChatModelInfo[], savedModel: string | undefined | null): ChatModelInfo | undefined {
+  const configured = pickConfiguredModel(models, savedModel);
+  if (configured) return configured;
   if (models.length === 0) return undefined;
-  const saved = savedModel?.trim();
-  if (saved) {
-    const exact = models.find((model) => model.id === saved);
-    if (exact) return exact;
-    const loose = models.find((model) => model.name === saved || model.family === saved);
-    if (loose) return loose;
-  }
   return models.find((model) => model.vendor === 'copilot') ?? models[0];
 }
 

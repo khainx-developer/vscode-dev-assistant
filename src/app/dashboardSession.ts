@@ -41,6 +41,10 @@ export interface AiCommandHandler {
   replay(surface: SessionSurface): void;
   selectedModelName(): string | null;
   cliStatus(): { available: boolean; authenticated: boolean };
+  /** After inbox recompute: plan and run automatic analyses when enabled. */
+  onInboxRecomputed(): void | Promise<void>;
+  /** Cancel in-flight analysis (user or automatic), e.g. on sign-out. */
+  cancelAnalysisWork(): void;
 }
 
 const STALE_AFTER_MS = 60 * 1000;
@@ -347,6 +351,7 @@ export class DashboardSession implements vscode.Disposable {
       const authenticated = !!message.state.authenticated;
       if (this.githubWasAuthenticated && !authenticated) {
         void this.services.analysisStore.clear();
+        this.aiHandler?.cancelAnalysisWork();
       }
       this.githubWasAuthenticated = authenticated;
       this.githubState = message.state;
@@ -385,6 +390,7 @@ export class DashboardSession implements vscode.Disposable {
     }
     this.broadcast({ command: 'dashboard.inboxState', state: this.inboxState });
     this.publishStatus();
+    this.aiHandler?.onInboxRecomputed();
   }
 
   private publishStatus(): void {
@@ -451,10 +457,8 @@ export class DashboardSession implements vscode.Disposable {
     if (this.isMonitoringEnabled()) return false;
     if (command === 'session.refreshAll') return true;
     if (
-      command === 'ai.whatNext'
-      || command === 'analysis.run'
+      command === 'analysis.run'
       || command === 'ai.reviewInChat'
-      || command === 'ai.chat.send'
       || command === 'ai.standup'
     ) return true;
     if (command.startsWith('github.') || command.startsWith('jira.')) {

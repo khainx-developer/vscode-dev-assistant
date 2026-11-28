@@ -1,3 +1,4 @@
+import { buildActionKey } from '../services/analysis/actionKey';
 import type { EvidenceBundle } from '../services/analysis/evidence';
 import { buildHandoffPrompt } from '../services/analysis/handoff';
 import type { ActionKind, Analysis, EvidenceItem, ProposedAction } from '../services/analysis/types';
@@ -95,6 +96,7 @@ function enrichAction(
   const check = checkMeta(evidence.items, action);
   const view: AnalysisActionView = {
     kind: action.kind,
+    actionKey: buildActionKey(action.kind, action.evidence),
     title: action.title,
     detail: action.detail,
     findings: action.findings,

@@ -4,6 +4,7 @@ import {
   isCursorHost,
   isLegacyProviderValue,
   normalizeAiProvider,
+  pickConfiguredModel,
   pickDefaultModel,
   sortModelsForPicker,
   type ChatModelInfo,
@@ -42,6 +43,15 @@ suite('aiSettings', () => {
     assert.strictEqual(defaultAiProviderForHost('Cursor'), 'cursorCli');
     assert.strictEqual(defaultAiProviderForHost('Visual Studio Code'), 'vscodeLm');
     assert.strictEqual(defaultAiProviderForHost(undefined), 'vscodeLm');
+  });
+
+  test('pickConfiguredModel_requiresSavedMatch_noFallback', () => {
+    assert.strictEqual(pickConfiguredModel([copilotA, copilotB, byok], 'byok-c'), byok);
+    assert.strictEqual(pickConfiguredModel([copilotA, copilotB], 'Claude B'), copilotB);
+    assert.strictEqual(pickConfiguredModel([copilotA, copilotB], 'claude-b'), copilotB);
+    assert.strictEqual(pickConfiguredModel([byok, copilotB], 'gone'), undefined);
+    assert.strictEqual(pickConfiguredModel([byok], undefined), undefined);
+    assert.strictEqual(pickConfiguredModel([], 'anything'), undefined);
   });
 
   test('pickDefaultModel_prefersSavedId', () => {

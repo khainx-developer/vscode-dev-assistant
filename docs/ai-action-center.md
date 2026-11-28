@@ -1,6 +1,6 @@
 # AI Action Center (design)
 
-Status: **Phase 1 built; Phase 1b (integration gaps) in progress, see [backlog.md](backlog.md)**. Date: 2026-11-28.
+Status: **Phases 1–3 built** (see [backlog.md](backlog.md)); live validation pending. Date: 2026-11-28.
 Related: [roadmap.md](roadmap.md), [backlog.md](backlog.md).
 
 ## Goal
@@ -271,9 +271,10 @@ WEB-123  Add retry to uploader                    ● Urgent
 States: not analyzed (**Analyze**), analyzing, analyzed, stale (state changed,
 **Re-analyze**), unavailable (AI off or error, existing card shown).
 
-A low-confidence result is labelled as such. **Analyze replaces Explain** on the
-card from Phase 1: the Explain button and its prompt are removed in the same
-change. The card chat (**Ask AI**) stays, for follow-up questions about an item.
+A low-confidence result is labelled as such. **Analyze** is the only per-card AI
+entry point: auto-analysis may fill **Next actions**, but the card’s analysis
+panel stays closed until the user clicks **Analyze** (then Show/Hide). Card
+**Ask AI** chat and inbox-wide **What should I do next?** were removed.
 
 ## Safety and privacy
 
@@ -335,7 +336,7 @@ Each phase has an exit test.
    detection, manual marks. *Exit: urgent cards are analyzed on open, nothing is
    re-analyzed without a state change, and actions complete on their own.*
 3. **Action Center view.** A prioritized list of actions across all items in the
-   dashboard.
+   dashboard. See **Phase 3 implementation plan** below.
 
 ## Decisions from the spike
 
@@ -469,6 +470,39 @@ nothing re-runs on the next refresh; after you push a commit, `fix-ci` shows
 
 **Out of scope:** the Action Center cross-item view (Phase 3), writes to GitHub or
 Jira.
+
+## Phase 3 implementation plan
+
+Goal: a single "Next actions" list at the top of the Inbox tab so you see the
+open work across analysed cards without scrolling every item. Built only from
+data the webview already has (`analysis.snapshot` / `analysisByKey`); no new
+host calls. Never changes counts, badges or priority.
+
+1. **Pure list builder** (`services/analysis/nextActions.ts`). Input: inbox items
+   plus the per-key analysis snapshot entries (ready/stale + actionStatus).
+   Output: open actions only from **ready** entries (skip stale, done, dropped,
+   `none`), sorted by item priority, then by kind order (`fix-ci`,
+   `code-change`, `answer-question`, `reply`, `review-context`, `decide`,
+   `follow-up`), then by item recency (`latestRelevantAt`, newest first). Cap
+   helpers: default show 8, with a full list for "Show all". Mocha tests for
+   filter, sort and cap.
+2. **Webview section** (`dashboard/main.js`, CSS, shared render helpers as
+   needed). Collapsible "Next actions" above the Attention Inbox list; remember
+   collapsed state in webview UI state. Each row: item title and key, action
+   title, kind badge, the same Open / Copy prompt / done checkbox as on the
+   card. Clicking the item title scrolls to and highlights that card. Empty
+   state: "No analysed actions yet. Analyze a card or turn on automatic
+   analysis." Escape all text; keyboard accessible.
+3. **Docs.** README, CHANGELOG, walkthrough, and tick Phase 3 in
+   [backlog.md](backlog.md) when the exit test passes.
+
+**Exit test:** with two ready analyses that have open actions and one stale /
+unanalysed card, the Inbox top shows those open actions (≤8, or "Show all"),
+sorted as above; marking one done on the list collapses it on the card too;
+clicking a row title scrolls to the card; counts and badges are unchanged.
+
+**Out of scope:** new host commands, writes to GitHub or Jira, analysing from
+this list (use the card's Analyze).
 
 ## Appendix: reference extraction (from the spike, untested sketch)
 

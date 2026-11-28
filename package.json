@@ -2,7 +2,7 @@
   "name": "devmate-kit",
   "displayName": "DevMate Kit",
   "description": "Your daily work radar: GitHub pull requests and Jira tickets that need your attention, right inside VS Code — with optional AI summaries and handy text utilities.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "khainx-developer",
   "license": "MIT",
   "icon": "media/dev-assistant-activity-icon.png",
@@ -65,7 +65,7 @@
         "devMateKit.ai.model": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Model id. For `vscodeLm`, leave empty to use the first GitHub Copilot model (or the first available). For `cursorCli`, mapped to the CLI `--model` flag when non-empty. Pick from the live list with **DevMate Kit: Select AI Model**."
+          "markdownDescription": "Model id. **Required**: AI features (Analyze, automatic analysis, Next actions, standup) do not run until a model is chosen; DevMate never picks a default. For `cursorCli`, mapped to the CLI `--model` flag. Pick from the live list in Setup or with **DevMate Kit: Select AI Model**."
         },
         "devMateKit.ai.reviewPrompt": {
           "type": "string",
@@ -75,7 +75,7 @@
         "devMateKit.ai.analysis.auto": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "When AI is on, automatically analyze important inbox items after a refresh (up to the per-refresh cap). On-demand **Analyze** on a card is never capped. Automatic runs land in a later phase; the setting is stored now."
+          "markdownDescription": "When AI is on, automatically analyze important inbox items after a refresh (up to the per-refresh cap). On-demand **Analyze** on a card is never capped."
         },
         "devMateKit.ai.analysis.maxAutoPerRefresh": {
           "type": "number",
@@ -290,11 +290,6 @@
         "title": "DevMate Kit: Sign in to GitHub"
       },
       {
-        "command": "devMateKit.ai.whatNext",
-        "title": "DevMate Kit: Ask AI — What should I do next?",
-        "icon": "$(sparkle)"
-      },
-      {
         "command": "devMateKit.ai.standup",
         "title": "DevMate Kit: Generate Standup Summary",
         "icon": "$(checklist)"
@@ -396,11 +391,6 @@
           "group": "navigation@2"
         },
         {
-          "command": "devMateKit.ai.whatNext",
-          "when": "view == devMateKit.sidebar",
-          "group": "navigation@3"
-        },
-        {
           "command": "devMateKit.openSetup",
           "when": "view == devMateKit.sidebar",
           "group": "1_setup@1"
@@ -470,8 +460,8 @@
           },
           {
             "id": "turnOnAi",
-            "title": "Ask AI what to do next (optional)",
-            "description": "Use editor language models (e.g. GitHub Copilot) or the Cursor Agent CLI.\n[Select a model](command:devMateKit.ai.selectModel)",
+            "title": "Turn on AI analysis (optional)",
+            "description": "Use editor language models (e.g. GitHub Copilot) or the Cursor Agent CLI to Analyze inbox cards.\n[Select a model](command:devMateKit.ai.selectModel)",
             "media": {
               "markdown": "media/walkthrough/ai.md"
             },

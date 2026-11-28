@@ -1,16 +1,29 @@
 # Backlog
 
 Single ordered list of work to do. Product rules and scope live in
-[roadmap.md](roadmap.md). Last reviewed 2026-11-28 against **v0.4.0** (PR #20).
+[roadmap.md](roadmap.md). Last reviewed 2026-11-28 against **v0.5.0**.
 
 Shipped in v0.4.0: Flagged/Impediment blockers, branch ticket key in the status bar,
 working-hours auto-pause, Run Tool…, @mention inbox wiring, acceptance criteria on
 cards, PR approvals.
 
-Open work, in order: **1. AI Action Center**, **2. Webview UI migration (decision)**,
+Shipped in v0.5.0: AI Action Center Phases 1 to 3 (Analyze, automatic analysis,
+progress tracking, Next actions, CI log analysis). AI needs a backend turned on and a
+model chosen; there is no default model.
+
+Open work, in order: **1. AI Action Center (live validation)**, **2. Webview UI migration (decision)**,
 **3. Later**, **4. Housekeeping**. Findings from past spikes are at the bottom.
 
 ## 1. AI Action Center
+
+**Open after v0.5.0 (live validation, no code planned):**
+
+- [ ] Measure the first-try JSON pass rate (`firstTryPass=` in the "DevMate Kit" Output
+  channel) on VS Code and on Cursor CLI; target 90% or better on each.
+- [ ] Decide the default of `devMateKit.ai.analysis.auto` from those numbers (`false`
+  until both backends pass).
+- [ ] Confirm `is_resolved` / `is_outdated` on a real PR with review threads.
+- [ ] Try a second and a third model.
 
 Design: [ai-action-center.md](ai-action-center.md). Read-only AI analysis per ticket
 or PR: what is going on, a list of actions with links, drafts and copy-ready
@@ -24,8 +37,8 @@ counts and priority, analysis text in English, no new runtime dependency.
 |---|---|---|
 | **0. Spike** | **Done 2026-11-28.** Findings in "AI Action Center spike" below. | Done |
 | **1. Analyze on demand** | **Done 2026-11-28 (Phase 1b).** Types, validator, prompt, cache, wiring, **Analyze** card UI, CI logs at Analyze time (`getFailedJobLogs` + `extractCiFailure`), real state hash (`headSha`, per-check conclusions, unresolved threads), **Re-analyze** force bypass, review comment path/line, toolset fallback + log error reporting. | On your real inbox, Analyze gives valid actions for CI, comment and review-request cases, in VS Code (Language Model API) and Cursor IDE (Cursor CLI), with a first-try JSON pass rate of 90% or better on each — **live pass-rate still to measure** |
-| **2. Automatic runs and tracking** (8 steps, see the design doc's "Phase 2 implementation plan") | Planner (max 3 per refresh, skip snoozed, failure backoff), hybrid trigger, stored analyses shown on open (ready and stale), done detection from engine state, manual done marks | Urgent cards are analyzed on open, nothing re-runs without a state change, actions complete by themselves |
-| **3. Action Center view** | Prioritized actions across all items in the dashboard | — |
+| **2. Automatic runs and tracking** | **Done 2026-11-28.** Planner (max 3 per refresh, skip snoozed, failure backoff), hybrid trigger, stored analyses shown on open (ready and stale), done detection from engine state, manual done marks | Urgent cards are analyzed on open, nothing re-runs without a state change, actions complete by themselves |
+| **3. Action Center view** | **Done 2026-11-28.** Next actions list on the Inbox tab (ready analyses only, priority/kind/recency sort, cap 8 + Show all, jump-to-card, same Open / Copy prompt / done controls) | With two ready analyses and one stale/unanalysed card, Inbox top lists the open actions; done on the list updates the card; jump scrolls to the card; counts unchanged |
 
 **Phase 1b (finish Phase 1), from the 2026-11-28 review.**
 
