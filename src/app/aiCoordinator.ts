@@ -18,11 +18,19 @@ import {
 } from '../services/ai/aiSettings';
 import { appendEditorHandoffTranscript, buildReviewPrompt } from '../services/ai/prompts';
 import { buildStandupSnapshot } from '../services/ai/standupSnapshot';
+import { AnalysisService } from '../services/analysis/analysisService';
+import {
+  analysisItemKey,
+  buildEvidenceFromInboxItem,
+  computeInboxItemStateHash,
+} from '../services/analysis/inboxEvidence';
 import { AiConfigStore } from '../infrastructure/ai/aiConfigStore';
 import { ChatHandoff } from '../infrastructure/ai/chatHandoff';
 import { CursorCliClient } from '../infrastructure/ai/cursorCliClient';
 import { LanguageModelClient } from '../infrastructure/ai/languageModelClient';
+import type { AnalysisStore } from '../infrastructure/analysis/analysisStore';
 import type { AiCardThread, AiRunKind, AiRunState, AiViewState, SessionCommand } from '../shared/messages';
+import { toAnalysisView } from './analysisCardView';
 import type { AiCommandHandler, DashboardSession, SessionSurface } from './dashboardSession';
 
 const STREAM_THROTTLE_MS = 120;
@@ -40,6 +48,7 @@ export interface AiUiHooks {
  */
 export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   private readonly assistant: AiAssistant;
+  private readonly analysis: AnalysisService;
   private models: ChatModelInfo[] | null = null;
   private modelsLoading = false;
   private run: AiRunState | null = null;
@@ -47,6 +56,7 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   private readonly threads = new Map<string, AiCardThread>();
   private chatKeyRunning: string | null = null;
   private cancellation: vscode.CancellationTokenSource | undefined;
+  private analysisCancellation: vscode.CancellationTokenSource | undefined;
   private cliAvailable = false;
   private cliAuthenticated = false;
   private cliStatusLoading = false;
@@ -59,6 +69,7 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
     private readonly config: AiConfigStore,
     private readonly vscodeLm: LanguageModelClient,
     private readonly cursorCli: CursorCliClient,
+    analysisStore: AnalysisStore,
     private readonly hooks: AiUiHooks,
     chatHandoff?: ChatHandoff,
   ) {
@@ -66,6 +77,17 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
       { vscodeLm, cursorCli },
       () => config.read(),
     );
+    this.analysis = new AnalysisService({
+      ai: {
+        complete: async (messages, token) => {
+          const model = await this.assistant.resolveModel();
+          const port = this.assistant.provider === 'cursorCli' ? this.cursorCli : this.vscodeLm;
+          return port.sendRequest(model.id, messages, () => undefined, token);
+        },
+      },
+      cache: analysisStore,
+      metrics: { log: (line) => this.session.log(line) },
+    });
     this.chatHandoff = chatHandoff ?? new ChatHandoff();
     this.disposables.push(
       LanguageModelClient.onDidChangeModels(() => {
@@ -74,6 +96,9 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
       }),
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (AiConfigStore.affects(event)) {
+          if (this.config.getProvider() === 'none') {
+            this.analysisCancellation?.cancel();
+          }
           void this.ensureProviderFitsHost();
           if (isCursorHost(vscode.env.appName)) void this.refreshCliStatus();
           this.publish();
@@ -92,8 +117,19 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
     switch (message.command) {
       case 'ai.whatNext':
         return this.whatShouldIDoNext();
-      case 'ai.explain':
-        return this.explain(message.key);
+      case 'analysis.run':
+        return this.runAnalysis(message.key);
+      case 'analysis.copyText':
+        if (message.text) {
+          await vscode.env.clipboard.writeText(message.text);
+          void vscode.window.setStatusBarMessage('$(check) DevMate: Copied to clipboard', 2500);
+        }
+        return;
+      case 'analysis.openLink':
+        if (message.url) {
+          await vscode.env.openExternal(vscode.Uri.parse(message.url));
+        }
+        return;
       case 'ai.reviewInChat':
         return this.reviewInChat(message.key, message.template);
       case 'ai.chat.send':
@@ -104,6 +140,7 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
         return this.standup();
       case 'ai.cancel':
         this.cancellation?.cancel();
+        this.analysisCancellation?.cancel();
         return;
       case 'ai.dismiss':
         this.cancellation?.cancel();
@@ -185,13 +222,86 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
       this.assistant.whatShouldIDoNext(items, { github: github?.me ?? null, jira: jira?.currentUser ?? null }, Date.now(), { token, onText }));
   }
 
-  /** Explain is part of the per-card Ask AI chat — not the top-of-dashboard AI panel. */
-  async explain(key: string): Promise<void> {
-    if (this.run?.kind === 'explain') {
-      this.run = null;
-      this.publish();
+  /** On-demand Analyze for one inbox card (Phase 1). */
+  async runAnalysis(key: string): Promise<void> {
+    if (!this.ensureMonitoring()) return;
+    if (this.config.getProvider() === 'none') {
+      this.session.broadcast({
+        command: 'analysis.unavailable',
+        key,
+        reason: 'AI is turned off',
+      });
+      return;
     }
-    await this.chatSend(key, 'Explain');
+
+    const item = this.session.findItem(key);
+    if (!item) {
+      void vscode.window.showInformationMessage('DevMate: That item is no longer in your inbox.');
+      return;
+    }
+
+    this.analysisCancellation?.cancel();
+    this.analysisCancellation?.dispose();
+    const source = new vscode.CancellationTokenSource();
+    this.analysisCancellation = source;
+
+    const itemKey = analysisItemKey(item);
+    const stateHash = computeInboxItemStateHash(item);
+    const evidence = buildEvidenceFromInboxItem(item);
+    this.session.broadcast({ command: 'analysis.analyzing', key });
+
+    try {
+      const outcome = await this.analysis.run({
+        itemKey,
+        stateHash,
+        evidence,
+        token: source.token,
+      });
+      if (source.token.isCancellationRequested || outcome.status === 'cancelled') {
+        this.session.broadcast({
+          command: 'analysis.unavailable',
+          key,
+          reason: 'cancelled',
+        });
+        return;
+      }
+      if (outcome.status === 'unavailable') {
+        this.session.broadcast({
+          command: 'analysis.unavailable',
+          key,
+          reason: outcome.error,
+        });
+        return;
+      }
+      this.session.broadcast({
+        command: 'analysis.result',
+        key,
+        analysis: toAnalysisView(outcome.analysis, evidence, {
+          prUrl: item.pr?.url,
+          ticketUrl: item.jiraTask?.url,
+        }),
+      });
+    } catch (error) {
+      if (source.token.isCancellationRequested || error instanceof vscode.CancellationError) {
+        this.session.broadcast({
+          command: 'analysis.unavailable',
+          key,
+          reason: 'cancelled',
+        });
+        return;
+      }
+      this.session.broadcast({
+        command: 'analysis.unavailable',
+        key,
+        reason: errorMessage(error, this.config.getProvider()),
+      });
+      if (error instanceof AiUnavailableError) {
+        this.showAiError(error);
+      }
+    } finally {
+      if (this.analysisCancellation === source) this.analysisCancellation = undefined;
+      source.dispose();
+    }
   }
 
   /** Copy an editor-chat hand-off prompt (MCP guidance + item URL + optional Ask AI transcript). Does not use AiAssistant. */
@@ -408,8 +518,6 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
     key: string,
     work: (token: vscode.CancellationToken, onText: (chunk: string) => void) => Promise<AiResult>,
   ): Promise<void> {
-    // Card chat owns per-item answers; drop a leftover top-panel Explain run if present.
-    if (this.run?.kind === 'explain') this.run = null;
     const source = this.beginWork();
     const thread = this.threads.get(key);
     if (!thread) {
@@ -611,6 +719,8 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   dispose(): void {
     this.cancellation?.cancel();
     this.cancellation?.dispose();
+    this.analysisCancellation?.cancel();
+    this.analysisCancellation?.dispose();
     while (this.disposables.length) this.disposables.pop()?.dispose();
   }
 }

@@ -1,6 +1,6 @@
 # AI Action Center (design)
 
-Status: **Phase 0 spike done, ready to implement Phase 1**. Date: 2026-11-28.
+Status: **Phase 1 implemented (Analyze on demand)**. Date: 2026-11-28.
 Related: [roadmap.md](roadmap.md), [backlog.md](backlog.md).
 
 ## Goal

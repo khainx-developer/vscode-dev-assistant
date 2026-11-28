@@ -11,6 +11,7 @@ import { AttentionPrefsStore } from '../infrastructure/attention/attentionPrefsS
 import { AiConfigStore } from '../infrastructure/ai/aiConfigStore';
 import { CursorCliClient } from '../infrastructure/ai/cursorCliClient';
 import { LanguageModelClient } from '../infrastructure/ai/languageModelClient';
+import { AnalysisStore } from '../infrastructure/analysis/analysisStore';
 import { DashboardSession } from './dashboardSession';
 import { AiCoordinator, type AiUiHooks } from './aiCoordinator';
 
@@ -27,6 +28,7 @@ export interface AppServices {
   jiraConfig: JiraConfigStore;
   commentReadState: CommentReadStateStore;
   attentionPrefs: AttentionPrefsStore;
+  analysisStore: AnalysisStore;
   aiConfig: AiConfigStore;
   languageModels: LanguageModelClient;
   cursorCli: CursorCliClient;
@@ -56,13 +58,21 @@ export function createContainer(context: vscode.ExtensionContext, hooks: AiUiHoo
     jiraConfig: new JiraConfigStore(jiraConnection, mcp),
     commentReadState: new CommentReadStateStore(context),
     attentionPrefs: new AttentionPrefsStore(context.globalState),
+    analysisStore: new AnalysisStore(context.globalState),
     aiConfig: new AiConfigStore(),
     languageModels: new LanguageModelClient(),
     cursorCli: new CursorCliClient(),
   };
 
   const session = new DashboardSession(services);
-  const ai = new AiCoordinator(session, services.aiConfig, services.languageModels, services.cursorCli, hooks);
+  const ai = new AiCoordinator(
+    session,
+    services.aiConfig,
+    services.languageModels,
+    services.cursorCli,
+    services.analysisStore,
+    hooks,
+  );
   session.setAiHandler(ai);
 
   context.subscriptions.push(

@@ -2,7 +2,6 @@ import type { AttentionInboxItem } from '../attention/attentionInboxBuilder';
 import { normalizeAiProvider, pickDefaultModel, type AiProvider, type ChatModelInfo } from './aiSettings';
 import {
   buildChatAboutItemPrompt,
-  buildExplainItemPrompt,
   buildNextStepsPrompt,
   buildStandupPrompt,
   type PromptMessage,
@@ -114,15 +113,6 @@ export class AiAssistant {
 
   standupSummary(snapshot: StandupSnapshot, now: number, options: AiRunOptions = {}): Promise<AiResult> {
     return this.run(buildStandupPrompt(snapshot, now), options);
-  }
-
-  explainItem(
-    item: AttentionInboxItem,
-    me: { github: string | null; jira: string | null },
-    now: number,
-    options: AiRunOptions = {},
-  ): Promise<AiResult> {
-    return this.run(buildExplainItemPrompt(item, now, me), options);
   }
 
   /**

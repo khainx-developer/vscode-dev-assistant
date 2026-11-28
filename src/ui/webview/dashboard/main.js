@@ -14,6 +14,8 @@ let inbox = null;
 let status = null;
 let ai = null;
 let menuKey = null;
+/** Per-card analysis UI state: { status, analysis?, reason? }. Not persisted. */
+let analysisByKey = {};
 
 const ui = loadUiState({
   view: 'attention',
@@ -176,9 +178,9 @@ function welcome() {
 
 function aiCard() {
   const run = ai?.run;
-  // Per-card Explain / Ask AI answers render inside the card chat — keep the top
+  // Per-card Ask AI answers render inside the card chat — keep the top
   // panel for inbox-wide runs (What next) only.
-  if (!run || run.kind === 'explain') return '';
+  if (!run) return '';
   const running = run.status === 'running';
   let body;
   if (run.status === 'error') {
@@ -275,6 +277,8 @@ function attentionSection() {
         threads: ai?.threads || {},
         chatOpen: ui.chatOpen,
         deepHint: ui.deepHint,
+        aiEnabled: !!ai && ai.provider !== 'none',
+        analysis: analysisByKey,
       })).join('')}</div>`;
     }
   }
@@ -500,6 +504,29 @@ delegate(app, {
     });
     render();
   },
+  analysisRun: (el) => {
+    const key = el.getAttribute('data-key');
+    if (!key) return;
+    analysisByKey = { ...analysisByKey, [key]: { status: 'analyzing' } };
+    render();
+    post({ command: 'analysis.run', key });
+  },
+  analysisCopyPrompt: (el) => {
+    const key = el.getAttribute('data-key');
+    const index = Number(el.getAttribute('data-index'));
+    const text = analysisByKey[key]?.analysis?.actions?.[index]?.handoffPrompt;
+    if (text) post({ command: 'analysis.copyText', text });
+  },
+  analysisCopyDraft: (el) => {
+    const key = el.getAttribute('data-key');
+    const index = Number(el.getAttribute('data-index'));
+    const text = analysisByKey[key]?.analysis?.actions?.[index]?.draft;
+    if (text) post({ command: 'analysis.copyText', text });
+  },
+  analysisOpenLink: (el) => {
+    const url = el.getAttribute('data-url');
+    if (url) post({ command: 'analysis.openLink', url });
+  },
   snooze: (el) => {
     menuKey = null;
     post({ command: 'attention.snooze', key: el.getAttribute('data-key'), option: el.getAttribute('data-option') });
@@ -589,6 +616,27 @@ onMessage((message) => {
       break;
     case 'ai.state':
       ai = message.state;
+      break;
+    case 'analysis.analyzing':
+      if (message.key) {
+        analysisByKey = { ...analysisByKey, [message.key]: { status: 'analyzing' } };
+      }
+      break;
+    case 'analysis.result':
+      if (message.key && message.analysis) {
+        analysisByKey = {
+          ...analysisByKey,
+          [message.key]: { status: 'ready', analysis: message.analysis },
+        };
+      }
+      break;
+    case 'analysis.unavailable':
+      if (message.key) {
+        analysisByKey = {
+          ...analysisByKey,
+          [message.key]: { status: 'unavailable', reason: message.reason },
+        };
+      }
       break;
     default:
       return;
