@@ -74,8 +74,8 @@
         },
         "devMateKit.ai.analysis.auto": {
           "type": "boolean",
-          "default": true,
-          "markdownDescription": "When AI is on, automatically analyze important inbox items after a refresh (up to the per-refresh cap). On-demand **Analyze** on a card is never capped."
+          "default": false,
+          "markdownDescription": "Opt-in. When on (and AI is on with a model chosen), DevMate automatically analyzes important inbox items after each refresh, up to the per-refresh cap, without a click. This sends item summaries to your AI model. Off by default; on-demand **Analyze** on a card always works and is never capped."
         },
         "devMateKit.ai.analysis.maxAutoPerRefresh": {
           "type": "number",

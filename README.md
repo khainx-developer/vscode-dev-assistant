@@ -41,7 +41,7 @@ AI is **off until you turn it on and choose a model**. DevMate never picks a def
 
 1. **Setup → AI assistant**, turn on a backend: **Editor language models** (GitHub Copilot, etc.) or **Cursor Agent CLI**.
 2. **Choose a model** from the list (or run **DevMate Kit: Select AI Model**). For Cursor Agent CLI, install the CLI and run `agent login` first.
-3. Click **Analyze** on a card, or leave `devMateKit.ai.analysis.auto` on to analyze important items after each refresh.
+3. Click **Analyze** on a card. Automatic analysis is **off by default**; to have DevMate analyze important items after each refresh, turn on `devMateKit.ai.analysis.auto` yourself (it sends item summaries to your model without a click).
 
 Analysis is read-only: DevMate never writes to GitHub or Jira and never sends the PR diff.
 
@@ -107,7 +107,7 @@ There's also a guided walkthrough: **Help → Welcome → Get started with DevMa
 | `devMateKit.attention.ignoreShortReplies` | `false` | When true, a latest non-bot comment under about 15 characters does not count as awaiting your reply |
 | `devMateKit.ai.provider` | `none` | `vscodeLm` (editor LM API), `cursorCli` (Cursor Agent CLI ask/print), or `none` |
 | `devMateKit.ai.model` | `""` | **Required for any AI feature.** Model id chosen in Setup; no default is used. For `cursorCli` maps to `--model` |
-| `devMateKit.ai.analysis.auto` | `true` | Auto-analyze important items after refresh (up to the per-refresh cap; skips snoozed and unchanged hashes) |
+| `devMateKit.ai.analysis.auto` | `false` | Auto-analyze important items after refresh (up to the per-refresh cap; skips snoozed and unchanged hashes) |
 | `devMateKit.ai.analysis.maxAutoPerRefresh` | `3` | Cap on automatic analyses per refresh; on-demand Analyze is never capped |
 | `devMateKit.ai.analysis.includeCiLogs` | `true` | At Analyze time, fetch failed-job logs when the GitHub actions toolset is available; otherwise degrade to check name, summary and link |
 | `devMateKit.monitoring.enabled` | `true` | Keep watching GitHub and Jira; turn off to pause all monitoring network activity |

@@ -11,7 +11,7 @@ DevMate can use either:
 - **Cursor Agent CLI** (`agent` / `cursor-agent` on your PATH) in ask/print-only mode — useful when this editor does not register host models. Install the CLI, run `agent login` (or set `CURSOR_API_KEY`), then choose **Cursor Agent CLI** in Setup. DevMate never asks you to paste an Anthropic API key.
 
 - **Analyze** on any inbox card runs analysis for that card only: situation, actions, findings, draft replies, **Copy prompt** for editor chat, and **Open** links the engine resolved. Analysis text is English. Card analysis detail stays hidden until you click **Analyze**; then you can **Show analysis** / **Hide analysis**.
-- With AI on, important cards can also analyze automatically after a refresh. Those results feed the Inbox **Next actions** list; they do not open the card’s analysis panel by themselves.
+- Optional: turn on `devMateKit.ai.analysis.auto` (off by default) and important cards also analyze automatically after a refresh, without a click. Those results feed the Inbox **Next actions** list; they do not open the card’s analysis panel by themselves.
 - **Generate Standup Summary** writes Yesterday / Today / Blockers you can paste into chat.
 
 DevMate sends only titles, statuses, reasons, short comment excerpts and (when available) failed-check excerpts — never tokens or credentials — and stores no model API keys of its own.

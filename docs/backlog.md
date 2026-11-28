@@ -20,8 +20,8 @@ Open work, in order: **1. AI Action Center (live validation)**, **2. Webview UI 
 
 - [ ] Measure the first-try JSON pass rate (`firstTryPass=` in the "DevMate Kit" Output
   channel) on VS Code and on Cursor CLI; target 90% or better on each.
-- [ ] Decide the default of `devMateKit.ai.analysis.auto` from those numbers (`false`
-  until both backends pass).
+- [x] `devMateKit.ai.analysis.auto` defaults to `false` (opt-in, decided 2026-11-28). Revisit
+  only if the pass rates justify a first-run prompt.
 - [ ] Confirm `is_resolved` / `is_outdated` on a real PR with review threads.
 - [ ] Try a second and a third model.
 

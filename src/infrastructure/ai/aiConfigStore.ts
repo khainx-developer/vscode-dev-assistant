@@ -31,7 +31,7 @@ export class AiConfigStore {
 
   /** Auto-analyze after refresh (Phase 2). Default true when AI is on. */
   getAnalysisAuto(): boolean {
-    return vscode.workspace.getConfiguration(SECTION).get<boolean>('analysis.auto', true);
+    return vscode.workspace.getConfiguration(SECTION).get<boolean>('analysis.auto', false);
   }
 
   /** Cap on automatic analyses per refresh (Phase 2). */

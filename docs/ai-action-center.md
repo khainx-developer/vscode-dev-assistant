@@ -314,7 +314,7 @@ Everything under `services/` stays pure and unit-tested, as elsewhere.
 
 | Setting | Default |
 |---|---|
-| `devMateKit.ai.analysis.auto` | `true` when AI is on |
+| `devMateKit.ai.analysis.auto` | `false` (opt-in; the user must turn it on) |
 | `devMateKit.ai.analysis.maxAutoPerRefresh` | `3` |
 | `devMateKit.ai.analysis.includeCiLogs` | `true` (falls back if unavailable) |
 
