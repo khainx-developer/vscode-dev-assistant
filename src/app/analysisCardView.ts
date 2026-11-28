@@ -4,6 +4,14 @@ import { buildHandoffPrompt } from '../services/analysis/handoff';
 import type { ActionKind, Analysis, EvidenceItem, ProposedAction } from '../services/analysis/types';
 import type { AnalysisActionView, AnalysisView } from '../shared/messages';
 
+function isJiraUrl(link: string): boolean {
+  return /atlassian\.net|\/browse\//i.test(link);
+}
+
+function openLabelForLink(link: string): string {
+  return isJiraUrl(link) ? 'Open in Jira' : 'Open PR';
+}
+
 function openLabelFor(kind: ActionKind, link: string | undefined): string | undefined {
   switch (kind) {
     case 'answer-question':
@@ -14,10 +22,9 @@ function openLabelFor(kind: ActionKind, link: string | undefined): string | unde
     case 'follow-up':
       return 'Open in Jira';
     case 'review-context':
-      return 'Open PR';
+      return link ? openLabelForLink(link) : undefined;
     case 'decide':
-      if (link && /atlassian\.net|\/browse\//i.test(link)) return 'Open in Jira';
-      if (link) return 'Open PR';
+      if (link) return openLabelForLink(link);
       return 'Open';
     default:
       return undefined;
