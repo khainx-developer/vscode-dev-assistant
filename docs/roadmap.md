@@ -15,8 +15,9 @@ Rules:
 
 ## Work
 
-All planned work, including the Webview UI migration proposal, is in
-[backlog.md](backlog.md), in priority order.
+All planned work is in [backlog.md](backlog.md), in priority order. Designs:
+[AI Action Center](ai-action-center.md) and
+[Webview UI migration](webview-migration.md).
 
 ## UI: one job per surface
 
@@ -44,6 +45,9 @@ Keep the sidebar tabs at Home / Tools / Setup. A tool is defined once in
   feature off quietly. In multi-root workspaces use the repo of the active editor.
   The branch name stays local unless the user hands it off. Flagged / Impediment
   blockers on inbox cards are also shipped.
+- **AI Action Center designed** ([ai-action-center.md](ai-action-center.md)):
+  read-only analysis and actions per ticket or PR. The AI reads and plans, the
+  editor AI does the heavy work. Writes through MCP are not planned.
 - **Bundle budget:** toolkit dependencies stay under about +100 KB combined.
   About 56 KB is left (`js-yaml` took about 44 KB). A lazy `require` only defers
   start-up work; it does not shrink the single-file bundle.
