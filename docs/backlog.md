@@ -23,7 +23,7 @@ counts and priority, analysis text in English, no new runtime dependency.
 | Phase | Work | Exit test |
 |---|---|---|
 | **0. Spike** | **Done 2026-11-28.** Findings in "AI Action Center spike" below. | Done |
-| **1. Analyze on demand** (11 steps, see the design doc's "Phase 1 implementation plan") | Types, state hash, evidence collection (unresolved threads, check details and log tail, acceptance criteria), prompt, hand-written validator, cache, **Analyze** button replacing **Explain** (remove the Explain button, prompt and tests; keep card chat), action list with links, drafts, handoff prompts | On your real inbox, Analyze gives valid actions for CI, comment and review-request cases, in VS Code (Language Model API) and Cursor IDE (Cursor CLI), with a first-try JSON pass rate of 90% or better on each |
+| **1. Analyze on demand** | **Done (implementation).** Types, state hash, evidence, prompt, validator, cache, wiring, **Analyze** card UI (replaces Explain; keep card chat), settings and docs. | On your real inbox, Analyze gives valid actions for CI, comment and review-request cases, in VS Code (Language Model API) and Cursor IDE (Cursor CLI), with a first-try JSON pass rate of 90% or better on each |
 | **2. Automatic runs and tracking** | Planner (max 3 per refresh, skip snoozed), hybrid trigger, done detection from engine state, manual done marks | Urgent cards are analyzed on open, nothing re-runs without a state change, actions complete by themselves |
 | **3. Action Center view** | Prioritized actions across all items in the dashboard | — |
 

@@ -29,6 +29,22 @@ export class AiConfigStore {
     return value || undefined;
   }
 
+  /** Auto-analyze after refresh (Phase 2). Default true when AI is on. */
+  getAnalysisAuto(): boolean {
+    return vscode.workspace.getConfiguration(SECTION).get<boolean>('analysis.auto', true);
+  }
+
+  /** Cap on automatic analyses per refresh (Phase 2). */
+  getAnalysisMaxAutoPerRefresh(): number {
+    const value = vscode.workspace.getConfiguration(SECTION).get<number>('analysis.maxAutoPerRefresh', 3);
+    return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 3;
+  }
+
+  /** Prefer failed-job log tails for CI analysis when the GitHub connection exposes them. */
+  getAnalysisIncludeCiLogs(): boolean {
+    return vscode.workspace.getConfiguration(SECTION).get<boolean>('analysis.includeCiLogs', true);
+  }
+
   async setProvider(provider: AiProvider): Promise<void> {
     await vscode.workspace.getConfiguration(SECTION).update('provider', provider, vscode.ConfigurationTarget.Global);
   }

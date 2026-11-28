@@ -1,5 +1,11 @@
 import * as assert from 'assert';
-import { GithubMcpAdapter } from './githubMcpAdapter';
+import {
+  GithubMcpAdapter,
+  assertActionsToolAllowed,
+  areCiLogsAvailable,
+  parseActionsRunId,
+  resetGithubMcpAdapterTestState,
+} from './githubMcpAdapter';
 import type { McpConnectionService } from '../mcp/connectionService';
 import type { GitHubSession } from '../../shared/githubTypes';
 
@@ -113,6 +119,10 @@ function makeReviewThreadsPayload(
 }
 
 suite('GithubMcpAdapter', () => {
+  setup(() => {
+    resetGithubMcpAdapterTestState();
+  });
+
   test('fetchOpenPullRequests_sessionBearerPath_succeedsWithoutCallingConnect', async () => {
     let connectCount = 0;
     const { service } = makeConnectionService({
@@ -154,8 +164,120 @@ suite('GithubMcpAdapter', () => {
     await GithubMcpAdapter.fetchOpenPullRequests(service, REPO, SESSION);
 
     assert.strictEqual(connectCalls.length, 2);
-    assert.deepStrictEqual(connectCalls[0], { extraHeaders: { Authorization: 'Bearer session-token' } });
+    assert.deepStrictEqual(connectCalls[0], {
+      extraHeaders: {
+        Authorization: 'Bearer session-token',
+        'X-MCP-Toolsets': 'default,actions',
+      },
+    });
     assert.deepStrictEqual(connectCalls[1], undefined);
+  });
+
+  test('assertActionsToolAllowed_permitsReadAllowlist_andThrowsOnWriteTools', () => {
+    assert.doesNotThrow(() => assertActionsToolAllowed('get_job_logs'));
+    assert.doesNotThrow(() => assertActionsToolAllowed('actions_get'));
+    assert.doesNotThrow(() => assertActionsToolAllowed('actions_list'));
+    assert.doesNotThrow(() => assertActionsToolAllowed('list_pull_requests'));
+    assert.throws(
+      () => assertActionsToolAllowed('actions_run_trigger'),
+      /actions_run_trigger.*not allowed/,
+    );
+    assert.throws(
+      () => assertActionsToolAllowed('actions_delete'),
+      /not allowed/,
+    );
+  });
+
+  test('parseActionsRunId_readsRunFromDetailsUrl', () => {
+    assert.strictEqual(
+      parseActionsRunId('https://github.com/acme/web/actions/runs/123456/job/789'),
+      '123456',
+    );
+    assert.strictEqual(
+      parseActionsRunId('https://github.com/acme/web/actions/runs/42'),
+      '42',
+    );
+    assert.strictEqual(parseActionsRunId('https://github.com/acme/web/pull/1'), undefined);
+    assert.strictEqual(parseActionsRunId(undefined), undefined);
+  });
+
+  test('connect_requestsActionsToolset_andFallsBackWhenHeaderRejected', async () => {
+    const connectCalls: unknown[] = [];
+    let callToolCount = 0;
+    const service = {
+      connect: async (_serverId: string, opts?: { extraHeaders?: Record<string, string> }) => {
+        connectCalls.push(opts);
+        if (opts?.extraHeaders?.['X-MCP-Toolsets']) {
+          throw { serverId: 'github', category: 'network', detail: 'unknown toolset header' };
+        }
+      },
+      disconnect: async () => undefined,
+      callTool: async () => {
+        callToolCount += 1;
+        return toolResult([]);
+      },
+    } as unknown as McpConnectionService;
+
+    await GithubMcpAdapter.fetchOpenPullRequests(service, REPO, SESSION);
+
+    assert.strictEqual(connectCalls.length, 2);
+    assert.deepStrictEqual(connectCalls[0], {
+      extraHeaders: {
+        Authorization: 'Bearer session-token',
+        'X-MCP-Toolsets': 'default,actions',
+      },
+    });
+    assert.deepStrictEqual(connectCalls[1], {
+      extraHeaders: { Authorization: 'Bearer session-token' },
+    });
+    assert.strictEqual(areCiLogsAvailable(), false);
+    assert.strictEqual(callToolCount, 1);
+
+    const logs = await GithubMcpAdapter.getFailedJobLogs(service, SESSION, 'acme', 'widgets', '99');
+    assert.strictEqual(logs, null);
+  });
+
+  test('getFailedJobLogs_callsAllowlistedTool_withFailedOnlyAndTail', async () => {
+    const toolCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+    const { service } = makeConnectionService({
+      callTool: async (_serverId, name, args) => {
+        toolCalls.push({ name, args: args as Record<string, unknown> });
+        if (name === 'get_job_logs') {
+          return toolResult({
+            failed_jobs: 1,
+            logs: [{
+              job_id: 7,
+              job_name: 'test',
+              logs_content: 'Failed CancelBooking_NotOwner_Throws',
+            }],
+          });
+        }
+        throw new Error(`unexpected tool call: ${name}`);
+      },
+    });
+
+    const logs = await GithubMcpAdapter.getFailedJobLogs(service, SESSION, 'acme', 'widgets', '123456');
+
+    assert.deepStrictEqual(toolCalls, [{
+      name: 'get_job_logs',
+      args: {
+        owner: 'acme',
+        repo: 'widgets',
+        run_id: 123456,
+        failed_only: true,
+        return_content: true,
+        tail_lines: 2000,
+      },
+    }]);
+    assert.deepStrictEqual(logs, [{
+      jobId: 7,
+      jobName: 'test',
+      content: 'Failed CancelBooking_NotOwner_Throws',
+    }]);
+    assert.strictEqual(
+      parseActionsRunId('https://github.com/acme/widgets/actions/runs/123456/job/7'),
+      '123456',
+    );
   });
 
   test('fetchOpenPullRequests_mapsMultiplePrs_includesDraftsAndAttachesLabelColors', async () => {

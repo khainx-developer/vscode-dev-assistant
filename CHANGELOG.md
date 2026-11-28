@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### New
+- **AI Action Center (Phase 1)** — **Analyze** on Attention cards (replaces Explain): situation, action list with findings, **Copy prompt** / **Copy draft** / **Open** (engine-resolved URLs). Card Ask AI chat remains. Settings: `devMateKit.ai.analysis.auto`, `devMateKit.ai.analysis.maxAutoPerRefresh`, `devMateKit.ai.analysis.includeCiLogs`.
+
 ## 0.4.0 — 2026-11-21
 
 ### New

@@ -44,9 +44,9 @@ DevMate can use either:
 
 - **Ask AI: What should I do next?** — a 3–7 step plan with one "start here" recommendation.
 - **Generate Standup Summary** — Yesterday / Today / Blockers in Markdown, ready to copy.
-- **Explain** on any inbox item — why it's flagged and the next human action.
+- **Analyze** on any inbox card — situation, actions with findings, draft replies, **Copy prompt** for editor chat, and **Open** links resolved by the engine (not invented by the model). Card **Ask AI** chat stays for follow-up triage.
 
-Only titles, keys, statuses, reasons, dates and short comment excerpts are sent to the model. Access tokens, OAuth secrets, URLs and raw API payloads are never included, and comment excerpts are scanned for anything that looks like a credential.
+Only titles, keys, statuses, reasons, dates, short comment excerpts and (when available) failed-check excerpts are sent to the model. Access tokens, OAuth secrets and raw API payloads are never included, and excerpts are scanned for anything that looks like a credential.
 
 If editor models are empty, Setup can **suggest** Cursor Agent CLI; it never switches provider automatically.
 
@@ -101,6 +101,9 @@ There's also a guided walkthrough: **Help → Welcome → Get started with DevMa
 | `devMateKit.attention.ignoreShortReplies` | `false` | When true, a latest non-bot comment under about 15 characters does not count as awaiting your reply |
 | `devMateKit.ai.provider` | `none` | `vscodeLm` (editor LM API), `cursorCli` (Cursor Agent CLI ask/print), or `none` |
 | `devMateKit.ai.model` | `""` | Model id; for `vscodeLm` empty picks first Copilot model; for `cursorCli` maps to `--model` |
+| `devMateKit.ai.analysis.auto` | `true` | Auto-analyze important items after refresh (Phase 2 behavior; setting stored now) |
+| `devMateKit.ai.analysis.maxAutoPerRefresh` | `3` | Cap on automatic analyses per refresh; on-demand Analyze is never capped |
+| `devMateKit.ai.analysis.includeCiLogs` | `true` | Prefer failed-job log tails for CI analysis when available |
 | `devMateKit.monitoring.enabled` | `true` | Keep watching GitHub and Jira; turn off to pause all monitoring network activity |
 | `devMateKit.notifications.enabled` | `true` | Notify when new items need attention |
 | `devMateKit.refresh.background` | `true` | Refresh every 10 minutes even when no DevMate view is open |

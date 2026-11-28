@@ -93,10 +93,52 @@ const inFlightRepoFetches = new Map<string, Promise<PullRequestSummary[]>>();
 const MAX_CONCURRENT_GITHUB_CALLS = 4;
 const INITIAL_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000;
 const MAX_RATE_LIMIT_BACKOFF_MS = 60 * 60 * 1000;
+const ACTIONS_TOOLSET_HEADER = 'default,actions';
+const ACTIONS_READ_ALLOWLIST = new Set(['get_job_logs', 'actions_get', 'actions_list']);
 let rateLimitedUntil: number | undefined;
 let rateLimitBackoffMs = INITIAL_RATE_LIMIT_BACKOFF_MS;
 let activeGitHubCalls = 0;
 const queuedGitHubCalls: Array<() => void> = [];
+let actionsToolsetRejected = false;
+
+export type FailedJobLog = {
+  jobId?: string | number;
+  jobName: string;
+  content: string;
+};
+
+export function parseActionsRunId(detailsUrl: string | null | undefined): string | undefined {
+  if (!detailsUrl) {
+    return undefined;
+  }
+  const match = detailsUrl.match(/\/actions\/runs\/(\d+)/);
+  return match?.[1];
+}
+
+export function assertActionsToolAllowed(name: string): void {
+  const isActionsTool = name === 'get_job_logs' || name.startsWith('actions_');
+  if (!isActionsTool) {
+    return;
+  }
+  if (!ACTIONS_READ_ALLOWLIST.has(name)) {
+    throw new Error(
+      `GitHub actions tool "${name}" is not allowed (read-only allowlist: ${[...ACTIONS_READ_ALLOWLIST].join(', ')}).`,
+    );
+  }
+}
+
+export function areCiLogsAvailable(): boolean {
+  return !actionsToolsetRejected;
+}
+
+export function resetGithubMcpAdapterTestState(): void {
+  actionsToolsetRejected = false;
+  rateLimitedUntil = undefined;
+  rateLimitBackoffMs = INITIAL_RATE_LIMIT_BACKOFF_MS;
+  pullRequestDetailsCache.clear();
+  labelColorCache.clear();
+  inFlightRepoFetches.clear();
+}
 
 function extractCheckRuns(response: CheckRunsResponse): CheckRun[] {
   return Array.isArray(response) ? response : (response.check_runs ?? []);
@@ -182,6 +224,7 @@ async function callGitHubTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
+  assertActionsToolAllowed(name);
   return withGitHubRequestSlot(async () => {
     if (rateLimitedUntil !== undefined && Date.now() < rateLimitedUntil) {
       throw {
@@ -200,6 +243,47 @@ async function callGitHubTool(
       throw error;
     }
   });
+}
+
+function sessionAuthHeaders(session: GitHubSession, includeActionsToolset: boolean): Record<string, string> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${session.accessToken}`,
+  };
+  if (includeActionsToolset) {
+    headers['X-MCP-Toolsets'] = ACTIONS_TOOLSET_HEADER;
+  }
+  return headers;
+}
+
+async function connectGitHubWithSession(
+  connectionService: McpConnectionService,
+  session: GitHubSession,
+): Promise<void> {
+  if (actionsToolsetRejected) {
+    await connectionService.connect('github', {
+      extraHeaders: sessionAuthHeaders(session, false),
+    });
+    return;
+  }
+
+  try {
+    await connectionService.connect('github', {
+      extraHeaders: sessionAuthHeaders(session, true),
+    });
+  } catch (error) {
+    if ((error as McpToolError)?.category === 'auth-expired') {
+      throw error;
+    }
+    actionsToolsetRejected = true;
+    try {
+      await connectionService.disconnect('github');
+    } catch (disconnectError) {
+      void disconnectError;
+    }
+    await connectionService.connect('github', {
+      extraHeaders: sessionAuthHeaders(session, false),
+    });
+  }
 }
 
 // Every GitHub MCP tool result is the SDK's raw CallToolResult shape
@@ -231,9 +315,7 @@ async function callWithSessionFallback(
   args: Record<string, unknown>,
 ): Promise<unknown> {
   try {
-    await connectionService.connect('github', {
-      extraHeaders: { Authorization: `Bearer ${session.accessToken}` },
-    });
+    await connectGitHubWithSession(connectionService, session);
     return await callGitHubTool(connectionService, name, args);
   } catch (error) {
     if ((error as McpToolError)?.category !== 'auth-expired') {
@@ -242,6 +324,31 @@ async function callWithSessionFallback(
     await connectionService.connect('github');
     return await callGitHubTool(connectionService, name, args);
   }
+}
+
+type JobLogsToolPayload = {
+  failed_jobs?: number;
+  logs?: Array<{
+    job_id?: string | number;
+    job_name?: string;
+    logs_content?: string;
+  }>;
+};
+
+function mapFailedJobLogs(payload: JobLogsToolPayload): FailedJobLog[] {
+  return (payload.logs ?? [])
+    .map((entry) => {
+      const content = typeof entry.logs_content === 'string' ? entry.logs_content : '';
+      const jobName = typeof entry.job_name === 'string' && entry.job_name.trim()
+        ? entry.job_name
+        : 'job';
+      const mapped: FailedJobLog = { jobName, content };
+      if (entry.job_id !== undefined) {
+        mapped.jobId = entry.job_id;
+      }
+      return mapped;
+    })
+    .filter((entry) => entry.content.length > 0);
 }
 
 function deriveCheckStatus(checkRuns: CheckRun[] | undefined): PullRequestSummary['checkStatus'] {
@@ -312,6 +419,33 @@ function mapPullRequest(
 }
 
 export const GithubMcpAdapter = {
+  async getFailedJobLogs(
+    connectionService: McpConnectionService,
+    session: GitHubSession,
+    owner: string,
+    repo: string,
+    runId: string,
+  ): Promise<FailedJobLog[] | null> {
+    if (actionsToolsetRejected) {
+      return null;
+    }
+    try {
+      const result = parseToolResultText<JobLogsToolPayload>(
+        await callWithSessionFallback(connectionService, session, 'get_job_logs', {
+          owner,
+          repo,
+          run_id: Number.isFinite(Number(runId)) ? Number(runId) : runId,
+          failed_only: true,
+          return_content: true,
+          tail_lines: 2000,
+        }),
+      );
+      return mapFailedJobLogs(result);
+    } catch {
+      return null;
+    }
+  },
+
   async validateRepo(
     connectionService: McpConnectionService,
     repo: MonitoredRepo,

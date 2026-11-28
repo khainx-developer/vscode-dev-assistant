@@ -72,6 +72,22 @@
           "default": "Review PR #{number} in {repo}: {title}\n{url}\n\n## How to work this request\nYou are an editor coding agent with workspace access and (when available) GitHub/Jira MCP tools.\nDevMate only supplied a short triage snapshot. Do not invent a PR diff, check log, or Jira description from that snapshot.\n\n### Always do this first\n1. Identify GitHub targets (PR URL or owner/repo#number) and Jira targets (browse URL or issue key like WEB-123).\n2. Fetch live data with MCP (or equivalent tools) before answering.\n3. If a needed tool is missing or fails, say which one and what to enable — do not fabricate the missing content.\n\n### GitHub (when a PR is in scope)\nUse GitHub MCP / PR tools to load as needed: PR metadata and description, file diffs, check runs, reviews, and comments.\nBase review, summary, failing-check analysis, or draft replies on that live data.\n\n### Jira (when a ticket is in scope)\nUse Jira MCP / issue tools to load as needed: description, status, assignee, due date, comments, linked issues/PRs.\nIf a linked PR is present and the answer depends on code, also fetch that PR from GitHub.\n\n### If this prompt includes \"Conversation so far\"\nTreat it as prior DevMate Ask AI triage. Continue from the latest user goal, but prefer live MCP facts over snapshot guesses in that transcript.\n\n### Output\nBe concrete and actionable. Separate facts (from tools) from recommendations. Keep comment drafts short enough to paste.\n\n### This task\nStart by fetching this PR (diff + checks + comments), then review for correctness, risky changes, and missing tests.\nStatus: {status}",
           "markdownDescription": "Prompt template for **Continue in editor chat** (clipboard hand-off). Placeholders: `{number}`, `{repo}`, `{title}`, `{url}`, `{status}`. Keep portable MCP how-to in the template so paste works in Copilot, Cursor, and other editor chats — not sent to the in-dashboard AI."
         },
+        "devMateKit.ai.analysis.auto": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "When AI is on, automatically analyze important inbox items after a refresh (up to the per-refresh cap). On-demand **Analyze** on a card is never capped. Automatic runs land in a later phase; the setting is stored now."
+        },
+        "devMateKit.ai.analysis.maxAutoPerRefresh": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "markdownDescription": "Maximum number of automatic analyses after each refresh (highest priority first). Does not limit on-demand **Analyze**."
+        },
+        "devMateKit.ai.analysis.includeCiLogs": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "When analyzing a failing check, try to include a failed-job log excerpt if the GitHub connection exposes `get_job_logs`. Falls back to check name and summary when logs are unavailable."
+        },
         "devMateKit.github.monitoredRepos": {
           "type": "array",
           "items": {

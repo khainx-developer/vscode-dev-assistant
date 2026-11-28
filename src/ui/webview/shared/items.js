@@ -324,11 +324,21 @@ export function renderAttentionItem(item, ctx, ui) {
   const chatOpen = ui.chatOpen?.[item.key] === false
     ? false
     : !!(ui.chatOpen?.[item.key] || thread);
+  const analysisEntry = ui.analysis?.[item.key];
+  const analyzing = analysisEntry?.status === 'analyzing';
   const actions = [
     task && !jiraOnRelated ? jiraButton(task) : '',
     pr ? prButton(pr) : '',
     pr && prCardComment ? commentButton(pr, prCardComment) : '',
     ui.snoozable ? snoozeControl(item, ui) : '',
+    ui.aiEnabled
+      ? `<button type="button" class="ghost"${attrs({
+        'data-action': 'analysisRun',
+        'data-key': item.key,
+        disabled: analyzing ? true : null,
+        title: analysisEntry?.status === 'ready' ? 'Re-run analysis for this card' : 'Analyze this card: situation, actions, drafts and editor prompts',
+      })}>${icon('sparkle', 'sm')}${analyzing ? 'Analyzing…' : analysisEntry?.status === 'ready' ? 'Re-analyze' : 'Analyze'}</button>`
+      : '',
     `<button type="button" class="ghost"${attrs({
       'data-action': 'toggleChat',
       'data-key': item.key,
@@ -354,10 +364,134 @@ export function renderAttentionItem(item, ctx, ui) {
       ${comments}
       ${related.length ? `<div class="related-list">${related.map((entry, index) => relatedPrBlock(entry, ctx, index === 0 && jiraOnRelated ? jiraButton(task) : '')).join('')}</div>` : ''}
       <div class="item-actions">${actions}</div>
+      ${analysisPanel(item, ui)}
       ${chatOpen ? cardChatPanel(item, thread, ui) : ''}
       ${expanded ? `<div class="detail">${task ? renderJiraDetail(task) : renderPrDetail(pr)}</div>` : ''}
     </div>
   </article>`;
+}
+
+function findingLine(finding) {
+  const where = finding.where ? ` ${esc(finding.where)}` : '';
+  const why = finding.why ? `  ${esc(finding.why)}` : '';
+  return `<li class="analysis-finding"><span class="analysis-finding-label">${esc(finding.label)}</span>${where}${why}</li>`;
+}
+
+function analysisActionRow(action, itemKey, index) {
+  if (action.kind === 'none') {
+    return `<div class="analysis-action">
+      <span class="analysis-action-mark muted" aria-hidden="true">–</span>
+      <div class="analysis-action-body">
+        <div class="analysis-action-title">${esc(action.title)}</div>
+        ${action.detail ? `<p class="muted small">${esc(action.detail)}</p>` : ''}
+      </div>
+    </div>`;
+  }
+
+  const buttons = [
+    action.handoffPrompt
+      ? `<button type="button" class="ghost"${attrs({
+        'data-action': 'analysisCopyPrompt',
+        'data-key': itemKey,
+        'data-index': index,
+        title: 'Copy editor-AI handoff prompt',
+      })}>${icon('copy', 'sm')}Copy prompt</button>`
+      : '',
+    action.draft
+      ? `<button type="button" class="ghost"${attrs({
+        'data-action': 'analysisCopyDraft',
+        'data-key': itemKey,
+        'data-index': index,
+        title: 'Copy draft reply',
+      })}>${icon('copy', 'sm')}Copy draft</button>`
+      : '',
+    action.link && action.openLabel
+      ? `<button type="button" class="secondary"${attrs({
+        'data-action': 'analysisOpenLink',
+        'data-url': action.link,
+        'aria-label': action.openLabel,
+      })}>${icon('external', 'sm')}${esc(action.openLabel)}</button>`
+      : '',
+  ].join('');
+
+  const findings = action.findings?.length
+    ? `<ul class="analysis-findings">${action.findings.map(findingLine).join('')}</ul>`
+    : '';
+  const checklist = action.checklist?.length
+    ? `<ul class="analysis-checklist">${action.checklist.map((line) => `<li>${esc(line)}</li>`).join('')}</ul>`
+    : '';
+  const draft = action.draft
+    ? `<div class="analysis-draft muted small">${esc(action.draft.length > 280 ? `${action.draft.slice(0, 280)}…` : action.draft)}</div>`
+    : '';
+
+  return `<div class="analysis-action">
+    <span class="analysis-action-mark" aria-hidden="true">☐</span>
+    <div class="analysis-action-body">
+      <div class="row wrap analysis-action-head">
+        <div class="analysis-action-title">${esc(action.title)}</div>
+        <span class="spacer"></span>
+        <div class="analysis-action-buttons">${buttons}</div>
+      </div>
+      ${action.detail ? `<p class="muted small">${esc(action.detail)}</p>` : ''}
+      ${findings}
+      ${checklist}
+      ${draft}
+    </div>
+  </div>`;
+}
+
+/** Analyze states: idle (button only), analyzing, ready, unavailable. */
+function analysisPanel(item, ui) {
+  if (!ui.aiEnabled) return '';
+  const entry = ui.analysis?.[item.key];
+  if (!entry) return '';
+
+  if (entry.status === 'analyzing') {
+    return `<div class="analysis-panel" aria-live="polite" aria-busy="true">
+      <div class="analysis-head"><strong>What to do</strong><span class="muted small">Analyzing…</span></div>
+    </div>`;
+  }
+
+  if (entry.status === 'unavailable') {
+    const reason = entry.reason && entry.reason !== 'cancelled'
+      ? entry.reason
+      : 'Analysis unavailable';
+    return `<div class="analysis-panel" aria-live="polite">
+      <div class="analysis-head"><strong>What to do</strong></div>
+      <p class="muted small">${esc(reason)}</p>
+      <div class="item-actions">
+        <button type="button" class="ghost"${attrs({
+          'data-action': 'analysisRun',
+          'data-key': item.key,
+        })}>${icon('sparkle', 'sm')}Analyze</button>
+      </div>
+    </div>`;
+  }
+
+  if (entry.status !== 'ready' || !entry.analysis) return '';
+
+  const analysis = entry.analysis;
+  const actions = (analysis.actions || []).map((action, index) => analysisActionRow(action, item.key, index)).join('');
+  const confidence = analysis.confidence === 'low'
+    ? 'confidence low'
+    : `confidence ${esc(analysis.confidence)}`;
+
+  return `<div class="analysis-panel" aria-live="polite">
+    <div class="analysis-head">
+      <strong>What to do</strong>
+      ${analysis.situation ? `<span class="muted small analysis-situation">${esc(analysis.situation)}</span>` : ''}
+    </div>
+    <div class="analysis-actions">${actions || '<p class="muted small">Nothing to do.</p>'}</div>
+    <div class="analysis-foot row wrap">
+      <span class="muted small">Analyzed ${esc(relativeTime(analysis.analyzedAt))} · ${confidence}</span>
+      <span class="spacer"></span>
+      <button type="button" class="ghost"${attrs({
+        'data-action': 'analysisRun',
+        'data-key': item.key,
+        title: 'Re-run analysis for this card',
+      })}>Re-analyze</button>
+    </div>
+  </div>`;
 }
 
 function cardChatPanel(item, thread, ui = {}) {

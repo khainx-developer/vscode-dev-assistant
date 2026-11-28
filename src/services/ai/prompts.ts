@@ -7,7 +7,7 @@ import type { JiraTask } from '../../shared/jiraTypes';
 /**
  * Prompt templates and context builders for DevMate's AI use-cases.
  *
- * In-dashboard prompts (Explain / What next / Standup) copy a short allow-list of fields
+ * In-dashboard prompts (What next / Standup / card chat) copy a short allow-list of fields
  * (titles, keys, statuses, reasons, dates, short comment excerpts). Raw provider payloads,
  * access tokens, OAuth state and URLs never reach those prompts.
  *
@@ -18,7 +18,7 @@ import type { JiraTask } from '../../shared/jiraTypes';
 export const MAX_CONTEXT_ITEMS = 20;
 export const MAX_COMMENT_CHARS = 200;
 export const MAX_TITLE_CHARS = 140;
-/** Cap on extra clipped comments appended on the single-item Explain/card-chat path. */
+/** Cap on extra clipped comments appended on the single-item card-chat path. */
 export const MAX_EXTRA_COMMENT_EXCERPTS = 3;
 /** Max user↔assistant pairs kept in a card chat thread (and resent each turn). */
 export const MAX_CHAT_TURNS = 10;
@@ -49,7 +49,7 @@ export function clip(text: string | null | undefined, max: number): string {
 
 export type DeveloperIdentity = { github: string | null; jira: string | null };
 
-/** Format the developer's GitHub/Jira identity for prompts (shared by Explain and What next). */
+/** Format the developer's GitHub/Jira identity for prompts (shared by What next and card chat). */
 export function describeIdentity(me: DeveloperIdentity): string {
   return [me.github ? `GitHub user "${me.github}"` : null, me.jira ? `Jira user "${me.jira}"` : null]
     .filter(Boolean).join(' and ') || 'the developer';
@@ -240,7 +240,7 @@ function describeAcceptanceCriteria(task: JiraTask | undefined): string[] {
 }
 
 /**
- * Single-item Explain / card-chat descriptor: compact facts plus allow-listed reviewers,
+ * Single-item card-chat descriptor: compact facts plus allow-listed reviewers,
  * non-PENDING reviews, labels, flag explanations, unread counts when >1, and a capped set of
  * extra clipped comments from the primary PR/Jira comment arrays only (never relatedPRs).
  */
@@ -295,32 +295,6 @@ export function buildNextStepsPrompt(items: AttentionInboxItem[], now: number, m
       'If the inbox is empty, say so in one sentence and suggest a sensible focus.',
       '',
       buildInboxContext(items, now),
-    ].join('\n'),
-  }];
-}
-
-export function buildExplainItemPrompt(item: AttentionInboxItem, now: number, me: DeveloperIdentity): PromptMessage[] {
-  const identity = describeIdentity(me);
-  const explanations = item.reasons
-    .map((reason) => `- ${reasonLabel(reason).label}: ${reasonLabel(reason).explanation}`)
-    .join('\n');
-  return [{
-    role: 'user',
-    content: [
-      `Explain to ${identity} why this item is in their attention inbox and what they should do next.`,
-      GUARDRAILS,
-      `The developer is ${identity}. Say whether the next step is theirs or someone else's.`,
-      '',
-      'Reply with:',
-      '1. **Why it is flagged** — one or two sentences.',
-      '2. **Suggested next step** — one concrete human action (e.g. review the PR, reply to the comment, fix the failing checks, rebase to resolve conflicts, update the Jira status or due date).',
-      '3. Optionally, one short tip.',
-      '',
-      'Item:',
-      describeInboxItemDetailed(item, 0, now),
-      '',
-      'What the flags mean:',
-      explanations || '- Linked work that may need follow-up.',
     ].join('\n'),
   }];
 }
