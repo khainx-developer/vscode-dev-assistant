@@ -31,6 +31,8 @@ export interface CommentSummary {
   body: string;
   createdAt: string;
   url: string;
+  path?: string;
+  line?: number | null;
 }
 
 export interface LabelSummary {
@@ -47,6 +49,7 @@ export interface PullRequestSummary {
   number: number;
   title: string;
   headRef?: string;
+  headSha?: string | null;
   url: string;
   author: string;
   state: 'OPEN' | 'MERGED' | 'CLOSED';
@@ -56,6 +59,8 @@ export interface PullRequestSummary {
   updatedAt: string;
   labels: LabelSummary[];
   checkStatus: CheckStatus;
+  checkConclusions?: Record<string, string | null>;
+  unresolvedThreadCount?: number;
   mergeable: MergeableStatus;
   reviews: ReviewSummary[];
   comments: CommentSummary[];
@@ -159,3 +164,31 @@ export type GitHubOutgoingMessage =
     operationId: GitHubOperationId;
     result: { ok: boolean; reason?: string };
   };
+
+export type PullRequestCheckRun = {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  detailsUrl?: string;
+  summary?: string;
+};
+
+export type FailedJobLog = {
+  jobId?: string | number;
+  jobName: string;
+  content: string;
+};
+
+export type FailedJobLogsFailureReason = 'unavailable' | 'rate-limited' | 'error';
+
+export type FailedJobLogsResult =
+  | { ok: true; logs: FailedJobLog[] }
+  | { ok: false; reason: FailedJobLogsFailureReason; detail?: string };
+
+export function parseActionsRunId(detailsUrl: string | null | undefined): string | undefined {
+  if (!detailsUrl) {
+    return undefined;
+  }
+  const match = detailsUrl.match(/\/actions\/runs\/(\d+)/);
+  return match?.[1];
+}

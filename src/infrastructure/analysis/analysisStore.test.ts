@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import { AnalysisStore } from './analysisStore';
 import type { Analysis } from '../../services/analysis/types';
+import type { AnalysisView } from '../../shared/messages';
 
 function memento(): {
   get<T>(key: string, fallback?: T): T | undefined;
@@ -29,11 +30,41 @@ function analysis(itemKey: string, stateHash: string, situation = 'ok'): Analysi
   };
 }
 
+function viewFor(itemKey: string, stateHash: string, situation = 'ok'): AnalysisView {
+  return {
+    itemKey,
+    stateHash,
+    situation,
+    confidence: 'high',
+    analyzedAt: '2026-11-28T10:00:00.000Z',
+    actions: [{
+      kind: 'fix-ci',
+      title: 'Fix the failing test',
+      link: 'https://github.com/acme/web/actions/runs/123/job/1',
+      openLabel: 'Open check',
+      handoffPrompt: 'Failing check: test\nFailed CancelBooking_NotOwner_Throws',
+    }],
+  };
+}
+
+async function setWithView(
+  store: AnalysisStore,
+  itemKey: string,
+  stateHash: string,
+  situation = 'ok',
+): Promise<AnalysisView> {
+  const stored = analysis(itemKey, stateHash, situation);
+  const view = viewFor(itemKey, stateHash, situation);
+  await store.set(itemKey, stored);
+  await store.setView(itemKey, stateHash, view);
+  return view;
+}
+
 suite('AnalysisStore', () => {
   test('get_returnsEntry_whenItemAndStateHashMatch', async () => {
     let now = 1_000;
     const store = new AnalysisStore(memento(), () => now);
-    await store.set('WEB-1', analysis('WEB-1', 'hash-a', 'ci'));
+    await setWithView(store, 'WEB-1', 'hash-a', 'ci');
     assert.strictEqual(store.get('WEB-1', 'hash-a')?.situation, 'ci');
     assert.strictEqual(store.get('WEB-1', 'hash-b'), undefined);
     assert.strictEqual(store.get('WEB-2', 'hash-a'), undefined);
@@ -42,18 +73,32 @@ suite('AnalysisStore', () => {
 
   test('set_overwritesSameItem_keepingLatestStateHash', async () => {
     const store = new AnalysisStore(memento(), () => 1_000);
-    await store.set('WEB-1', analysis('WEB-1', 'hash-a', 'old'));
-    await store.set('WEB-1', analysis('WEB-1', 'hash-b', 'new'));
+    await setWithView(store, 'WEB-1', 'hash-a', 'old');
+    await setWithView(store, 'WEB-1', 'hash-b', 'new');
     assert.strictEqual(store.get('WEB-1', 'hash-a'), undefined);
     assert.strictEqual(store.get('WEB-1', 'hash-b')?.situation, 'new');
+  });
+
+  test('view_roundTrips_viaSetView', async () => {
+    const store = new AnalysisStore(memento(), () => 1_000);
+    const view = await setWithView(store, 'WEB-1', 'hash-a', 'ci');
+    assert.deepStrictEqual(store.getView('WEB-1', 'hash-a'), view);
+  });
+
+  test('entryWithoutView_isMiss', async () => {
+    const store = new AnalysisStore(memento(), () => 1_000);
+    await store.set('WEB-1', analysis('WEB-1', 'hash-a'));
+    assert.strictEqual(store.get('WEB-1', 'hash-a'), undefined);
+    assert.strictEqual(store.getView('WEB-1', 'hash-a'), undefined);
   });
 
   test('expiresAfter14Days', async () => {
     let now = 0;
     const store = new AnalysisStore(memento(), () => now);
-    await store.set('WEB-1', analysis('WEB-1', 'hash-a'));
+    await setWithView(store, 'WEB-1', 'hash-a');
     now = 14 * 24 * 60 * 60 * 1000 + 1;
     assert.strictEqual(store.get('WEB-1', 'hash-a'), undefined);
+    assert.strictEqual(store.getView('WEB-1', 'hash-a'), undefined);
   });
 
   test('evictsOldest_whenOver200', async () => {
@@ -62,24 +107,25 @@ suite('AnalysisStore', () => {
     const store = new AnalysisStore(storage, () => now);
     for (let i = 0; i < 201; i += 1) {
       now = i + 1;
-      await store.set(`ITEM-${i}`, analysis(`ITEM-${i}`, 'h'));
+      await setWithView(store, `ITEM-${i}`, 'h');
     }
     assert.strictEqual(store.get('ITEM-0', 'h'), undefined);
     assert.ok(store.get('ITEM-200', 'h'));
-    const record = storage.data['devMateKit.analysis.cache.v1'] as { entries: Record<string, unknown> };
+    const record = storage.data['devMateKit.analysis.cache.v3'] as { entries: Record<string, unknown> };
     assert.strictEqual(Object.keys(record.entries).length, 200);
   });
 
   test('clear_removesAllEntries', async () => {
     const store = new AnalysisStore(memento(), () => 1);
-    await store.set('WEB-1', analysis('WEB-1', 'h'));
+    await setWithView(store, 'WEB-1', 'h');
     await store.clear();
     assert.strictEqual(store.get('WEB-1', 'h'), undefined);
+    assert.strictEqual(store.getView('WEB-1', 'h'), undefined);
   });
 
   test('corruptStorage_isIgnored', () => {
     const storage = memento();
-    storage.data['devMateKit.analysis.cache.v1'] = 'oops';
+    storage.data['devMateKit.analysis.cache.v2'] = 'oops';
     const store = new AnalysisStore(storage, () => 1);
     assert.strictEqual(store.get('WEB-1', 'h'), undefined);
   });

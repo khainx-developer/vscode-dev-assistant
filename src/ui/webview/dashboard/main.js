@@ -507,9 +507,10 @@ delegate(app, {
   analysisRun: (el) => {
     const key = el.getAttribute('data-key');
     if (!key) return;
+    const force = el.getAttribute('data-force') === 'true';
     analysisByKey = { ...analysisByKey, [key]: { status: 'analyzing' } };
     render();
-    post({ command: 'analysis.run', key });
+    post({ command: 'analysis.run', key, force: force || undefined });
   },
   analysisCopyPrompt: (el) => {
     const key = el.getAttribute('data-key');

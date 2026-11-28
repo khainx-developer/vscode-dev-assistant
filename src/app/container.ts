@@ -72,6 +72,7 @@ export function createContainer(context: vscode.ExtensionContext, hooks: AiUiHoo
     services.cursorCli,
     services.analysisStore,
     hooks,
+    { auth: services.githubAuth, mcp: services.mcp },
   );
   session.setAiHandler(ai);
 

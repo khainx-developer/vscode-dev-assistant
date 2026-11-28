@@ -53,7 +53,7 @@ export type SessionCommand =
   | { command: 'attention.snooze'; key: string; option: SnoozeOption }
   | { command: 'attention.unsnooze'; key: string }
   | { command: 'ai.whatNext' }
-  | { command: 'analysis.run'; key: string }
+  | { command: 'analysis.run'; key: string; force?: boolean }
   | { command: 'analysis.copyText'; text: string }
   | { command: 'analysis.openLink'; url: string }
   | { command: 'ai.reviewInChat'; key: string; template?: string }

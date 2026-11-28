@@ -501,6 +501,7 @@
     "compile": "tsc -p ./ --noEmit",
     "lint": "eslint src --ext ts",
     "package": "npm run build && vsce package",
+    "pretest": "tsc -p ./",
     "test": "vscode-test"
   },
   "dependencies": {

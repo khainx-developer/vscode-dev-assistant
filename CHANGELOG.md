@@ -5,6 +5,17 @@
 ### New
 - **AI Action Center (Phase 1)** — **Analyze** on Attention cards (replaces Explain): situation, action list with findings, **Copy prompt** / **Copy draft** / **Open** (engine-resolved URLs). Card Ask AI chat remains. Settings: `devMateKit.ai.analysis.auto`, `devMateKit.ai.analysis.maxAutoPerRefresh`, `devMateKit.ai.analysis.includeCiLogs`.
 
+### Fixed
+- **Analyze cache hits** — store the card-ready analysis view (resolved check links, handoff prompts with log excerpts, `analyzedAt`) next to the analysis result. A second Analyze with the same state returns that view unchanged instead of rebuilding from the inbox snapshot. Cache storage key bumped to `v3`.
+
+### Improved
+- **Analyze CI evidence** — at Analyze time, fetch failing check runs and failed-job logs (`get_job_logs`), extract failure excerpts and failed-test names, and feed them into evidence. Degrades to name / summary / link when logs are off, unavailable or fail.
+- **Analysis cache** — state hash now uses the PR head commit sha, per-check conclusions and unresolved review-thread count. **Re-analyze** sends `force: true` and skips the cache (still writes the new result). Cache storage key bumped to `v3`. Cache is checked in `runAnalysis` before any GitHub evidence fetch.
+- **Analysis confidence** — if any failed check has no log excerpt, the stored result's confidence is forced to `low` even when the model returns higher; evidence text states the fact ("Job logs: not loaded") instead of instructing the model.
+- **getCheckRuns failures** — logged to the Output channel before falling back to the inbox snapshot.
+- **Review comment locations** — unresolved, non-outdated review threads carry `path` and line into analysis evidence.
+- **Actions toolset fallback** — mark the toolset rejected only after a successful connect without the header; log typed `getFailedJobLogs` failures (`unavailable` / `rate-limited` / `error`) to the Output channel.
+
 ## 0.4.0 — 2026-11-21
 
 ### New

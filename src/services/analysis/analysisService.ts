@@ -38,6 +38,7 @@ export interface RunAnalysisInput {
   itemKey: string;
   stateHash: string;
   evidence: EvidenceBundle;
+  force?: boolean;
   token?: AiCancellation;
 }
 
@@ -54,6 +55,25 @@ function redactEvidenceBundle(bundle: EvidenceBundle): EvidenceBundle {
 
 function isCancelled(token: AiCancellation | undefined): boolean {
   return !!token?.isCancellationRequested;
+}
+
+const FAILED_CHECK_CONCLUSION = /\bconclusion\s+(failure|timed_out|cancelled)\b/i;
+
+/** Failed checks without a log excerpt must store confidence low, regardless of the model. */
+export function hasFailedCheckWithoutLogExcerpt(evidence: EvidenceBundle): boolean {
+  return evidence.items.some(
+    (item) => item.kind === 'check' && FAILED_CHECK_CONCLUSION.test(item.text),
+  );
+}
+
+function applyConfidenceCap(analysis: Analysis, evidence: EvidenceBundle): Analysis {
+  if (!hasFailedCheckWithoutLogExcerpt(evidence)) {
+    return analysis;
+  }
+  if (analysis.confidence === 'low') {
+    return analysis;
+  }
+  return { ...analysis, confidence: 'low' };
 }
 
 /**
@@ -83,11 +103,13 @@ export class AnalysisService {
       return { status: 'cancelled' };
     }
 
-    const cached = this.ports.cache.get(input.itemKey, input.stateHash);
-    if (cached) {
-      this.cacheHits += 1;
-      this.logSessionMetrics('cache hit');
-      return { status: 'cached', analysis: cached };
+    if (!input.force) {
+      const cached = this.ports.cache.get(input.itemKey, input.stateHash);
+      if (cached) {
+        this.cacheHits += 1;
+        this.logSessionMetrics('cache hit');
+        return { status: 'cached', analysis: cached };
+      }
     }
 
     const evidence = redactEvidenceBundle(input.evidence);
@@ -113,7 +135,10 @@ export class AnalysisService {
     });
     if (firstValidation.ok) {
       this.firstTryPasses += 1;
-      const analysis = withExpectedIdentity(firstValidation.analysis, input);
+      const analysis = applyConfidenceCap(
+        withExpectedIdentity(firstValidation.analysis, input),
+        evidence,
+      );
       await this.ports.cache.set(input.itemKey, analysis);
       this.logSessionMetrics('first-try ok');
       return { status: 'ok', analysis, firstTryValid: true };
@@ -141,7 +166,10 @@ export class AnalysisService {
       evidenceText,
     });
     if (retryValidation.ok) {
-      const analysis = withExpectedIdentity(retryValidation.analysis, input);
+      const analysis = applyConfidenceCap(
+        withExpectedIdentity(retryValidation.analysis, input),
+        evidence,
+      );
       await this.ports.cache.set(input.itemKey, analysis);
       this.logSessionMetrics('retry ok');
       return { status: 'ok', analysis, firstTryValid: false };

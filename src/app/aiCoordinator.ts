@@ -21,7 +21,7 @@ import { buildStandupSnapshot } from '../services/ai/standupSnapshot';
 import { AnalysisService } from '../services/analysis/analysisService';
 import {
   analysisItemKey,
-  buildEvidenceFromInboxItem,
+  buildEvidenceForAnalysis,
   computeInboxItemStateHash,
 } from '../services/analysis/inboxEvidence';
 import { AiConfigStore } from '../infrastructure/ai/aiConfigStore';
@@ -29,9 +29,28 @@ import { ChatHandoff } from '../infrastructure/ai/chatHandoff';
 import { CursorCliClient } from '../infrastructure/ai/cursorCliClient';
 import { LanguageModelClient } from '../infrastructure/ai/languageModelClient';
 import type { AnalysisStore } from '../infrastructure/analysis/analysisStore';
+import type { GitHubAuthService } from '../infrastructure/github/auth';
+import {
+  GithubMcpAdapter,
+  areCiLogsAvailable,
+} from '../infrastructure/github/githubMcpAdapter';
+import type { McpConnectionService } from '../infrastructure/mcp/connectionService';
+import type { FailedJobLogsResult, PullRequestCheckRun } from '../shared/githubTypes';
 import type { AiCardThread, AiRunKind, AiRunState, AiViewState, SessionCommand } from '../shared/messages';
 import { toAnalysisView } from './analysisCardView';
 import type { AiCommandHandler, DashboardSession, SessionSurface } from './dashboardSession';
+
+export interface AiCoordinatorGitHubPorts {
+  auth: GitHubAuthService;
+  mcp: McpConnectionService;
+}
+
+/** Optional CI evidence ports (tests inject fakes; production uses GithubMcpAdapter). */
+export interface AiCoordinatorCiPorts {
+  getCheckRuns(owner: string, repo: string, pullNumber: number): Promise<PullRequestCheckRun[]>;
+  getFailedJobLogs(owner: string, repo: string, runId: string): Promise<FailedJobLogsResult>;
+  areCiLogsAvailable(): boolean;
+}
 
 const STREAM_THROTTLE_MS = 120;
 
@@ -69,9 +88,11 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
     private readonly config: AiConfigStore,
     private readonly vscodeLm: LanguageModelClient,
     private readonly cursorCli: CursorCliClient,
-    analysisStore: AnalysisStore,
+    private readonly analysisCache: AnalysisStore,
     private readonly hooks: AiUiHooks,
+    private readonly github: AiCoordinatorGitHubPorts,
     chatHandoff?: ChatHandoff,
+    private readonly ciPorts?: AiCoordinatorCiPorts,
   ) {
     this.assistant = new AiAssistant(
       { vscodeLm, cursorCli },
@@ -85,7 +106,7 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
           return port.sendRequest(model.id, messages, () => undefined, token);
         },
       },
-      cache: analysisStore,
+      cache: analysisCache,
       metrics: { log: (line) => this.session.log(line) },
     });
     this.chatHandoff = chatHandoff ?? new ChatHandoff();
@@ -118,7 +139,7 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
       case 'ai.whatNext':
         return this.whatShouldIDoNext();
       case 'analysis.run':
-        return this.runAnalysis(message.key);
+        return this.runAnalysis(message.key, message.force === true);
       case 'analysis.copyText':
         if (message.text) {
           await vscode.env.clipboard.writeText(message.text);
@@ -223,7 +244,7 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
   }
 
   /** On-demand Analyze for one inbox card (Phase 1). */
-  async runAnalysis(key: string): Promise<void> {
+  async runAnalysis(key: string, force = false): Promise<void> {
     if (!this.ensureMonitoring()) return;
     if (this.config.getProvider() === 'none') {
       this.session.broadcast({
@@ -242,12 +263,58 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
 
     this.analysisCancellation?.cancel();
     this.analysisCancellation?.dispose();
-    const source = new vscode.CancellationTokenSource();
-    this.analysisCancellation = source;
+    this.analysisCancellation = undefined;
 
     const itemKey = analysisItemKey(item);
     const stateHash = computeInboxItemStateHash(item);
-    const evidence = buildEvidenceFromInboxItem(item);
+    const urls = { prUrl: item.pr?.url, ticketUrl: item.jiraTask?.url };
+
+    if (!force) {
+      const cachedView = this.analysisCache.getView(itemKey, stateHash);
+      if (cachedView) {
+        this.session.broadcast({
+          command: 'analysis.result',
+          key,
+          analysis: cachedView,
+        });
+        return;
+      }
+    }
+
+    const source = new vscode.CancellationTokenSource();
+    this.analysisCancellation = source;
+
+    const session = await this.github.auth.getSession(false);
+    const ciLogsAvailable = this.ciPorts?.areCiLogsAvailable() ?? areCiLogsAvailable();
+    const logEvidence = (line: string): void => this.session.log(line);
+    const evidence = session
+      ? await buildEvidenceForAnalysis(item, {
+        includeCiLogs: this.config.getAnalysisIncludeCiLogs(),
+        ciLogsAvailable,
+        log: logEvidence,
+        getCheckRuns: (owner, repo, pullNumber) =>
+          this.ciPorts
+            ? this.ciPorts.getCheckRuns(owner, repo, pullNumber)
+            : GithubMcpAdapter.getCheckRuns(this.github.mcp, session, owner, repo, pullNumber),
+        getFailedJobLogs: (owner, repo, runId) =>
+          this.ciPorts
+            ? this.ciPorts.getFailedJobLogs(owner, repo, runId)
+            : GithubMcpAdapter.getFailedJobLogs(
+              this.github.mcp,
+              session,
+              owner,
+              repo,
+              runId,
+              logEvidence,
+            ),
+      })
+      : await buildEvidenceForAnalysis(item, {
+        includeCiLogs: false,
+        ciLogsAvailable: false,
+        log: logEvidence,
+        getCheckRuns: async () => [],
+        getFailedJobLogs: async () => ({ ok: false, reason: 'unavailable' }),
+      });
     this.session.broadcast({ command: 'analysis.analyzing', key });
 
     try {
@@ -255,6 +322,7 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
         itemKey,
         stateHash,
         evidence,
+        force,
         token: source.token,
       });
       if (source.token.isCancellationRequested || outcome.status === 'cancelled') {
@@ -273,13 +341,12 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
         });
         return;
       }
+      const view = toAnalysisView(outcome.analysis, evidence, urls);
+      await this.analysisCache.setView(itemKey, stateHash, view);
       this.session.broadcast({
         command: 'analysis.result',
         key,
-        analysis: toAnalysisView(outcome.analysis, evidence, {
-          prUrl: item.pr?.url,
-          ticketUrl: item.jiraTask?.url,
-        }),
+        analysis: view,
       });
     } catch (error) {
       if (source.token.isCancellationRequested || error instanceof vscode.CancellationError) {

@@ -1,6 +1,6 @@
 # AI Action Center (design)
 
-Status: **Phase 1 implemented (Analyze on demand)**. Date: 2026-11-28.
+Status: **Phase 1 built; Phase 1b (integration gaps) in progress, see [backlog.md](backlog.md)**. Date: 2026-11-28.
 Related: [roadmap.md](roadmap.md), [backlog.md](backlog.md).
 
 ## Goal
@@ -408,6 +408,67 @@ the next one starts. Run `npm run compile`, `npm run lint` and `npm test` after 
 
 **Out of scope for Phase 1:** automatic runs, the planner, done tracking, manual
 done marks and the Action Center view (Phase 2 and 3).
+
+## Phase 2 implementation plan
+
+Goal: urgent cards arrive already analyzed, nothing is re-analyzed without a state
+change, and actions complete by themselves. Build in this order, with tests after
+each step. Phase 1 gives you: `AnalysisService` (serializes runs), `AnalysisStore`
+(entry per item with `analysis` and card-ready `view`, keyed by `stateHash`),
+`computeInboxItemStateHash`, `buildEvidenceForAnalysis`, and `toAnalysisView`.
+
+1. **Stable action keys.** Give every action an `actionKey` (kind plus its sorted
+   evidence ids). Add it to `AnalysisActionView` and the stored view. Pure, tested.
+2. **Planner** (`services/analysis/planner.ts`, pure). Input: inbox items, a cache
+   lookup (has a view for the current hash), the snoozed set, a backoff lookup, the
+   cap. Output: at most `maxAutoPerRefresh` items, highest priority first. An item
+   qualifies when it is not snoozed, has no cached view for its current hash, and is
+   **important**: priority `urgent`, or a reason for a new comment, an @mention, a
+   review requested from you, changes requested or failing checks (map to the real
+   reason ids in `reasonLabels.ts`). Skip items whose last automatic attempt failed
+   less than 30 minutes ago (backoff), so a bad item cannot retry on every refresh.
+3. **Automatic runs** (`AiCoordinator`). After each inbox recompute (a hook from
+   `DashboardSession`), plan and run sequentially through the same code path as
+   Analyze (evidence, `AnalysisService`, `setView`), without the user-click
+   `analysis.analyzing` flicker for items not on screen. Do nothing when AI is off,
+   `devMateKit.ai.analysis.auto` is false, monitoring is paused, working hours
+   pause, or a user-started analysis is running. Cancel on AI off, sign-out and
+   dispose. Log "[analysis] auto: planned N, ran M" to the Output channel.
+   Automatic runs never change counts, badges or priority.
+4. **Show stored analyses.** New host event `analysis.snapshot` carrying, for the
+   current inbox items: `ready` (view for the current hash), `stale` (a view exists
+   for an older hash; show it dimmed with **Re-analyze**) or nothing. Send it when
+   the dashboard opens, after each recompute and after each automatic run. The
+   webview merges it into `analysisByKey`.
+5. **Done tracking** (`services/analysis/actionTracker.ts`, pure). Store the
+   `AnalysisStateSnapshot` the analysis was made for next to the view. Given that
+   snapshot, the current item and your identity, return per-action status:
+   - `answer-question`, `reply`: done when a comment by you is newer than the
+     analysed latest comment in that thread.
+   - `code-change`: "progress detected" when the head sha changed since the
+     analysis (not done by itself); done when the unresolved thread count dropped
+     to 0 or the review state is no longer changes requested.
+   - `fix-ci`: done when every check named in its findings or evidence is now
+     `success`; "progress detected" when the head sha changed.
+   - `review-context`: done when you have a review on the PR.
+   - `decide`, `follow-up`: never automatic.
+   - Item closed or merged: drop all actions.
+6. **Manual done marks.** A checkbox on each action row marks it done and can be
+   undone. Marks are stored in `globalState` keyed by item key plus `actionKey`,
+   survive refreshes and re-analysis while the same `actionKey` still appears, and
+   are pruned with the 14-day expiry. Done actions collapse under a "Done" line.
+7. **Webview.** Checkbox, "progress detected" label, stale state, done collapse.
+   Keep it accessible (labels, keyboard).
+8. **Docs.** README, CHANGELOG, walkthrough text, and tick Phase 2 in
+   [backlog.md](backlog.md).
+
+**Exit test:** open the dashboard after a refresh with two urgent items and one
+non-urgent item: the urgent ones show analyses, the other shows only **Analyze**;
+nothing re-runs on the next refresh; after you push a commit, `fix-ci` shows
+"progress detected" and goes stale; after CI turns green it shows done.
+
+**Out of scope:** the Action Center cross-item view (Phase 3), writes to GitHub or
+Jira.
 
 ## Appendix: reference extraction (from the spike, untested sketch)
 

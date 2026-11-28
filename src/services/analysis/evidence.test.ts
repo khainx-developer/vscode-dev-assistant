@@ -118,6 +118,7 @@ suite('buildEvidence', () => {
     assert.strictEqual(bundle.items[1].id, 'c1');
     assert.strictEqual(bundle.items[1].kind, 'thread');
     assert.ok(bundle.items[1].text.includes('Why was the retry dropped?'));
+    assert.ok(bundle.items[1].text.includes('file src/upload.ts'));
     assert.ok(!bundle.items.some((item) => item.text.includes('Resolved nit')));
     assert.ok(!bundle.items.some((item) => item.text.includes('Outdated suggestion')));
     assert.strictEqual(

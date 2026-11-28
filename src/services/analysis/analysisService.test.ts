@@ -93,6 +93,50 @@ function cancellable(requested = false): AiCancellation & { cancel(): void } {
 }
 
 suite('AnalysisService', () => {
+  test('noLogFailedCheck_forcesConfidenceLow', async () => {
+    const ai = fakeAi([validJson({ confidence: 'high' })]);
+    const cache = fakeCache();
+    const metrics = fakeMetrics();
+    const service = new AnalysisService({ ai, cache, metrics });
+    const evidence = buildEvidence({
+      checks: [{
+        name: 'test',
+        conclusion: 'failure',
+        summary: 'Job logs: not loaded.',
+      }],
+    });
+
+    const result = await service.run({
+      itemKey: 'WEB-1',
+      stateHash: 'hash-a',
+      evidence,
+    });
+
+    assert.strictEqual(result.status, 'ok');
+    if (result.status === 'ok') {
+      assert.strictEqual(result.analysis.confidence, 'low');
+    }
+    assert.strictEqual(cache.get('WEB-1', 'hash-a')?.confidence, 'low');
+  });
+
+  test('withLogExcerpt_keepsModelConfidence', async () => {
+    const ai = fakeAi([validJson({ confidence: 'high' })]);
+    const cache = fakeCache();
+    const metrics = fakeMetrics();
+    const service = new AnalysisService({ ai, cache, metrics });
+
+    const result = await service.run({
+      itemKey: 'WEB-1',
+      stateHash: 'hash-a',
+      evidence: sampleEvidence(),
+    });
+
+    assert.strictEqual(result.status, 'ok');
+    if (result.status === 'ok') {
+      assert.strictEqual(result.analysis.confidence, 'high');
+    }
+  });
+
   test('returnsCached_withoutCallingAi', async () => {
     const ai = fakeAi([validJson()]);
     const cache = fakeCache();
@@ -120,6 +164,35 @@ suite('AnalysisService', () => {
     assert.strictEqual(ai.calls.length, 0);
     assert.ok(metrics.lines.some((line) => line.includes('cache hit')));
     assert.ok(metrics.lines.some((line) => line.includes('cacheHits=1')));
+  });
+
+  test('force_skipsCache_andStillWritesResult', async () => {
+    const ai = fakeAi([validJson({ situation: 'fresh' })]);
+    const cache = fakeCache();
+    const metrics = fakeMetrics();
+    cache.set('WEB-1', {
+      itemKey: 'WEB-1',
+      stateHash: 'hash-a',
+      situation: 'cached',
+      confidence: 'high',
+      actions: [],
+    });
+    const service = new AnalysisService({ ai, cache, metrics });
+
+    const result = await service.run({
+      itemKey: 'WEB-1',
+      stateHash: 'hash-a',
+      evidence: sampleEvidence(),
+      force: true,
+    });
+
+    assert.strictEqual(result.status, 'ok');
+    if (result.status === 'ok') {
+      assert.strictEqual(result.analysis.situation, 'fresh');
+    }
+    assert.strictEqual(ai.calls.length, 1);
+    assert.strictEqual(cache.get('WEB-1', 'hash-a')?.situation, 'fresh');
+    assert.ok(!metrics.lines.some((line) => line.includes('cache hit')));
   });
 
   test('validFirstTry_cachesAndLogsPass', async () => {

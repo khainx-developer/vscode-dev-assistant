@@ -23,9 +23,52 @@ counts and priority, analysis text in English, no new runtime dependency.
 | Phase | Work | Exit test |
 |---|---|---|
 | **0. Spike** | **Done 2026-11-28.** Findings in "AI Action Center spike" below. | Done |
-| **1. Analyze on demand** | **Done (implementation).** Types, state hash, evidence, prompt, validator, cache, wiring, **Analyze** card UI (replaces Explain; keep card chat), settings and docs. | On your real inbox, Analyze gives valid actions for CI, comment and review-request cases, in VS Code (Language Model API) and Cursor IDE (Cursor CLI), with a first-try JSON pass rate of 90% or better on each |
-| **2. Automatic runs and tracking** | Planner (max 3 per refresh, skip snoozed), hybrid trigger, done detection from engine state, manual done marks | Urgent cards are analyzed on open, nothing re-runs without a state change, actions complete by themselves |
+| **1. Analyze on demand** | **Done 2026-11-28 (Phase 1b).** Types, validator, prompt, cache, wiring, **Analyze** card UI, CI logs at Analyze time (`getFailedJobLogs` + `extractCiFailure`), real state hash (`headSha`, per-check conclusions, unresolved threads), **Re-analyze** force bypass, review comment path/line, toolset fallback + log error reporting. | On your real inbox, Analyze gives valid actions for CI, comment and review-request cases, in VS Code (Language Model API) and Cursor IDE (Cursor CLI), with a first-try JSON pass rate of 90% or better on each — **live pass-rate still to measure** |
+| **2. Automatic runs and tracking** (8 steps, see the design doc's "Phase 2 implementation plan") | Planner (max 3 per refresh, skip snoozed, failure backoff), hybrid trigger, stored analyses shown on open (ready and stale), done detection from engine state, manual done marks | Urgent cards are analyzed on open, nothing re-runs without a state change, actions complete by themselves |
 | **3. Action Center view** | Prioritized actions across all items in the dashboard | — |
+
+**Phase 1b (finish Phase 1), from the 2026-11-28 review.**
+
+1. ~~Wire CI logs into Analyze~~ — done.
+2. ~~Real state hash (`headSha`, per-check conclusions, unresolved threads)~~ — done.
+3. ~~**Re-analyze** sends `force` and skips the cache~~ — done.
+4. ~~Review comments carry `path` / line into evidence~~ — done.
+5. ~~Toolset fallback only after successful retry; log `getFailedJobLogs` errors~~ — done.
+6. Measure the first-try JSON pass rate on Cursor CLI and on VS Code, and record it
+   (still open; unit tests cannot cover live model JSON).
+
+**Phase 1c (small fixes from the second review, 2026-11-28):**
+
+1. [x] Check the cache **before** building evidence in `runAnalysis` (unless `force`).
+   Today a click with an unchanged state still fetches check runs and up to 2000 log
+   lines (about 500 KB) from GitHub, then discards them on a cache hit.
+2. [x] The engine caps confidence, not only the prompt: if any failed check has no log
+   excerpt, the stored result's confidence is forced to `low`. Remove the
+   "Confidence must be low" sentence from the evidence text (instructions inside an
+   untrusted block contradict the prompt's own rule); state the fact instead
+   ("job logs: not loaded").
+3. [x] Log a failed `getCheckRuns` in `buildEvidenceForAnalysis` instead of silently
+   falling back to the snapshot.
+4. [x] (Optional) Move `parseActionsRunId` and the `FailedJobLog*` / `PullRequestCheckRun`
+   types out of `githubMcpAdapter.ts` into `src/shared` or `services/analysis`, so the
+   pure service stops importing from `infrastructure`.
+
+**Phase 1d (bug from the Phase 1c review, 2026-11-28).** [x] The cache-first change made a
+cache hit rebuild evidence from the inbox snapshot only (`buildEvidenceFromInboxItem`)
+and call `toAnalysisView(cached, snapshotEvidence, …)`. Effects on every cache hit
+(second click, or any later click with an unchanged state):
+
+- The handoff prompt loses the log excerpt, and uses the check name `checks` instead of
+  the real one, because the cached analysis cites `check:<real name>` and the snapshot
+  only has `check:checks`.
+- **Open check** falls back to the PR URL (the snapshot check has no `detailsUrl`).
+- The card says "Analyzed just now" for an analysis that may be days old, because
+  `toAnalysisView` defaults `analyzedAt` to the current time.
+
+Fix: store the card-ready `AnalysisView` (resolved links, handoff prompts, `analyzedAt`)
+in the cache entry next to the `Analysis`, return it unchanged on a cache hit, and bump
+the cache key to `v3`. Add a test that a cache hit returns the same handoff prompt, link
+and `analyzedAt` as the first result.
 
 Build Phase 0 and 1 on the existing plain-JS webview. The card UI change is small
 (`items.js`), so it does not wait for the migration below.

@@ -78,7 +78,14 @@ function emptyReviewThreadsPage(endCursor = ''): {
 }
 
 function makeReviewThreadsPage(
-  comments: Array<{ author: string; body: string; created_at: string; html_url: string; path?: string }>,
+  comments: Array<{
+    author: string;
+    body: string;
+    created_at: string;
+    html_url: string;
+    path?: string;
+    line?: number | null;
+  }>,
   pageInfo: { hasNextPage?: boolean; endCursor?: string } = {},
   threadFlags: { is_resolved?: boolean; is_outdated?: boolean } = {},
 ): unknown {
@@ -93,7 +100,16 @@ function makeReviewThreadsPayload(
   threads: Array<{
     is_resolved?: boolean;
     is_outdated?: boolean;
-    comments: Array<{ author: string; body: string; created_at: string; html_url: string; path?: string }>;
+    path?: string;
+    line?: number | null;
+    comments: Array<{
+      author: string;
+      body: string;
+      created_at: string;
+      html_url: string;
+      path?: string;
+      line?: number | null;
+    }>;
   }>,
   pageInfo: { hasNextPage?: boolean; endCursor?: string } = {},
 ): unknown {
@@ -103,8 +119,11 @@ function makeReviewThreadsPayload(
       is_resolved: thread.is_resolved ?? false,
       is_outdated: thread.is_outdated ?? false,
       is_collapsed: false,
+      path: thread.path,
+      line: thread.line,
       comments: thread.comments.map((comment) => ({
-        path: comment.path ?? 'src/app.ts',
+        path: comment.path ?? thread.path ?? 'src/app.ts',
+        line: comment.line !== undefined ? comment.line : thread.line,
         ...comment,
       })),
       total_count: thread.comments.length,
@@ -234,7 +253,59 @@ suite('GithubMcpAdapter', () => {
     assert.strictEqual(callToolCount, 1);
 
     const logs = await GithubMcpAdapter.getFailedJobLogs(service, SESSION, 'acme', 'widgets', '99');
-    assert.strictEqual(logs, null);
+    assert.deepStrictEqual(logs, {
+      ok: false,
+      reason: 'unavailable',
+      detail: 'actions toolset unavailable',
+    });
+  });
+
+  test('connect_doesNotMarkToolsetRejected_whenFallbackAlsoFails', async () => {
+    const connectCalls: unknown[] = [];
+    const service = {
+      connect: async (_serverId: string, opts?: { extraHeaders?: Record<string, string> }) => {
+        connectCalls.push(opts);
+        throw { serverId: 'github', category: 'network', detail: 'boom' };
+      },
+      disconnect: async () => undefined,
+      callTool: async () => toolResult([]),
+    } as unknown as McpConnectionService;
+
+    await assert.rejects(
+      () => GithubMcpAdapter.fetchOpenPullRequests(service, REPO, SESSION),
+    );
+    assert.strictEqual(connectCalls.length, 2);
+    assert.strictEqual(areCiLogsAvailable(), true);
+  });
+
+  test('getCheckRuns_mapsNameDetailsUrlAndSummary', async () => {
+    const { service } = makeConnectionService({
+      callTool: async (_serverId, name, args) => {
+        const typedArgs = args as Record<string, unknown>;
+        if (name === 'pull_request_read' && typedArgs.method === 'get_check_runs') {
+          return toolResult({
+            total_count: 1,
+            check_runs: [{
+              name: 'test',
+              status: 'completed',
+              conclusion: 'failure',
+              details_url: 'https://github.com/acme/widgets/actions/runs/99/job/1',
+              output: { summary: '2 failed' },
+            }],
+          });
+        }
+        throw new Error(`unexpected tool call: ${name}`);
+      },
+    });
+
+    const runs = await GithubMcpAdapter.getCheckRuns(service, SESSION, 'acme', 'widgets', 42);
+    assert.deepStrictEqual(runs, [{
+      name: 'test',
+      status: 'completed',
+      conclusion: 'failure',
+      detailsUrl: 'https://github.com/acme/widgets/actions/runs/99/job/1',
+      summary: '2 failed',
+    }]);
   });
 
   test('getFailedJobLogs_callsAllowlistedTool_withFailedOnlyAndTail', async () => {
@@ -269,15 +340,47 @@ suite('GithubMcpAdapter', () => {
         tail_lines: 2000,
       },
     }]);
-    assert.deepStrictEqual(logs, [{
-      jobId: 7,
-      jobName: 'test',
-      content: 'Failed CancelBooking_NotOwner_Throws',
-    }]);
+    assert.deepStrictEqual(logs, {
+      ok: true,
+      logs: [{
+        jobId: 7,
+        jobName: 'test',
+        content: 'Failed CancelBooking_NotOwner_Throws',
+      }],
+    });
     assert.strictEqual(
       parseActionsRunId('https://github.com/acme/widgets/actions/runs/123456/job/7'),
       '123456',
     );
+  });
+
+  test('getFailedJobLogs_logsTypedReason_onError', async () => {
+    const lines: string[] = [];
+    const { service } = makeConnectionService({
+      callTool: async (_serverId, name) => {
+        if (name === 'get_job_logs') {
+          throw { serverId: 'github', category: 'rate-limited', detail: 'slow down' };
+        }
+        throw new Error(`unexpected tool call: ${name}`);
+      },
+    });
+
+    const result = await GithubMcpAdapter.getFailedJobLogs(
+      service,
+      SESSION,
+      'acme',
+      'widgets',
+      '55',
+      (line) => lines.push(line),
+    );
+
+    assert.deepStrictEqual(result, {
+      ok: false,
+      reason: 'rate-limited',
+      detail: 'slow down',
+    });
+    assert.ok(lines.some((line) => line.includes('getFailedJobLogs rate-limited')));
+    assert.ok(lines.some((line) => line.includes('run 55')));
   });
 
   test('fetchOpenPullRequests_mapsMultiplePrs_includesDraftsAndAttachesLabelColors', async () => {
@@ -289,7 +392,7 @@ suite('GithubMcpAdapter', () => {
             {
               number: 1,
               title: 'Add feature',
-              head: { ref: 'feature/PROJ-123-add-feature' },
+              head: { ref: 'feature/PROJ-123-add-feature', sha: 'abc123def' },
               html_url: 'https://github.com/acme/widgets/pull/1',
               user: { login: 'alice' },
               state: 'open',
@@ -330,7 +433,10 @@ suite('GithubMcpAdapter', () => {
           }
           if (typedArgs.method === 'get_check_runs') {
             // Real shape is `{total_count, check_runs: [...]}`, not a bare array.
-            return toolResult({ total_count: 1, check_runs: [{ status: 'completed', conclusion: 'success' }] });
+            return toolResult({
+              total_count: 1,
+              check_runs: [{ name: 'build', status: 'completed', conclusion: 'success' }],
+            });
           }
         }
         if (name === 'get_label') {
@@ -346,9 +452,12 @@ suite('GithubMcpAdapter', () => {
     assert.strictEqual(result[0].number, 1);
     assert.strictEqual(result[0].draft, false);
     assert.strictEqual(result[0].headRef, 'feature/PROJ-123-add-feature');
+    assert.strictEqual(result[0].headSha, 'abc123def');
     assert.strictEqual(result[0].mergeable, 'MERGEABLE');
     assert.deepStrictEqual(result[0].labels, [{ name: 'bug', color: 'ff0000' }]);
     assert.strictEqual(result[0].checkStatus, 'SUCCESS');
+    assert.deepStrictEqual(result[0].checkConclusions, { build: 'success' });
+    assert.strictEqual(result[0].unresolvedThreadCount, 0);
     assert.deepStrictEqual(result[0].reviews, [{ author: 'dave', state: 'APPROVED', submittedAt: '2026-01-02T01:00:00Z' }]);
     assert.strictEqual(result[0].comments[0].author, 'erin');
     assert.deepStrictEqual(result[0].requestedReviewers, ['bob']);
@@ -690,11 +799,15 @@ suite('GithubMcpAdapter', () => {
                 }],
               },
               {
+                path: 'src/upload.ts',
+                line: 42,
                 comments: [{
                   author: 'carol',
                   body: 'Open review comment',
                   created_at: '2026-01-02T03:00:00Z',
                   html_url: `https://github.com/${repo.owner}/${repo.repo}/pull/202#discussion_r3`,
+                  path: 'src/upload.ts',
+                  line: 42,
                 }],
               },
             ]));
@@ -707,14 +820,23 @@ suite('GithubMcpAdapter', () => {
 
     const result = await GithubMcpAdapter.fetchOpenPullRequests(service, repo, SESSION);
 
+    assert.strictEqual(result[0].unresolvedThreadCount, 1);
     assert.deepStrictEqual(
-      result[0].comments.map((comment) => ({ id: comment.id, author: comment.author, body: comment.body })),
+      result[0].comments.map((comment) => ({
+        id: comment.id,
+        author: comment.author,
+        body: comment.body,
+        path: comment.path,
+        line: comment.line,
+      })),
       [
-        { id: '11', author: 'me', body: 'Conversation comment' },
+        { id: '11', author: 'me', body: 'Conversation comment', path: undefined, line: undefined },
         {
           id: `https://github.com/${repo.owner}/${repo.repo}/pull/202#discussion_r3`,
           author: 'carol',
           body: 'Open review comment',
+          path: 'src/upload.ts',
+          line: 42,
         },
       ],
     );

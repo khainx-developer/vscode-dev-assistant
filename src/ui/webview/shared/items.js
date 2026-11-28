@@ -335,6 +335,7 @@ export function renderAttentionItem(item, ctx, ui) {
       ? `<button type="button" class="ghost"${attrs({
         'data-action': 'analysisRun',
         'data-key': item.key,
+        'data-force': analysisEntry?.status === 'ready' ? 'true' : null,
         disabled: analyzing ? true : null,
         title: analysisEntry?.status === 'ready' ? 'Re-run analysis for this card' : 'Analyze this card: situation, actions, drafts and editor prompts',
       })}>${icon('sparkle', 'sm')}${analyzing ? 'Analyzing…' : analysisEntry?.status === 'ready' ? 'Re-analyze' : 'Analyze'}</button>`
@@ -488,6 +489,7 @@ function analysisPanel(item, ui) {
       <button type="button" class="ghost"${attrs({
         'data-action': 'analysisRun',
         'data-key': item.key,
+        'data-force': 'true',
         title: 'Re-run analysis for this card',
       })}>Re-analyze</button>
     </div>
