@@ -493,7 +493,8 @@ function aiStepBody() {
       ${cursorHost ? `<label class="checkbox"><input type="radio" name="aiProvider" value="cursorCli"${provider === 'cursorCli' ? ' checked' : ''}> Cursor Agent CLI${recommended === 'cursorCli' ? ' (recommended)' : ''}</label>` : ''}
     </fieldset>
     <p class="field-help">${help}</p>
-    ${body}`;
+    ${body}
+    <label class="checkbox"><input type="checkbox" id="analysisAuto"${ai?.analysisAuto ? ' checked' : ''}> Automatically analyze important items after refresh</label>`;
 }
 
 const STEP_BODIES = { github: githubStepBody, monitoring: monitoringStepBody, jira: jiraStepBody, ai: aiStepBody };
@@ -743,6 +744,8 @@ app.addEventListener('change', (event) => {
     post({ command: 'ai.setProvider', provider: target.value });
   } else if (target.id === 'aiModel') {
     post({ command: 'ai.setModel', modelId: target.value });
+  } else if (target.id === 'analysisAuto') {
+    post({ command: 'ai.setAnalysisAuto', enabled: target.checked });
   } else if (target.id === 'notifications') {
     post({ command: 'settings.setNotifications', enabled: target.checked });
   } else if (target.id === 'workingHoursEnabled') {

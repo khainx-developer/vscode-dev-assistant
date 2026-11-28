@@ -197,6 +197,10 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
           this.publish();
         }
         return;
+      case 'ai.setAnalysisAuto':
+        await this.config.setAnalysisAuto(message.enabled);
+        this.publish();
+        return;
       case 'ai.loadModels':
         return this.loadModels();
       case 'ai.cliTerminal':
@@ -813,6 +817,7 @@ export class AiCoordinator implements AiCommandHandler, vscode.Disposable {
       suggestCursorCli,
       defaultEnableProvider,
       cursorHost,
+      analysisAuto: this.config.getAnalysisAuto(),
     };
   }
 
