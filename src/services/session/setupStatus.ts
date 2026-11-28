@@ -100,7 +100,7 @@ export function deriveSetupStatus(
 function deriveAiStep(ai: SetupAiInput): SetupStep {
   const title = 'AI assistant (optional)';
   if (ai.provider === 'none') {
-    return { id: 'ai', title, state: 'optional', detail: 'Off. Turn on to get “What should I do next?” and standup summaries.' };
+    return { id: 'ai', title, state: 'optional', detail: 'Off. Turn on to Analyze inbox cards and get standup summaries.' };
   }
   if (ai.provider === 'cursorCli') {
     if (ai.cliAvailable === false) {

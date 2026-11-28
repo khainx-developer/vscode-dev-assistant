@@ -1,3 +1,5 @@
+import type { ActionTrackStatus } from '../services/analysis/actionTracker';
+import type { ActionKind, AnalysisConfidence, Finding } from '../services/analysis/types';
 import type { AttentionInboxItem } from '../services/attention/attentionInboxBuilder';
 import type { SnoozeOption } from '../services/attention/snooze';
 import type { AiEnableProvider, AiProvider, ChatModelInfo } from '../services/ai/aiSettings';
@@ -9,6 +11,31 @@ import type {
 import type { SetupStatus, SetupStepId } from '../services/session/setupStatus';
 import type { GitHubIncomingMessage, GitHubOutgoingMessage } from './githubTypes';
 import type { JiraIncomingMessage, JiraOutgoingMessage } from './jiraTypes';
+
+/** Card-ready analysis action: AI fields plus engine-resolved link and handoff. */
+export interface AnalysisActionView {
+  kind: ActionKind;
+  /** Stable id: kind plus sorted evidence ids. Survives re-analysis for manual done marks. */
+  actionKey: string;
+  title: string;
+  detail?: string;
+  findings?: Finding[];
+  draft?: string;
+  checklist?: string[];
+  link?: string;
+  openLabel?: string;
+  handoffPrompt?: string;
+}
+
+/** Analysis payload shaped for the Attention card UI. */
+export interface AnalysisView {
+  itemKey: string;
+  stateHash: string;
+  situation: string;
+  confidence: AnalysisConfidence;
+  actions: AnalysisActionView[];
+  analyzedAt: string;
+}
 
 /**
  * Webview ↔ extension-host message contracts.
@@ -28,15 +55,14 @@ export type SessionCommand =
   | { command: 'session.refreshAll' }
   | { command: 'attention.snooze'; key: string; option: SnoozeOption }
   | { command: 'attention.unsnooze'; key: string }
-  | { command: 'ai.whatNext' }
-  | { command: 'ai.explain'; key: string }
+  | { command: 'analysis.run'; key: string; force?: boolean }
+  | { command: 'analysis.markDone'; key: string; actionKey: string }
+  | { command: 'analysis.unmarkDone'; key: string; actionKey: string }
+  | { command: 'analysis.copyText'; text: string }
+  | { command: 'analysis.openLink'; url: string }
   | { command: 'ai.reviewInChat'; key: string; template?: string }
-  | { command: 'ai.chat.send'; key: string; text: string }
-  | { command: 'ai.chat.clear'; key: string }
   | { command: 'ai.standup' }
   | { command: 'ai.cancel' }
-  | { command: 'ai.dismiss' }
-  | { command: 'ai.copy' }
   | { command: 'ai.setProvider'; provider: AiProvider }
   | { command: 'ai.setModel'; modelId: string }
   | { command: 'ai.loadModels' }
@@ -106,7 +132,7 @@ export interface SessionStatus {
   };
 }
 
-export type AiRunKind = 'whatNext' | 'explain' | 'standup';
+export type AiRunKind = 'standup';
 
 export interface AiRunState {
   id: number;
@@ -144,7 +170,7 @@ export interface AiViewState {
   models: ChatModelInfo[] | null;
   modelsLoading: boolean;
   run: AiRunState | null;
-  /** Per-card chatbox threads keyed by inbox item key. */
+  /** Reserved empty map (card Ask AI chat removed; Analyze owns per-card AI). */
   threads: Record<string, AiCardThread>;
   /** Cursor Agent CLI detected on PATH. */
   cliAvailable: boolean;
@@ -165,12 +191,29 @@ export interface AiViewState {
   cursorHost: boolean;
 }
 
+/** Stored analysis for an inbox card: current hash (ready) or older hash (stale). */
+export type AnalysisSnapshotEntry =
+  | {
+    status: 'ready';
+    analysis: AnalysisView;
+    actionStatus: Record<string, ActionTrackStatus>;
+  }
+  | {
+    status: 'stale';
+    analysis: AnalysisView;
+    actionStatus: Record<string, ActionTrackStatus>;
+  };
+
 export type SessionEvent =
   | GitHubOutgoingMessage
   | JiraOutgoingMessage
   | { command: 'dashboard.inboxState'; state: InboxState }
   | { command: 'session.status'; status: SessionStatus }
-  | { command: 'ai.state'; state: AiViewState };
+  | { command: 'ai.state'; state: AiViewState }
+  | { command: 'analysis.analyzing'; key: string }
+  | { command: 'analysis.result'; key: string; analysis: AnalysisView }
+  | { command: 'analysis.unavailable'; key: string; reason?: string }
+  | { command: 'analysis.snapshot'; entries: Record<string, AnalysisSnapshotEntry> };
 
 export type SurfaceEvent =
   | { command: 'nav.showTab'; tab: SidebarTab; step?: SetupStepId };

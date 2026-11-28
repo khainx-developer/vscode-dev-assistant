@@ -2,7 +2,7 @@
   "name": "devmate-kit",
   "displayName": "DevMate Kit",
   "description": "Your daily work radar: GitHub pull requests and Jira tickets that need your attention, right inside VS Code — with optional AI summaries and handy text utilities.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "khainx-developer",
   "license": "MIT",
   "icon": "media/dev-assistant-activity-icon.png",
@@ -65,12 +65,28 @@
         "devMateKit.ai.model": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Model id. For `vscodeLm`, leave empty to use the first GitHub Copilot model (or the first available). For `cursorCli`, mapped to the CLI `--model` flag when non-empty. Pick from the live list with **DevMate Kit: Select AI Model**."
+          "markdownDescription": "Model id. **Required**: AI features (Analyze, automatic analysis, Next actions, standup) do not run until a model is chosen; DevMate never picks a default. For `cursorCli`, mapped to the CLI `--model` flag. Pick from the live list in Setup or with **DevMate Kit: Select AI Model**."
         },
         "devMateKit.ai.reviewPrompt": {
           "type": "string",
           "default": "Review PR #{number} in {repo}: {title}\n{url}\n\n## How to work this request\nYou are an editor coding agent with workspace access and (when available) GitHub/Jira MCP tools.\nDevMate only supplied a short triage snapshot. Do not invent a PR diff, check log, or Jira description from that snapshot.\n\n### Always do this first\n1. Identify GitHub targets (PR URL or owner/repo#number) and Jira targets (browse URL or issue key like WEB-123).\n2. Fetch live data with MCP (or equivalent tools) before answering.\n3. If a needed tool is missing or fails, say which one and what to enable — do not fabricate the missing content.\n\n### GitHub (when a PR is in scope)\nUse GitHub MCP / PR tools to load as needed: PR metadata and description, file diffs, check runs, reviews, and comments.\nBase review, summary, failing-check analysis, or draft replies on that live data.\n\n### Jira (when a ticket is in scope)\nUse Jira MCP / issue tools to load as needed: description, status, assignee, due date, comments, linked issues/PRs.\nIf a linked PR is present and the answer depends on code, also fetch that PR from GitHub.\n\n### If this prompt includes \"Conversation so far\"\nTreat it as prior DevMate Ask AI triage. Continue from the latest user goal, but prefer live MCP facts over snapshot guesses in that transcript.\n\n### Output\nBe concrete and actionable. Separate facts (from tools) from recommendations. Keep comment drafts short enough to paste.\n\n### This task\nStart by fetching this PR (diff + checks + comments), then review for correctness, risky changes, and missing tests.\nStatus: {status}",
           "markdownDescription": "Prompt template for **Continue in editor chat** (clipboard hand-off). Placeholders: `{number}`, `{repo}`, `{title}`, `{url}`, `{status}`. Keep portable MCP how-to in the template so paste works in Copilot, Cursor, and other editor chats — not sent to the in-dashboard AI."
+        },
+        "devMateKit.ai.analysis.auto": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Opt-in. When on (and AI is on with a model chosen), DevMate automatically analyzes important inbox items after each refresh, up to the per-refresh cap, without a click. This sends item summaries to your AI model. Off by default; on-demand **Analyze** on a card always works and is never capped."
+        },
+        "devMateKit.ai.analysis.maxAutoPerRefresh": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "markdownDescription": "Maximum number of automatic analyses after each refresh (highest priority first). Does not limit on-demand **Analyze**."
+        },
+        "devMateKit.ai.analysis.includeCiLogs": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "When analyzing a failing check, try to include a failed-job log excerpt if the GitHub connection exposes `get_job_logs`. Falls back to check name and summary when logs are unavailable."
         },
         "devMateKit.github.monitoredRepos": {
           "type": "array",
@@ -274,11 +290,6 @@
         "title": "DevMate Kit: Sign in to GitHub"
       },
       {
-        "command": "devMateKit.ai.whatNext",
-        "title": "DevMate Kit: Ask AI — What should I do next?",
-        "icon": "$(sparkle)"
-      },
-      {
         "command": "devMateKit.ai.standup",
         "title": "DevMate Kit: Generate Standup Summary",
         "icon": "$(checklist)"
@@ -380,11 +391,6 @@
           "group": "navigation@2"
         },
         {
-          "command": "devMateKit.ai.whatNext",
-          "when": "view == devMateKit.sidebar",
-          "group": "navigation@3"
-        },
-        {
           "command": "devMateKit.openSetup",
           "when": "view == devMateKit.sidebar",
           "group": "1_setup@1"
@@ -454,8 +460,8 @@
           },
           {
             "id": "turnOnAi",
-            "title": "Ask AI what to do next (optional)",
-            "description": "Use editor language models (e.g. GitHub Copilot) or the Cursor Agent CLI.\n[Select a model](command:devMateKit.ai.selectModel)",
+            "title": "Turn on AI analysis (optional)",
+            "description": "Use editor language models (e.g. GitHub Copilot) or the Cursor Agent CLI to Analyze inbox cards.\n[Select a model](command:devMateKit.ai.selectModel)",
             "media": {
               "markdown": "media/walkthrough/ai.md"
             },
@@ -485,6 +491,7 @@
     "compile": "tsc -p ./ --noEmit",
     "lint": "eslint src --ext ts",
     "package": "npm run build && vsce package",
+    "pretest": "tsc -p ./",
     "test": "vscode-test"
   },
   "dependencies": {

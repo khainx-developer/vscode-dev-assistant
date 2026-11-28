@@ -1,8 +1,7 @@
 import type { AttentionInboxItem } from '../attention/attentionInboxBuilder';
-import { normalizeAiProvider, pickDefaultModel, type AiProvider, type ChatModelInfo } from './aiSettings';
+import { normalizeAiProvider, pickConfiguredModel, type AiProvider, type ChatModelInfo } from './aiSettings';
 import {
   buildChatAboutItemPrompt,
-  buildExplainItemPrompt,
   buildNextStepsPrompt,
   buildStandupPrompt,
   type PromptMessage,
@@ -36,9 +35,16 @@ export interface AiSettingsSnapshot {
   model: string | undefined;
 }
 
-export type AiUnavailableReason = 'disabled' | 'noModels' | 'cliMissing' | 'cliUnauthenticated';
+export type AiUnavailableReason =
+  | 'disabled'
+  | 'noModelSelected'
+  | 'noModels'
+  | 'cliMissing'
+  | 'cliUnauthenticated';
 
 export const AI_DISABLED_MESSAGE = 'AI is turned off. Turn it on in DevMate Kit → Setup → AI assistant.';
+export const AI_NO_MODEL_SELECTED_MESSAGE =
+  'No AI model selected. Choose a model in DevMate Kit → Setup → AI assistant.';
 export const AI_NO_MODELS_MESSAGE =
   'No language model available — install/enable GitHub Copilot Chat, or another LM provider, then pick a model in Setup.';
 export const AI_CLI_MISSING_MESSAGE =
@@ -87,6 +93,10 @@ export class AiAssistant {
     if (this.provider === 'none') {
       throw new AiUnavailableError('disabled', AI_DISABLED_MESSAGE);
     }
+    const saved = this.readSettings().model?.trim();
+    if (!saved || /--model|\/model\b|</.test(saved)) {
+      throw new AiUnavailableError('noModelSelected', AI_NO_MODEL_SELECTED_MESSAGE);
+    }
     if (this.provider === 'cursorCli') {
       const status = await this.ports.cursorCli.getStatus();
       if (!status.available) {
@@ -96,11 +106,19 @@ export class AiAssistant {
         throw new AiUnavailableError('cliUnauthenticated', AI_CLI_UNAUTHENTICATED_MESSAGE);
       }
     }
-    const model = pickDefaultModel(await this.port.listModels(), this.readSettings().model);
-    if (!model) {
+    const models = await this.port.listModels();
+    const configured = pickConfiguredModel(models, saved);
+    if (configured) {
+      return configured;
+    }
+    // Cursor CLI accepts free-form --model ids that may not appear in the listed set.
+    if (this.provider === 'cursorCli') {
+      return { id: saved, name: saved, vendor: 'cursor-cli', family: saved };
+    }
+    if (models.length === 0) {
       throw new AiUnavailableError('noModels', AI_NO_MODELS_MESSAGE);
     }
-    return model;
+    throw new AiUnavailableError('noModelSelected', AI_NO_MODEL_SELECTED_MESSAGE);
   }
 
   whatShouldIDoNext(
@@ -114,15 +132,6 @@ export class AiAssistant {
 
   standupSummary(snapshot: StandupSnapshot, now: number, options: AiRunOptions = {}): Promise<AiResult> {
     return this.run(buildStandupPrompt(snapshot, now), options);
-  }
-
-  explainItem(
-    item: AttentionInboxItem,
-    me: { github: string | null; jira: string | null },
-    now: number,
-    options: AiRunOptions = {},
-  ): Promise<AiResult> {
-    return this.run(buildExplainItemPrompt(item, now, me), options);
   }
 
   /**

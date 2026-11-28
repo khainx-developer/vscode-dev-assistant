@@ -4,6 +4,7 @@ import {
   AI_CLI_UNAUTHENTICATED_MESSAGE,
   AI_DISABLED_MESSAGE,
   AI_NO_MODELS_MESSAGE,
+  AI_NO_MODEL_SELECTED_MESSAGE,
   AiAssistant,
   AiUnavailableError,
   type CursorCliPort,
@@ -66,10 +67,30 @@ suite('AiAssistant', () => {
     assert.strictEqual(listed, false);
   });
 
+  test('noModelSelected_failsWithoutListingWhenUnset', async () => {
+    let listed = false;
+    const vscodeLm: LanguageModelPort = {
+      listModels: async () => {
+        listed = true;
+        return [copilot];
+      },
+      sendRequest: async () => '',
+    };
+    const assistant = new AiAssistant(
+      { vscodeLm, cursorCli: fakeCli({ available: true, authenticated: true }, [cliModel]) },
+      () => ({ provider: 'vscodeLm', model: undefined }),
+    );
+    await assert.rejects(() => assistant.whatShouldIDoNext([], { github: null, jira: null }, 0), (error: unknown) =>
+      error instanceof AiUnavailableError
+      && error.reason === 'noModelSelected'
+      && error.message === AI_NO_MODEL_SELECTED_MESSAGE);
+    assert.strictEqual(listed, false);
+  });
+
   test('noModels_failsGracefully', async () => {
     const assistant = new AiAssistant(
       { vscodeLm: fakePort([]), cursorCli: fakeCli({ available: true, authenticated: true }, [cliModel]) },
-      () => ({ provider: 'vscodeLm', model: undefined }),
+      () => ({ provider: 'vscodeLm', model: 'copilot-x' }),
     );
     await assert.rejects(() => assistant.whatShouldIDoNext([], { github: null, jira: null }, 0), (error: unknown) =>
       error instanceof AiUnavailableError && error.reason === 'noModels' && error.message === AI_NO_MODELS_MESSAGE);
@@ -80,7 +101,7 @@ suite('AiAssistant', () => {
     const cursorCli = fakeCli({ available: true, authenticated: true }, [cliModel]);
     const assistant = new AiAssistant(
       { vscodeLm, cursorCli },
-      () => ({ provider: 'githubCopilot', model: undefined }),
+      () => ({ provider: 'githubCopilot', model: 'copilot-x' }),
     );
     const chunks: string[] = [];
     const result = await assistant.whatShouldIDoNext([], { github: 'me', jira: null }, 0, { onText: (chunk) => chunks.push(chunk) });
@@ -108,7 +129,7 @@ suite('AiAssistant', () => {
     const cursorCli = fakeCli({ available: true, authenticated: true }, [cliModel], 'From CLI');
     const assistant = new AiAssistant(
       { vscodeLm, cursorCli },
-      () => ({ provider: 'cursorCli', model: undefined }),
+      () => ({ provider: 'cursorCli', model: 'auto' }),
     );
     const result = await assistant.whatShouldIDoNext([], { github: null, jira: null }, 0);
     assert.strictEqual(result.text, 'From CLI');
@@ -123,7 +144,7 @@ suite('AiAssistant', () => {
         vscodeLm: fakePort([copilot]),
         cursorCli: fakeCli({ available: false, authenticated: false }, []),
       },
-      () => ({ provider: 'cursorCli', model: undefined }),
+      () => ({ provider: 'cursorCli', model: 'auto' }),
     );
     await assert.rejects(() => assistant.whatShouldIDoNext([], { github: null, jira: null }, 0), (error: unknown) =>
       error instanceof AiUnavailableError && error.reason === 'cliMissing' && error.message === AI_CLI_MISSING_MESSAGE);
@@ -135,7 +156,7 @@ suite('AiAssistant', () => {
         vscodeLm: fakePort([copilot]),
         cursorCli: fakeCli({ available: true, authenticated: false }, [cliModel]),
       },
-      () => ({ provider: 'cursorCli', model: undefined }),
+      () => ({ provider: 'cursorCli', model: 'auto' }),
     );
     await assert.rejects(() => assistant.whatShouldIDoNext([], { github: null, jira: null }, 0), (error: unknown) =>
       error instanceof AiUnavailableError && error.reason === 'cliUnauthenticated' && error.message === AI_CLI_UNAUTHENTICATED_MESSAGE);
@@ -145,7 +166,7 @@ suite('AiAssistant', () => {
     const vscodeLm = fakePort([copilot], 'Because checks failed.');
     const assistant = new AiAssistant(
       { vscodeLm, cursorCli: fakeCli({ available: true, authenticated: true }, [cliModel]) },
-      () => ({ provider: 'vscodeLm', model: undefined }),
+      () => ({ provider: 'vscodeLm', model: 'copilot-x' }),
     );
     const item = {
       key: 'github:acme/web#1',

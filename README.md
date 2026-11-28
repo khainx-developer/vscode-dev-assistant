@@ -1,8 +1,8 @@
 # DevMate Kit
 
-**Your daily work radar and developer tools.** DevMate Kit shows the GitHub pull requests and Jira tickets that need *your* attention — right inside VS Code — and can turn them into a prioritized plan or a standup update with the AI models your editor already has.
+**Your daily work radar and developer tools.** DevMate Kit shows the GitHub pull requests and Jira tickets that need *your* attention — right inside VS Code — and can analyze each one — what is going on, what to do, with links and copy-ready prompts — or write a standup update, using the AI models your editor already has.
 
-> What should I do next? Open the sidebar and you'll know.
+> Open the dashboard. See what needs you — and what to do next.
 
 ## Why
 
@@ -37,16 +37,23 @@ The full dashboard opens on the Attention Inbox. Stat tiles — *Needs attention
 
 ### AI assistant (optional)
 
+AI is **off until you turn it on and choose a model**. DevMate never picks a default model for you, and nothing is sent to a model before then. To enable it:
+
+1. **Setup → AI assistant**, turn on a backend: **Editor language models** (GitHub Copilot, etc.) or **Cursor Agent CLI**.
+2. **Choose a model** from the list (or run **DevMate Kit: Select AI Model**). For Cursor Agent CLI, install the CLI and run `agent login` first.
+3. Click **Analyze** on a card. Automatic analysis is **off by default**; to have DevMate analyze important items after each refresh, turn on `devMateKit.ai.analysis.auto` yourself (it sends item summaries to your model without a click).
+
+Analysis is read-only: DevMate never writes to GitHub or Jira and never sends the PR diff.
+
 DevMate can use either:
 
 - **Editor language models** through the VS Code Language Model API — GitHub Copilot, Claude when Copilot or another installed provider offers it, or any other registered model.
 - **Cursor Agent CLI** (`agent` / `cursor-agent` on your PATH) in ask/print-only mode — a real subprocess backend, not a fake editor model. Useful when the host exposes no `vscode.lm` models (including Cursor IDE and VS Code without Copilot). Install the CLI, run `agent login` (or set `CURSOR_API_KEY` in the environment). DevMate never stores Anthropic or other vendor API keys.
 
-- **Ask AI: What should I do next?** — a 3–7 step plan with one "start here" recommendation.
 - **Generate Standup Summary** — Yesterday / Today / Blockers in Markdown, ready to copy.
-- **Explain** on any inbox item — why it's flagged and the next human action.
+- **Analyze** on any inbox card — runs analysis for that card only (situation, actions, findings, drafts, **Copy prompt**, **Open** links). Card analysis detail stays hidden until you click **Analyze**; then **Show analysis** / **Hide analysis** toggle the panel. **Re-analyze** forces a fresh run. When AI is on and auto-analysis is enabled, important items are analyzed after a refresh (capped) to feed the Inbox **Next actions** list without opening card detail. Actions show progress/done from engine state, and you can mark them done by hand.
 
-Only titles, keys, statuses, reasons, dates and short comment excerpts are sent to the model. Access tokens, OAuth secrets, URLs and raw API payloads are never included, and comment excerpts are scanned for anything that looks like a credential.
+Only titles, keys, statuses, reasons, dates, short comment excerpts and (when available) failed-check log excerpts are sent to the model. Access tokens, OAuth secrets and raw API payloads are never included, and excerpts are scanned for anything that looks like a credential.
 
 If editor models are empty, Setup can **suggest** Cursor Agent CLI; it never switches provider automatically.
 
@@ -70,7 +77,7 @@ For case transforms (UPPERCASE, lowercase, camelCase, snake_case, kebab-case), u
 2. **Setup → Sign in to GitHub.** DevMate uses your VS Code GitHub account.
 3. **Add repositories** (`owner/repo`) and, optionally, **teammates** by GitHub username.
 4. *Optional:* **Connect Jira** — enter your site URL, approve access in the browser, type your name exactly as it appears in the Assignee field, and add a JQL query (DevMate suggests one).
-5. *Optional:* turn on **AI** and pick a model.
+5. *Optional:* turn on **AI**: in **Setup → AI assistant** choose a backend, then **choose a model**. AI features stay off until a model is selected.
 
 There's also a guided walkthrough: **Help → Welcome → Get started with DevMate Kit**.
 
@@ -81,7 +88,6 @@ There's also a guided walkthrough: **Help → Welcome → Get started with DevMa
 | DevMate Kit: Open Daily Tasks Dashboard | Opens the full dashboard |
 | DevMate Kit: Refresh Attention Inbox | Refreshes GitHub and Jira now |
 | DevMate Kit: Open Setup | Opens the setup checklist |
-| DevMate Kit: Ask AI — What should I do next? | Prioritized plan from your inbox |
 | DevMate Kit: Generate Standup Summary | Yesterday / Today / Blockers in a new editor |
 | DevMate Kit: Select AI Model | Pick from the models this editor offers |
 | DevMate Kit: Sign in to GitHub | Signs in with your VS Code GitHub account |
@@ -100,7 +106,10 @@ There's also a guided walkthrough: **Help → Welcome → Get started with DevMa
 | `devMateKit.jira.noPrDays` | `3` | Days without Jira activity before flagging an in-progress ticket with no open PR |
 | `devMateKit.attention.ignoreShortReplies` | `false` | When true, a latest non-bot comment under about 15 characters does not count as awaiting your reply |
 | `devMateKit.ai.provider` | `none` | `vscodeLm` (editor LM API), `cursorCli` (Cursor Agent CLI ask/print), or `none` |
-| `devMateKit.ai.model` | `""` | Model id; for `vscodeLm` empty picks first Copilot model; for `cursorCli` maps to `--model` |
+| `devMateKit.ai.model` | `""` | **Required for any AI feature.** Model id chosen in Setup; no default is used. For `cursorCli` maps to `--model` |
+| `devMateKit.ai.analysis.auto` | `false` | Auto-analyze important items after refresh (up to the per-refresh cap; skips snoozed and unchanged hashes) |
+| `devMateKit.ai.analysis.maxAutoPerRefresh` | `3` | Cap on automatic analyses per refresh; on-demand Analyze is never capped |
+| `devMateKit.ai.analysis.includeCiLogs` | `true` | At Analyze time, fetch failed-job logs when the GitHub actions toolset is available; otherwise degrade to check name, summary and link |
 | `devMateKit.monitoring.enabled` | `true` | Keep watching GitHub and Jira; turn off to pause all monitoring network activity |
 | `devMateKit.notifications.enabled` | `true` | Notify when new items need attention |
 | `devMateKit.refresh.background` | `true` | Refresh every 10 minutes even when no DevMate view is open |

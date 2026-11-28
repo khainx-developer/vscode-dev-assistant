@@ -1,0 +1,52 @@
+2026-11-28T08:01:00.0000000Z ##[section]Starting: test
+2026-11-28T08:01:00.1000000Z Starting test execution, please wait...
+2026-11-28T08:01:01.0000000Z A total of 1 test files matched the specified pattern.
+2026-11-28T08:01:05.0000000Z   Passed InvoicePaymentTests.InitTransaction_ReturnTransaction [12 ms]
+2026-11-28T08:01:05.1000000Z   Passed BookingTests.Create_ValidRequest_ReturnsOk [8 ms]
+2026-11-28T08:01:05.2000000Z   Passed BookingTests.List_Owner_CanSeeOwn [5 ms]
+2026-11-28T08:01:06.0000000Z info: Expected Exception logged by passing test: System.InvalidOperationException: deliberate
+2026-11-28T08:01:06.1000000Z   Passed ExceptionLoggingTests.LogsExpectedException [3 ms]
+2026-11-28T08:01:07.0000000Z   Failed Get_Role_CanRead(role: "Advisor") [4 ms]
+2026-11-28T08:01:07.0100000Z   Error Message:
+2026-11-28T08:01:07.0200000Z    Assert.Equal() Failure: Values differ
+2026-11-28T08:01:07.0300000Z Expected: True
+2026-11-28T08:01:07.0400000Z Actual:   False
+2026-11-28T08:01:07.0500000Z   Stack Trace:
+2026-11-28T08:01:07.0600000Z      at Wisory.Test.Security.RoleTests.Get_Role_CanRead(String role) in /_/Wisory.Test/Security/RoleTests.cs:line 42
+2026-11-28T08:01:07.0700000Z      at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+2026-11-28T08:01:07.2000000Z   Failed Get_Role_CanRead(role: "Admin") [3 ms]
+2026-11-28T08:01:07.2100000Z   Error Message:
+2026-11-28T08:01:07.2200000Z    Assert.Equal() Failure: Values differ
+2026-11-28T08:01:07.2300000Z Expected: True
+2026-11-28T08:01:07.2400000Z Actual:   False
+2026-11-28T08:01:07.2500000Z   Stack Trace:
+2026-11-28T08:01:07.2600000Z      at Wisory.Test.Security.RoleTests.Get_Role_CanRead(String role) in /_/Wisory.Test/Security/RoleTests.cs:line 42
+2026-11-28T08:01:08.0000000Z   Failed CancelBooking_NotOwner_Throws [6 ms]
+2026-11-28T08:01:08.0100000Z   Error Message:
+2026-11-28T08:01:08.0200000Z    Assert.Equal() Failure
+2026-11-28T08:01:08.0300000Z Expected: 403
+2026-11-28T08:01:08.0400000Z Actual:   404
+2026-11-28T08:01:08.0500000Z   Stack Trace:
+2026-11-28T08:01:08.0600000Z      at Wisory.Test.Booking.BookingTests.CancelBooking_NotOwner_Throws() in /_/Wisory.Test/Booking/BookingTests.cs:line 100
+2026-11-28T08:01:09.0000000Z   Passed BookingTests.CancelBooking_Owner_Succeeds [4 ms]
+2026-11-28T08:01:10.0000000Z   Failed CancelBooking_Postponed_Throws [5 ms]
+2026-11-28T08:01:10.0100000Z   Error Message:
+2026-11-28T08:01:10.0200000Z    Assert.Equal() Failure
+2026-11-28T08:01:10.0300000Z Expected: 403
+2026-11-28T08:01:10.0400000Z Actual:   404
+2026-11-28T08:01:10.0500000Z   Stack Trace:
+2026-11-28T08:01:10.0600000Z      at Wisory.Test.Booking.BookingTests.CancelBooking_Postponed_Throws() in /_/Wisory.Test/Booking/BookingTests.cs:line 118
+2026-11-28T08:01:20.0000000Z   Passed InvoicePaymentTests.Settle_AlreadyPaid_IsIdempotent [2 ms]
+2026-11-28T08:01:21.0000000Z   Passed AuthTests.Login_ValidCredentials_ReturnsToken [9 ms]
+2026-11-28T08:01:22.0000000Z Test Run Failed.
+2026-11-28T08:01:22.1000000Z Total tests: 100
+2026-11-28T08:01:22.1100000Z      Passed: 96
+2026-11-28T08:01:22.1200000Z      Failed: 4
+2026-11-28T08:01:22.1300000Z  Failed!  - Failed:     4, Passed:    96, Skipped:     0, Total:   100, Duration: 21 s
+2026-11-28T08:01:23.0000000Z ##[error]Error: The process '/usr/bin/dotnet' failed with exit code 1
+2026-11-28T08:01:23.1000000Z ##[error]Process completed with exit code 1.
+2026-11-28T08:01:24.0000000Z ##[section]Finishing: test
+2026-11-28T08:01:25.0000000Z Post job cleanup.
+2026-11-28T08:01:25.1000000Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-28T08:01:25.2000000Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-28T08:01:25.3000000Z Cleaning up orphan processes

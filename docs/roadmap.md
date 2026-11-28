@@ -25,7 +25,7 @@ All planned work is in [backlog.md](backlog.md), in priority order. Designs:
 |---|---|---|---|
 | **Home tab** | Glance: what needs me now | Attention summary, top items, connection status | Tools, settings forms |
 | **Dashboard panel** | Triage everything | Full inbox, filters, stat tiles | Tools |
-| **Inbox card** | Act on one ticket or PR | Open PR/Jira, snooze, acceptance criteria, blockers, Ask AI | Generic tools |
+| **Inbox card** | Act on one ticket or PR | Open PR/Jira, snooze, acceptance criteria, blockers, Analyze | Generic tools |
 | **Tools tab** | Transform text, no context needed | Searchable tools grouped Code / API | Anything needing GitHub/Jira |
 | **Status bar** | Ambient signal | Attention count, current ticket | Menus |
 | **Setup tab** | Configure and connect | Sign-in, repos, Jira, AI provider, preferences | Daily-use features |
@@ -45,9 +45,14 @@ Keep the sidebar tabs at Home / Tools / Setup. A tool is defined once in
   feature off quietly. In multi-root workspaces use the repo of the active editor.
   The branch name stays local unless the user hands it off. Flagged / Impediment
   blockers on inbox cards are also shipped.
-- **AI Action Center designed** ([ai-action-center.md](ai-action-center.md)):
-  read-only analysis and actions per ticket or PR. The AI reads and plans, the
-  editor AI does the heavy work. Writes through MCP are not planned.
+- **AI Action Center shipped in v0.5.0** ([ai-action-center.md](ai-action-center.md)):
+  read-only analysis and actions per ticket or PR (Analyze, automatic analysis,
+  progress tracking, Next actions). The AI reads and plans, the editor AI does the
+  heavy work. Writes through MCP are not planned.
+- **AI is opt-in twice:** the user turns a backend on **and** picks a model. No
+  default model is ever used; without both, no AI feature runs and nothing is sent.
+- **Card chat and "What should I do next?" removed** in v0.5.0; Analyze and Next
+  actions replace them.
 - **Bundle budget:** toolkit dependencies stay under about +100 KB combined.
   About 56 KB is left (`js-yaml` took about 44 KB). A lazy `require` only defers
   start-up work; it does not shrink the single-file bundle.

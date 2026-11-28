@@ -41,6 +41,10 @@ export interface AiCommandHandler {
   replay(surface: SessionSurface): void;
   selectedModelName(): string | null;
   cliStatus(): { available: boolean; authenticated: boolean };
+  /** After inbox recompute: plan and run automatic analyses when enabled. */
+  onInboxRecomputed(): void | Promise<void>;
+  /** Cancel in-flight analysis (user or automatic), e.g. on sign-out. */
+  cancelAnalysisWork(): void;
 }
 
 const STALE_AFTER_MS = 60 * 1000;
@@ -86,6 +90,7 @@ export class DashboardSession implements vscode.Disposable {
   private readonly scheduler: RefreshScheduler;
   private readonly disposables: vscode.Disposable[] = [];
   private workingHoursTimer: ReturnType<typeof setTimeout> | undefined;
+  private githubWasAuthenticated = false;
 
   private readonly visibilityEmitter = new vscode.EventEmitter<void>();
   private readonly changeEmitter = new vscode.EventEmitter<void>();
@@ -244,7 +249,7 @@ export class DashboardSession implements vscode.Disposable {
     return this.inboxState;
   }
 
-  /** Active + snoozed items, for lookups by key (e.g. "explain this item"). */
+  /** Active + snoozed items, for lookups by key (e.g. analysis / card chat). */
   findItem(key: string): AttentionInboxItem | undefined {
     return (this.allItems ?? []).find((item) => item.key === key || item.key.split('|')[0] === key);
   }
@@ -298,7 +303,7 @@ export class DashboardSession implements vscode.Disposable {
       this.recompute();
       return;
     }
-    if (command.startsWith('ai.') || command.startsWith('settings.')) {
+    if (command.startsWith('ai.') || command.startsWith('analysis.') || command.startsWith('settings.')) {
       await this.aiHandler?.handleCommand(message);
       return;
     }
@@ -342,7 +347,15 @@ export class DashboardSession implements vscode.Disposable {
   // ── Internals ───────────────────────────────────────────────────────────
 
   private onControllerMessage(message: GitHubOutgoingMessage | JiraOutgoingMessage): Thenable<boolean> {
-    if (message.command === 'github.state') this.githubState = message.state;
+    if (message.command === 'github.state') {
+      const authenticated = !!message.state.authenticated;
+      if (this.githubWasAuthenticated && !authenticated) {
+        void this.services.analysisStore.clear();
+        this.aiHandler?.cancelAnalysisWork();
+      }
+      this.githubWasAuthenticated = authenticated;
+      this.githubState = message.state;
+    }
     if (message.command === 'jira.state') this.jiraState = message.state;
     this.broadcast(message);
     if (message.command === 'github.state' || message.command === 'jira.state') {
@@ -377,6 +390,7 @@ export class DashboardSession implements vscode.Disposable {
     }
     this.broadcast({ command: 'dashboard.inboxState', state: this.inboxState });
     this.publishStatus();
+    this.aiHandler?.onInboxRecomputed();
   }
 
   private publishStatus(): void {
@@ -443,10 +457,8 @@ export class DashboardSession implements vscode.Disposable {
     if (this.isMonitoringEnabled()) return false;
     if (command === 'session.refreshAll') return true;
     if (
-      command === 'ai.whatNext'
-      || command === 'ai.explain'
+      command === 'analysis.run'
       || command === 'ai.reviewInChat'
-      || command === 'ai.chat.send'
       || command === 'ai.standup'
     ) return true;
     if (command.startsWith('github.') || command.startsWith('jira.')) {

@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-11-28
+
+### New
+- **AI Action Center** — read-only AI analysis of your Attention cards. The AI reads and plans; the engine picks items, collects evidence, validates the answer and tracks progress. Nothing is written to GitHub or Jira, and the PR diff is never sent.
+  - **Analyze** on a card (replaces Explain): situation, prioritized actions with findings (for example which tests failed, where and why), **Open** links resolved by the engine, **Copy prompt** for your editor AI and **Copy draft**.
+  - **Automatic analysis** (opt-in, off by default: turn on `devMateKit.ai.analysis.auto`) after each inbox refresh for important items (urgent, new comment, @mention, review requested, changes requested, failing checks). Capped per refresh, skips snoozed items and unchanged state, backs off 30 minutes after a failure. Never changes counts, badges or priority.
+  - **Progress tracking**: actions complete by themselves (your reply posted, checks green, threads resolved, review submitted), show "progress detected" after a new push, and can be ticked off manually. Closed or merged items drop their actions.
+  - **Next actions** at the top of the Inbox tab: open actions across analysed cards, sorted by priority, kind and recency (8 shown, Show all), with jump-to-card.
+  - **CI failure analysis**: fetches failed-job logs (read-only `get_job_logs`), extracts the failing tests and errors, and caps confidence to low when no log is available.
+  - Settings: `devMateKit.ai.analysis.auto`, `devMateKit.ai.analysis.maxAutoPerRefresh`, `devMateKit.ai.analysis.includeCiLogs`.
+- **Explicit AI model required** — Analyze and automatic analysis run only when the AI backend is on and a model is chosen in Setup (no default model fallback).
+
+### Changed
+- Removed the card **Ask AI** chat and the **What should I do next?** command; Analyze and Next actions replace them.
+- `npm test` now compiles first (`pretest`), so it can no longer report "0 passing" on stale output.
 
 ## 0.4.0 — 2026-11-21
 

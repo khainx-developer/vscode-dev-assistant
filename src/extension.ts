@@ -44,7 +44,6 @@ export function activate(context: vscode.ExtensionContext): void {
   register('devMateKit.resumeMonitoring', () => void session.setMonitoringEnabled(true));
   register('devMateKit.toggleMonitoring', () => void session.setMonitoringEnabled(!session.isMonitoringEnabled()));
   register('devMateKit.githubSignIn', () => session.handleCommand({ command: 'github.signIn' }));
-  register('devMateKit.ai.whatNext', () => ai.whatShouldIDoNext());
   register('devMateKit.ai.standup', () => ai.standup());
   register('devMateKit.ai.selectModel', () => ai.pickModel());
 }

@@ -6,26 +6,6 @@ import { attrs, esc, relativeTime } from './dom.js';
 import { icon } from './icons.js';
 import { renderMarkdown } from './markdown.js';
 
-function hasUnreadCommentSignal(item) {
-  return !!(
-    item.reasons?.includes('pr-unread-comment')
-    || item.reasons?.includes('jira-unread-comment')
-    || item.prUnreadCount > 0
-    || item.prLatestUnreadComment
-    || item.jiraUnreadCount > 0
-    || item.jiraLatestUnreadComment
-  );
-}
-
-function hasAwaitingReplySignal(item) {
-  return !!(
-    item.reasons?.includes('pr-awaiting-reply')
-    || item.reasons?.includes('jira-awaiting-reply')
-    || item.prLatestAwaitingComment
-    || item.jiraLatestAwaitingComment
-  );
-}
-
 /** Prefer unread excerpt when both apply; otherwise show the awaiting-reply excerpt. */
 function jiraCommentForCard(item) {
   if (item.jiraLatestUnreadComment) return { comment: item.jiraLatestUnreadComment, prefix: 'Jira · ' };
@@ -43,58 +23,6 @@ function relatedCommentForCard(related) {
   if (related.latestUnreadComment) return related.latestUnreadComment;
   if (related.latestAwaitingComment) return related.latestAwaitingComment;
   return null;
-}
-
-/** Fast triage chips — answered on-card from the snapshot (no PR diff / Jira body). */
-function quickChatSuggestions(item) {
-  const suggestions = [
-    'Why does this need attention?',
-    "What's the next step?",
-    'Whose turn is it?',
-  ];
-  if (hasUnreadCommentSignal(item) || hasAwaitingReplySignal(item)) {
-    suggestions.push('Draft a reply to the comment');
-  }
-  return suggestions;
-}
-
-/**
- * Deep work actions — copy a portable editor-chat prompt (MCP how-to included).
- * These need live PR/Jira data the card snapshot does not have.
- */
-function deepEditorActions(item) {
-  const actions = [];
-  const pr = item.pr || item.relatedPRs?.[0]?.pr;
-  if (pr) {
-    actions.push({ template: 'review', label: 'Review PR' });
-    actions.push({ template: 'summarize', label: 'Summarize changes' });
-    const failing = item.reasons?.includes('pr-checks-failing')
-      || pr.checkStatus === 'FAILURE'
-      || pr.checkStatus === 'ERROR';
-    if (failing) actions.push({ template: 'fixChecks', label: 'Fix failing checks' });
-    if (
-      item.reasons?.includes('pr-unread-comment')
-      || item.prUnreadCount > 0
-      || item.prLatestUnreadComment
-      || item.reasons?.includes('pr-awaiting-reply')
-      || item.prLatestAwaitingComment
-    ) {
-      actions.push({ template: 'draftReply', label: 'Draft reply (with PR context)' });
-    }
-  }
-  if (item.jiraTask) actions.push({ template: 'planTicket', label: 'Plan this ticket' });
-  if (!actions.length) {
-    actions.push({
-      template: item.jiraTask ? 'planTicket' : 'review',
-      label: 'Copy editor prompt',
-    });
-  }
-  return actions;
-}
-
-/** Free-text questions that need the PR diff / full Jira body should not go to card AI. */
-export function isDeepEditorQuestion(text) {
-  return /\b(summarize|summary of (the )?changes|what changed|diff|code review|review (the )?pr|review this pr|failing checks?|fix (the )?checks?|plan (this|the)? ticket|implement|refactor|pull request body|jira description)\b/i.test(String(text || ''));
 }
 
 const LEGACY_GITHUB_REASONS = {
@@ -319,22 +247,39 @@ export function renderAttentionItem(item, ctx, ui) {
   // Keep Open PR + Open in Jira on one row: when PRs are in related blocks, put the
   // Jira button beside the first Open PR instead of on the secondary actions row.
   const jiraOnRelated = !!(task && related.length);
-  const thread = ui.threads?.[item.key];
-  // Explicit false means the user hid the panel; do not force it open just because a thread exists.
-  const chatOpen = ui.chatOpen?.[item.key] === false
-    ? false
-    : !!(ui.chatOpen?.[item.key] || thread);
+  const analysisEntry = ui.analysis?.[item.key];
+  const analyzing = analysisEntry?.status === 'analyzing';
+  // Unlocked only after the user clicks Analyze on this card (auto snapshot does not unlock).
+  const unlocked = !!ui.analysisUnlocked?.[item.key];
+  const detailOpen = !!ui.analysisDetailOpen?.[item.key];
+  const hasStoredAnalysis = analysisEntry?.status === 'ready' || analysisEntry?.status === 'stale';
+  const analysisButtons = ui.aiEnabled
+    ? [
+      `<button type="button" class="ghost"${attrs({
+        'data-action': 'analysisRun',
+        'data-key': item.key,
+        'data-force': unlocked && hasStoredAnalysis ? 'true' : null,
+        disabled: analyzing ? true : null,
+        title: unlocked && hasStoredAnalysis
+          ? 'Re-run analysis for this card'
+          : 'Analyze this card only: situation, actions, drafts and editor prompts',
+      })}>${icon('sparkle', 'sm')}${analyzing ? 'Analyzing…' : unlocked && hasStoredAnalysis ? 'Re-analyze' : 'Analyze'}</button>`,
+      unlocked && hasStoredAnalysis
+        ? `<button type="button" class="ghost"${attrs({
+          'data-action': 'toggleAnalysisDetail',
+          'data-key': item.key,
+          'aria-expanded': detailOpen ? 'true' : 'false',
+          title: detailOpen ? 'Hide analysis detail on this card' : 'Show analysis detail on this card',
+        })}>${detailOpen ? 'Hide analysis' : 'Show analysis'}</button>`
+        : '',
+    ].join('')
+    : '';
   const actions = [
     task && !jiraOnRelated ? jiraButton(task) : '',
     pr ? prButton(pr) : '',
     pr && prCardComment ? commentButton(pr, prCardComment) : '',
     ui.snoozable ? snoozeControl(item, ui) : '',
-    `<button type="button" class="ghost"${attrs({
-      'data-action': 'toggleChat',
-      'data-key': item.key,
-      'aria-expanded': chatOpen ? 'true' : 'false',
-      title: 'Ask AI: quick triage on this card. Deep PR/Jira work uses copy-to-editor-chat prompts.',
-    })}>${icon('sparkle', 'sm')}${chatOpen ? 'Hide chat' : 'Ask AI'}</button>`,
+    analysisButtons,
     task || (pr && (pr.comments || []).length)
       ? `<button type="button" class="ghost"${attrs({ 'data-action': 'toggleDetail', 'data-key': item.key, 'aria-expanded': expanded ? 'true' : 'false' })}>${icon(expanded ? 'chevronDown' : 'chevronRight', 'sm')}Details</button>`
       : '',
@@ -354,103 +299,176 @@ export function renderAttentionItem(item, ctx, ui) {
       ${comments}
       ${related.length ? `<div class="related-list">${related.map((entry, index) => relatedPrBlock(entry, ctx, index === 0 && jiraOnRelated ? jiraButton(task) : '')).join('')}</div>` : ''}
       <div class="item-actions">${actions}</div>
-      ${chatOpen ? cardChatPanel(item, thread, ui) : ''}
+      ${analysisPanel(item, ui)}
       ${expanded ? `<div class="detail">${task ? renderJiraDetail(task) : renderPrDetail(pr)}</div>` : ''}
     </div>
   </article>`;
 }
 
-function cardChatPanel(item, thread, ui = {}) {
-  const running = thread?.status === 'running';
-  const messages = thread?.messages || [];
-  const deepHint = ui.deepHint?.[item.key] || '';
-  const list = messages.length
-    ? messages.map((message) => {
-      const body = message.role === 'assistant'
-        ? `<div class="markdown">${renderMarkdown(message.text)}${running && message === messages[messages.length - 1] ? '<span class="cursor"></span>' : ''}</div>`
-        : `<p class="card-chat-user">${esc(message.text)}</p>`;
-      return `<div class="card-chat-msg ${message.role}">${body}</div>`;
-    }).join('')
-    : '<p class="muted small">Fast triage from card data (why flagged, whose turn, next step). For diffs and full Jira/PR details, copy a prompt for editor chat below.</p>';
+function findingLine(finding) {
+  const where = finding.where ? ` ${esc(finding.where)}` : '';
+  const why = finding.why ? `  ${esc(finding.why)}` : '';
+  return `<li class="analysis-finding"><span class="analysis-finding-label">${esc(finding.label)}</span>${where}${why}</li>`;
+}
 
-  let status = '';
-  if (thread?.status === 'error') {
-    status = `<div class="banner${thread.setupHint ? '' : ' error'} small">
-      ${icon(thread.setupHint ? 'info' : 'alert', 'sm')}
-      <div class="banner-body">${esc(thread.error || 'The AI request failed.')}</div>
-      ${thread.setupHint ? '<button type="button" class="ghost" data-action="openSetup" data-step="ai">Open Setup</button>' : ''}
+function analysisActionRow(action, itemKey, index, actionStatus) {
+  if (action.kind === 'none') {
+    return `<div class="analysis-action">
+      <span class="analysis-action-mark muted" aria-hidden="true">–</span>
+      <div class="analysis-action-body">
+        <div class="analysis-action-title">${esc(action.title)}</div>
+        ${action.detail ? `<p class="muted small">${esc(action.detail)}</p>` : ''}
+      </div>
     </div>`;
   }
 
-  const quickChips = !running
-    ? `<div class="card-chat-section">
-        <p class="muted small card-chat-label">Quick questions</p>
-        <div class="card-chat-chips">${quickChatSuggestions(item).map((text) => `<button type="button" class="ghost chip-btn"${attrs({
-          'data-action': 'chatSend',
-          'data-key': item.key,
-          'data-text': text,
-        })}>${esc(text)}</button>`).join('')}</div>
-      </div>`
+  const status = actionStatus?.[action.actionKey] || 'open';
+  if (status === 'dropped') return '';
+
+  const done = status === 'done';
+  const progress = status === 'progress';
+  const checkboxId = `analysis-done-${itemKey}-${index}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const buttons = [
+    action.handoffPrompt
+      ? `<button type="button" class="ghost"${attrs({
+        'data-action': 'analysisCopyPrompt',
+        'data-key': itemKey,
+        'data-index': index,
+        title: 'Copy editor-AI handoff prompt',
+      })}>${icon('copy', 'sm')}Copy prompt</button>`
+      : '',
+    action.draft
+      ? `<button type="button" class="ghost"${attrs({
+        'data-action': 'analysisCopyDraft',
+        'data-key': itemKey,
+        'data-index': index,
+        title: 'Copy draft reply',
+      })}>${icon('copy', 'sm')}Copy draft</button>`
+      : '',
+    action.link && action.openLabel
+      ? `<button type="button" class="secondary"${attrs({
+        'data-action': 'analysisOpenLink',
+        'data-url': action.link,
+        'aria-label': action.openLabel,
+      })}>${icon('external', 'sm')}${esc(action.openLabel)}</button>`
+      : '',
+  ].join('');
+
+  const findings = action.findings?.length
+    ? `<ul class="analysis-findings">${action.findings.map(findingLine).join('')}</ul>`
+    : '';
+  const checklist = action.checklist?.length
+    ? `<ul class="analysis-checklist">${action.checklist.map((line) => `<li>${esc(line)}</li>`).join('')}</ul>`
+    : '';
+  const draft = action.draft
+    ? `<div class="analysis-draft muted small">${esc(action.draft.length > 280 ? `${action.draft.slice(0, 280)}…` : action.draft)}</div>`
+    : '';
+  const progressLabel = progress
+    ? '<span class="analysis-progress muted small" aria-label="Progress detected">progress detected</span>'
     : '';
 
-  const deepButtons = deepEditorActions(item).map((action) => `<button type="button" class="ghost chip-btn"${attrs({
-    'data-action': 'reviewInChat',
-    'data-key': item.key,
-    'data-template': action.template,
-    title: 'Copy a prompt for Copilot / Cursor / other editor chat (includes MCP how-to)',
-  })}>${icon('copy', 'sm')}${esc(action.label)}</button>`).join('');
-
-  const deepHintBanner = deepHint && !running
-    ? `<div class="banner small" role="status">
-        ${icon('info', 'sm')}
-        <div class="banner-body">
-          <strong>That needs live PR/Jira details.</strong>
-          Card AI can’t see the diff or full description. Copy a sample prompt and paste it into editor chat:
-          <p class="muted small">“${esc(deepHint)}”</p>
-        </div>
-      </div>`
-    : '';
-
-  const deepSection = !running
-    ? `<div class="card-chat-section">
-        <p class="muted small card-chat-label">Deep work — copy prompt for editor chat</p>
-        ${deepHintBanner}
-        <div class="card-chat-chips">${deepButtons}</div>
-      </div>`
-    : '';
-
-  const actions = running
-    ? `<button type="button" class="secondary" data-action="aiCancel">${icon('stop', 'sm')}Stop</button>`
-    : [
-      messages.length ? `<button type="button" class="ghost"${attrs({ 'data-action': 'chatClear', 'data-key': item.key })}>Clear</button>` : '',
-      deepHint
-        ? `<button type="button" class="ghost"${attrs({ 'data-action': 'dismissDeepHint', 'data-key': item.key })}>Dismiss hint</button>`
-        : '',
-    ].join('');
-
-  return `<div class="card-chat" aria-live="polite" aria-busy="${running ? 'true' : 'false'}">
-    <div class="card-chat-head">
-      <strong>Ask AI</strong>
-      ${thread?.modelName ? `<span class="muted small">${esc(thread.modelName)}</span>` : ''}
-      <span class="spacer"></span>
-      ${actions}
+  return `<div class="analysis-action${done ? ' is-done' : ''}${progress ? ' is-progress' : ''}">
+    <label class="analysis-action-mark" for="${esc(checkboxId)}">
+      <input type="checkbox" id="${esc(checkboxId)}"${attrs({
+        'data-action': 'analysisToggleDone',
+        'data-key': itemKey,
+        'data-action-key': action.actionKey || null,
+        checked: done ? true : null,
+        'aria-label': done ? `Mark ${action.title} as not done` : `Mark ${action.title} as done`,
+      })} />
+    </label>
+    <div class="analysis-action-body">
+      <div class="row wrap analysis-action-head">
+        <div class="analysis-action-title">${esc(action.title)}</div>
+        ${progressLabel}
+        <span class="spacer"></span>
+        <div class="analysis-action-buttons">${buttons}</div>
+      </div>
+      ${action.detail ? `<p class="muted small">${esc(action.detail)}</p>` : ''}
+      ${findings}
+      ${checklist}
+      ${draft}
     </div>
-    <div class="card-chat-messages">${list}</div>
-    ${status}
-    ${quickChips}
-    ${deepSection}
-    <div class="card-chat-compose">
-      <input type="text" class="card-chat-input"${attrs({
-        'data-chat-input': item.key,
-        placeholder: 'Quick triage question…',
-        'aria-label': 'Quick triage question about this card',
-        disabled: running ? true : null,
-      })}>
-      <button type="button"${attrs({
-        'data-action': 'chatSend',
+  </div>`;
+}
+
+/**
+ * Card analysis detail. Auto-analysis may fill `ui.analysis` for Next actions, but the
+ * panel stays hidden until the user clicks Analyze (`analysisUnlocked` + `analysisDetailOpen`).
+ */
+function analysisPanel(item, ui) {
+  if (!ui.aiEnabled) return '';
+  if (!ui.analysisUnlocked?.[item.key] || !ui.analysisDetailOpen?.[item.key]) return '';
+  const entry = ui.analysis?.[item.key];
+  if (!entry) return '';
+
+  if (entry.status === 'analyzing') {
+    return `<div class="analysis-panel" aria-live="polite" aria-busy="true">
+      <div class="analysis-head"><strong>What to do</strong><span class="muted small">Analyzing…</span></div>
+    </div>`;
+  }
+
+  if (entry.status === 'unavailable') {
+    const reason = entry.reason && entry.reason !== 'cancelled'
+      ? entry.reason
+      : 'Analysis unavailable';
+    return `<div class="analysis-panel" aria-live="polite">
+      <div class="analysis-head"><strong>What to do</strong></div>
+      <p class="muted small">${esc(reason)}</p>
+      <div class="item-actions">
+        <button type="button" class="ghost"${attrs({
+          'data-action': 'analysisRun',
+          'data-key': item.key,
+        })}>${icon('sparkle', 'sm')}Analyze</button>
+      </div>
+    </div>`;
+  }
+
+  if ((entry.status !== 'ready' && entry.status !== 'stale') || !entry.analysis) return '';
+
+  const analysis = entry.analysis;
+  const stale = entry.status === 'stale';
+  const actionStatus = entry.actionStatus || {};
+  const openActions = [];
+  const doneActions = [];
+  (analysis.actions || []).forEach((action, index) => {
+    const status = actionStatus[action.actionKey] || 'open';
+    if (status === 'dropped') return;
+    if (status === 'done') doneActions.push({ action, index });
+    else openActions.push({ action, index });
+  });
+  const openHtml = openActions
+    .map(({ action, index }) => analysisActionRow(action, item.key, index, actionStatus))
+    .join('');
+  const doneHtml = doneActions.length
+    ? `<details class="analysis-done-group">
+        <summary class="muted small">Done (${doneActions.length})</summary>
+        <div class="analysis-actions analysis-actions-done">
+          ${doneActions.map(({ action, index }) => analysisActionRow(action, item.key, index, actionStatus)).join('')}
+        </div>
+      </details>`
+    : '';
+  const confidence = analysis.confidence === 'low'
+    ? 'confidence low'
+    : `confidence ${esc(analysis.confidence)}`;
+
+  return `<div class="analysis-panel${stale ? ' is-stale' : ''}" aria-live="polite">
+    <div class="analysis-head">
+      <strong>What to do</strong>
+      ${analysis.situation ? `<span class="muted small analysis-situation">${esc(analysis.situation)}</span>` : ''}
+      ${stale ? '<span class="muted small">Out of date</span>' : ''}
+    </div>
+    <div class="analysis-actions">${openHtml || (doneHtml ? '' : '<p class="muted small">Nothing to do.</p>')}</div>
+    ${doneHtml}
+    <div class="analysis-foot row wrap">
+      <span class="muted small">Analyzed ${esc(relativeTime(analysis.analyzedAt))} · ${confidence}</span>
+      <span class="spacer"></span>
+      <button type="button" class="ghost"${attrs({
+        'data-action': 'analysisRun',
         'data-key': item.key,
-        disabled: running ? true : null,
-      })}>${icon('sparkle', 'sm')}Send</button>
+        'data-force': 'true',
+        title: 'Re-run analysis for this card',
+      })}>Re-analyze</button>
     </div>
   </div>`;
 }
