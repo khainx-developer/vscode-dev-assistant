@@ -53,6 +53,10 @@ export class AiConfigStore {
     await vscode.workspace.getConfiguration(SECTION).update('model', modelId, vscode.ConfigurationTarget.Global);
   }
 
+  async setAnalysisAuto(enabled: boolean): Promise<void> {
+    await vscode.workspace.getConfiguration(SECTION).update('analysis.auto', enabled, vscode.ConfigurationTarget.Global);
+  }
+
   static affects(event: vscode.ConfigurationChangeEvent): boolean {
     return event.affectsConfiguration(SECTION);
   }

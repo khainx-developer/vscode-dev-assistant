@@ -65,6 +65,7 @@ export type SessionCommand =
   | { command: 'ai.cancel' }
   | { command: 'ai.setProvider'; provider: AiProvider }
   | { command: 'ai.setModel'; modelId: string }
+  | { command: 'ai.setAnalysisAuto'; enabled: boolean }
   | { command: 'ai.loadModels' }
   | { command: 'ai.cliTerminal'; action: 'install' | 'login' }
   | { command: 'settings.setNotifications'; enabled: boolean }
@@ -189,6 +190,8 @@ export interface AiViewState {
   defaultEnableProvider: AiEnableProvider;
   /** True when `vscode.env.appName` looks like Cursor — gates Cursor Agent CLI UI. */
   cursorHost: boolean;
+  /** `devMateKit.ai.analysis.auto` — auto-analyze important items after refresh. */
+  analysisAuto: boolean;
 }
 
 /** Stored analysis for an inbox card: current hash (ready) or older hash (stale). */
